@@ -56,8 +56,8 @@ end
 complete -c run -f
 
 # Shell suggestions for --generate-completion and --install-completion flags
-complete -c run -l generate-completion -xa 'bash zsh fish'
-complete -c run -l install-completion -xa 'bash zsh fish'
+complete -c run -l generate-completion -xa 'bash zsh fish powershell'
+complete -c run -l install-completion -xa 'bash zsh fish powershell'
 
 # Top-level function/namespace completions (only for the first argument)
 complete -c run -n "__fish_is_first_arg" -a "(__run_get_top_level)"

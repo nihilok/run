@@ -8,12 +8,15 @@ use std::path::PathBuf;
 const BASH_COMPLETION: &str = include_str!("../completions/run.bash");
 const ZSH_COMPLETION: &str = include_str!("../completions/run.zsh");
 const FISH_COMPLETION: &str = include_str!("../completions/run.fish");
+const POWERSHELL_COMPLETION: &str = include_str!("../completions/run.ps1");
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ValueEnum)]
 pub enum Shell {
     Bash,
     Zsh,
     Fish,
+    #[value(name = "powershell", alias = "pwsh")]
+    PowerShell,
 }
 
 impl Shell {
@@ -23,6 +26,7 @@ impl Shell {
             Shell::Bash => "bash",
             Shell::Zsh => "zsh",
             Shell::Fish => "fish",
+            Shell::PowerShell => "powershell",
         }
     }
 
@@ -32,6 +36,7 @@ impl Shell {
             Shell::Bash => BASH_COMPLETION,
             Shell::Zsh => ZSH_COMPLETION,
             Shell::Fish => FISH_COMPLETION,
+            Shell::PowerShell => POWERSHELL_COMPLETION,
         }
     }
 
@@ -44,6 +49,8 @@ impl Shell {
             Some(Shell::Zsh)
         } else if shell_var.contains("fish") {
             Some(Shell::Fish)
+        } else if shell_var.contains("pwsh") || shell_var.contains("powershell") {
+            Some(Shell::PowerShell)
         } else {
             None
         }
@@ -59,7 +66,7 @@ pub fn generate_completion_script(shell: Shell) {
 pub fn install_completion_interactive(shell_opt: Option<Shell>, get_home_dir: impl Fn() -> Option<PathBuf>) {
     // Detect the shell if not provided
     let shell = shell_opt.or_else(Shell::detect).unwrap_or_else(|| {
-        crate::fatal_error("Could not detect shell. Please specify: --install-completion <SHELL>\nSupported shells: bash, zsh, fish")
+        crate::fatal_error("Could not detect shell. Please specify: --install-completion <SHELL>\nSupported shells: bash, zsh, fish, powershell")
     });
 
     println!(
@@ -76,6 +83,7 @@ pub fn install_completion_interactive(shell_opt: Option<Shell>, get_home_dir: im
         Shell::Bash => install_bash_completion(&home),
         Shell::Zsh => install_zsh_completion(&home),
         Shell::Fish => install_fish_completion(&home),
+        Shell::PowerShell => install_powershell_completion(&home),
     }
 
     println!("\n✓ Installation complete!");
@@ -169,3 +177,74 @@ fn install_fish_completion(home: &PathBuf) {
     println!("  exec fish");
 }
 
+fn install_powershell_completion(home: &PathBuf) {
+    #[cfg(windows)]
+    let comp_dir = home.join("Documents").join("PowerShell").join("Scripts");
+
+    #[cfg(not(windows))]
+    let comp_dir = home.join(".config").join("powershell");
+
+    let comp_file = write_completion_file(&comp_dir, "run.ps1", POWERSHELL_COMPLETION);
+
+    println!("✓ Installed completion script to {}", comp_file.display());
+
+    // Determine PowerShell profile path
+    #[cfg(windows)]
+    let profile_dir = home.join("Documents").join("PowerShell");
+
+    #[cfg(not(windows))]
+    let profile_dir = home.join(".config").join("powershell");
+
+    let profile_path = profile_dir.join("Microsoft.PowerShell_profile.ps1");
+
+    // Create profile directory if it doesn't exist
+    if let Err(e) = std::fs::create_dir_all(&profile_dir) {
+        eprintln!("✗ Failed to create profile directory: {}", e);
+        return;
+    }
+
+    // Source line to add
+    let source_line = format!(". \"{}\"", comp_file.display());
+
+    // Check if already sourced
+    let already_sourced = if profile_path.exists() {
+        match std::fs::read_to_string(&profile_path) {
+            Ok(content) => content.lines().any(|line| {
+                line.trim() == source_line.trim() ||
+                line.contains("run.ps1")
+            }),
+            Err(_) => false,
+        }
+    } else {
+        false
+    };
+
+    if already_sourced {
+        println!("✓ Completion already configured in PowerShell profile");
+    } else {
+        // Append to profile
+        use std::fs::OpenOptions;
+        use std::io::Write;
+
+        match OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&profile_path)
+        {
+            Ok(mut file) => {
+                if let Err(e) = writeln!(file, "\n# run command completion\n{}", source_line) {
+                    eprintln!("✗ Failed to write to profile: {}", e);
+                } else {
+                    println!("✓ Added completion to PowerShell profile");
+                    println!("  Profile: {}", profile_path.display());
+                }
+            }
+            Err(e) => {
+                eprintln!("✗ Failed to open profile file: {}", e);
+            }
+        }
+    }
+
+    println!("\nTo activate completions, restart PowerShell or run:");
+    println!("  . $PROFILE");
+}

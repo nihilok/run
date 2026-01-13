@@ -29,12 +29,13 @@ run --install-completion
 run --install-completion zsh
 run --install-completion bash
 run --install-completion fish
+run --install-completion powershell
 ```
 
 This will:
 - Create the completion file in the correct location for your shell
 - Provide instructions for updating your shell config if needed
-- Work for bash, zsh, and fish
+- Work for bash, zsh, fish, and powershell
 
 After installation, restart your shell or follow the instructions shown.
 
@@ -91,6 +92,21 @@ run --generate-completion fish > ~/.config/fish/completions/run.fish
 
 Fish will automatically load completions from this directory on next shell startup.
 
+### PowerShell
+
+Generate and install the completion script:
+
+```powershell
+# Install to user config directory
+New-Item -ItemType Directory -Force -Path ~/.config/powershell
+run --generate-completion powershell > ~/.config/powershell/run.ps1
+
+# Add to your PowerShell profile
+Add-Content -Path $PROFILE -Value ". ~/.config/powershell/run.ps1"
+```
+
+Restart PowerShell or run `. $PROFILE` to activate.
+
 ## How It Works
 
 The completion scripts are embedded in the `run` binary at compile time and dynamically read function names from your Runfile by calling `run --list`. This means:
@@ -118,5 +134,6 @@ Both `--install-completion` and `--generate-completion` support:
 - `bash`
 - `zsh`
 - `fish`
+- `powershell` (or `pwsh`)
 
 Example: `run --install-completion zsh`
