@@ -40,23 +40,8 @@ _run() {
 
     # Check if we're completing a second argument and first arg is a namespace
     if [[ $CURRENT -eq 2 ]]; then
-        local -a first_arg_completions
-        first_arg_completions=(
-            '--list:List all available functions'
-            '-l:List all available functions'
-            '--generate-completion:Generate shell completion script'
-            '--install-completion:Install shell completion'
-            '--version:Print version'
-            '--help:Show help'
-            '-h:Show help'
-        )
-
-        # Add top-level commands without descriptions
-        for cmd in $top_level_commands; do
-            first_arg_completions+=("$cmd")
-        done
-
-        _describe -t commands 'command' first_arg_completions
+        # Only show commands from the Runfile, not CLI options
+        _describe -t commands 'command' top_level_commands
 
     elif [[ $CURRENT -eq 3 ]]; then
         local namespace="${words[2]}"

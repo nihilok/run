@@ -62,10 +62,8 @@ _run_complete() {
             fi
         fi
 
-        # Combine options and top-level commands
-        local all_completions="${opts} ${completions}"
-
-        COMPREPLY=( $(compgen -W "${all_completions}" -- "${cur}") )
+        # Only show top-level commands from the Runfile
+        COMPREPLY=( $(compgen -W "${completions}" -- "${cur}") )
 
     # Second argument: if prev is a namespace, show subcommands
     elif [[ ${COMP_CWORD} -eq 2 ]]; then

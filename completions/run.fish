@@ -55,12 +55,9 @@ end
 # Completions for run command
 complete -c run -f
 
-# Options (always available)
-complete -c run -s l -l list -d 'List all available functions from the Runfile'
-complete -c run -l generate-completion -d 'Generate shell completion script' -xa 'bash zsh fish'
-complete -c run -l install-completion -d 'Install shell completion' -xa 'bash zsh fish'
-complete -c run -l version -d 'Print version information'
-complete -c run -s h -l help -d 'Print help information'
+# Shell suggestions for --generate-completion and --install-completion flags
+complete -c run -l generate-completion -xa 'bash zsh fish'
+complete -c run -l install-completion -xa 'bash zsh fish'
 
 # Top-level function/namespace completions (only for the first argument)
 complete -c run -n "__fish_is_first_arg" -a "(__run_get_top_level)"
