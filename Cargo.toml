@@ -1,12 +1,21 @@
 [package]
 name = "run"
-version = "0.1.0"
-authors = ["sebastian <s@porto5.com>"]
-description = "A simple menu to run a command"
+version = "0.2.0"
+edition = "2024"
+authors = ["nihilok nihilok@jarv.dev", "sebastian <s@porto5.com>"]
+description = "A lightweight task runner for defining and executing shell commands with a clean, readable syntax."
 license = "MIT"
+repository = "https://github.com/nihilok/run"
 
 [dependencies]
-toml = "0.4.2"
-serde = "1.0.10"
-serde_derive = "1.0.10"
-term-painter = "0.2.3"
+pest = "2.8.5"
+pest_derive = "2.8.5"
+clap = { version = "4.5", features = ["derive"] }
+which = "8.0"
+
+[dev-dependencies]
+tempfile = "3.24"
+
+[[bin]]
+name = "run"
+path = "src/main.rs"

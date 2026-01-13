@@ -1,0 +1,90 @@
+// Grammar for the scripting language
+
+WHITESPACE = _{ " " | "\t" }
+
+NL = _{ "\r\n" | "\n" }
+
+program = { SOI ~ NL* ~ (item ~ NL*)* ~ EOI }
+
+item = {
+    comment
+    | function_def
+    | function_call
+    | assignment
+    | command
+}
+
+comment = { "#" ~ (!NL ~ ANY)* }
+
+// Function definition: supports multiple bash-like syntaxes
+// - name() command or name() { ... }            (original syntax)
+// - function name { ... }                       (keyword, no parens, block or inline command)
+// - function name command                       (keyword required for paren-less inline)
+// - function name() { ... } or function name() command
+function_def = {
+    "function" ~ identifier ~ "(" ~ ")" ~ (block | command)
+    | "function" ~ identifier ~ (block | command)
+    | identifier ~ "(" ~ ")" ~ (block | command)
+}
+
+// Block: { statement; statement; ... } or { statement\n statement\n ... }
+// Allows trailing semicolons and empty blocks
+block = { "{" ~ NL* ~ (block_line ~ (block_sep ~ block_line)*)? ~ block_sep? ~ NL* ~ "}" }
+block_sep = _{ ";" ~ NL* | NL+ }
+block_line = @{ block_char+ }
+block_char = _{ !("}" | ";" | NL) ~ ANY }
+
+// Function call: name() or name(arg1, arg2, ...)
+function_call = { identifier ~ "(" ~ (argument_list)? ~ ")" }
+
+argument_list = { argument ~ ("," ~ argument)* }
+
+// Assignment: var=value
+assignment = { identifier ~ "=" ~ value }
+
+// Identifier can contain letters, numbers, underscores, and colons
+identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ":")* }
+
+// Command is everything after the function signature until end of line
+command = { command_part ~ (escaped_newline? ~ command_part)* }
+
+command_part = {
+    quoted_string
+    | variable
+    | operator
+    | word
+}
+
+// Quoted strings can contain variables
+quoted_string = ${ "\"" ~ quoted_content ~ "\"" }
+quoted_content = @{ (variable_in_quote | escape_sequence | (!("\"" | "\\") ~ ANY))* }
+variable_in_quote = @{ "$" ~ (braced_var | ASCII_DIGIT+ | "@" | identifier) }
+
+// Variables: $1, $@, $var, ${var}, ${var:-default}
+variable = @{ "$" ~ (braced_var | ASCII_DIGIT+ | "@" | identifier) }
+braced_var = @{ "{" ~ (!("}") ~ ANY)+ ~ "}" }
+
+// Shell operators
+operator = { "&&" | "||" | "|" | ";" | ">" | ">>" | "<" }
+
+// Escape sequences
+escape_sequence = @{ "\\" ~ ANY }
+
+// Escaped newline: backslash followed by newline
+escaped_newline = { "\\" ~ NL }
+
+// Word is any sequence of non-whitespace, non-special characters
+word = @{ (!(WHITESPACE | NL | "\"" | "$" | operator | "(" | ")" | "," | "{" | "}") ~ ANY)+ }
+
+// Argument word in function calls (excludes commas and parentheses)
+argument_word = @{ (!(WHITESPACE | NL | "\"" | "$" | "," | "(" | ")") ~ ANY)+ }
+
+// Argument in function calls
+argument = {
+    quoted_string
+    | variable
+    | argument_word
+}
+
+// Value for assignments
+value = @{ (!NL ~ ANY)+ }

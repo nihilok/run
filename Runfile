@@ -1,0 +1,45 @@
+# Example Runfile with simple function definitions
+
+# Simple function with argument substitution
+docker_shell() docker compose exec $1 bash
+
+# Nested command with colon notation
+docker:shell() docker compose exec $1 bash
+
+# Another nested command example
+docker:logs() docker compose logs -f $1
+
+# Function with multiple arguments
+git:commit() git add . && git commit -m "$1" && echo "${2:-done}"
+
+# Function using $@ for all arguments
+echo_all() echo "All args: $@"
+
+# Function that ignores arguments
+echo_no_args() echo "No args function called" \
+    && echo "This function does not use its arguments" \
+    && echo "It just prints a fixed message"
+
+# Deploy with multiple steps
+docker:deploy() {
+    echo "Building image..."
+    docker build -t myapp:$1 .
+    echo "Pushing to registry..."
+    docker push myapp:$1
+    echo "Restarting containers..."
+    docker compose up -d
+    echo "✓ Deployed version $1"
+}
+
+# Deploy commands:
+deploy:patch() {
+    ./scripts/deploy.sh patch
+}
+
+deploy:minor() {
+    ./scripts/deploy.sh minor
+}
+
+deploy:major() {
+    ./scripts/deploy.sh major
+}

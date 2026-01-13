@@ -1,0 +1,37 @@
+# Test script for the run scripting language
+
+project = "MyProject"
+version = "1.0.0"
+
+# Function definitions
+greet() echo "Hello from the run scripting language!"; echo "Building project..."
+nested:info() echo "Args: $@";
+
+# Call the functions
+greet()
+nested:info("arg1", "arg2", "arg3", $project, version)
+
+# Test variable assignment and usage
+
+# Assign a variable
+name=World
+
+# Use the variable in a command
+echo "Hello, $name!"
+
+# Assign another variable
+app_name=myapp
+
+# Use variables in function definitions
+greet() echo "Greetings, $1 from $name"
+
+# Call the function - it will use both the argument and the variable
+greet(Alice)
+
+# Use variable in another command
+echo "App name is: $app_name"
+
+# Run some shell commands directly
+ls -la
+echo "Project: $project, Version: $version"
+echo "Done!"
