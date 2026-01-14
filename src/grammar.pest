@@ -16,6 +16,14 @@ item = {
 
 comment = { "#" ~ (!NL ~ ANY)* }
 
+// Attribute comment: # @os <platform> or # @shell <shell>
+attribute_comment = { "#" ~ WHITESPACE* ~ "@" ~ (attribute_os | attribute_shell) }
+attribute_os = { "os" ~ WHITESPACE+ ~ os_platform }
+attribute_shell = { "shell" ~ WHITESPACE+ ~ shell_type }
+
+os_platform = { "windows" | "linux" | "macos" | "unix" }
+shell_type = { "python" | "node" | "ruby" | "pwsh" | "bash" }
+
 // Function definition: supports multiple bash-like syntaxes
 // - name() command or name() { ... }            (original syntax)
 // - function name { ... }                       (keyword, no parens, block or inline command)
@@ -28,11 +36,18 @@ function_def = {
 }
 
 // Block: { statement; statement; ... } or { statement\n statement\n ... }
-// Allows trailing semicolons and empty blocks
-block = { "{" ~ NL* ~ (block_line ~ (block_sep ~ block_line)*)? ~ block_sep? ~ NL* ~ "}" }
-block_sep = _{ ";" ~ NL* | NL+ }
-block_line = @{ block_char+ }
-block_char = _{ !("}" | ";" | NL) ~ ANY }
+// Captures everything between braces, handling nested braces in strings
+block = { "{" ~ block_content ~ "}" }
+block_content = @{ block_part* }
+block_part = _{
+    quoted_string_in_block
+    | "{" ~ block_content ~ "}"  // Nested braces
+    | (!("}" | "\"" | "'") ~ ANY)  // Regular characters
+}
+quoted_string_in_block = @{
+    "\"" ~ ("\\\"" | (!"\"" ~ ANY))* ~ "\""
+    | "'" ~ ("\\'" | (!"'" ~ ANY))* ~ "'"
+}
 
 // Function call: name() or name(arg1, arg2, ...)
 function_call = { identifier ~ "(" ~ (argument_list)? ~ ")" }
@@ -74,7 +89,8 @@ escape_sequence = @{ "\\" ~ ANY }
 escaped_newline = { "\\" ~ NL }
 
 // Word is any sequence of non-whitespace, non-special characters
-word = @{ (!(WHITESPACE | NL | "\"" | "$" | operator | "(" | ")" | "," | "{" | "}") ~ ANY)+ }
+// Note: parentheses are allowed in words so commands like `print("hello")` work
+word = @{ (!(WHITESPACE | NL | "\"" | "$" | operator | "," | "{" | "}") ~ ANY)+ }
 
 // Argument word in function calls (excludes commas and parentheses)
 argument_word = @{ (!(WHITESPACE | NL | "\"" | "$" | "," | "(" | ")") ~ ANY)+ }

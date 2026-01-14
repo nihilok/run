@@ -14,10 +14,12 @@ pub enum Statement {
     SimpleFunctionDef {
         name: String,
         command_template: String,
+        attributes: Vec<Attribute>,
     },
     BlockFunctionDef {
         name: String,
         commands: Vec<String>,
+        attributes: Vec<Attribute>,
     },
     FunctionCall {
         name: String,
@@ -31,4 +33,27 @@ pub enum Statement {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     String(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Attribute {
+    Os(OsPlatform),
+    Shell(ShellType),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum OsPlatform {
+    Windows,
+    Linux,
+    MacOS,
+    Unix,  // Matches both Linux and MacOS
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ShellType {
+    Python,
+    Node,
+    Ruby,
+    Pwsh,
+    Bash,
 }
