@@ -1,311 +1,337 @@
 # run
 
-A lightweight task runner for defining and executing shell commands with a clean, readable syntax. Define functions in a `Runfile` (or `~/.runfile`) and call them from the command line to streamline your development workflow.
-
 [![Crates.io](https://img.shields.io/crates/v/run.svg)](https://crates.io/crates/run)
-[![Docs.rs](https://docs.rs/run/badge.svg)](https://docs.rs/run)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-#### Why use `run`?
+**Task runner that speaks shell, Python, Node, and Ruby.**
+
+Define tasks in a `Runfile`, run them from anywhere. No TOML, no YAML, no new syntax to learn.
+
+```bash
+# Runfile
+
+build() cargo build --release
+
+# @os windows
+clean() del /Q dist
+
+# @os unix
+clean() rm -rf dist
+
+# @shell python
+analyze() {
+    import sys, json
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+        print(f"Found {len(data)} records")
+}
+
+# @shell node
+server() {
+    require('http').createServer((req, res) => {
+        res.end('Hello from Runfile!');
+    }).listen(process.argv[1] || 3000);
+}
+```
+
+```bash
+$ run build
+$ run analyze data.json
+$ run server 8080
+```
+
+Perfect for **project automation**, **CI scripts**, and **personal workflows**.
+
+---
+
+## Table of Contents
+
+- [Why run?](#why-run)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [The Runfile Syntax](#the-runfile-syntax)
+  - [Basic Functions](#basic-functions)
+  - [Block Syntax](#block-syntax)
+  - [Arguments & Defaults](#arguments--defaults)
+  - [Attributes & Polyglot Scripts](#attributes--polyglot-scripts)
+  - [Nested Namespaces](#nested-namespaces)
+- [Configuration](#configuration)
+  - [Shell Selection](#shell-selection)
+  - [Global Runfile](#global-runfile)
+- [License](#license)
+
+---
+
+## Why run?
 
 It hits a common sweet spot — lightweight, readable, and shell-native for quick CLI automation without the overhead of heavier task systems.
 
-- Simple, familiar syntax for shell users and low onboarding cost.
-- Block functions (`{}`) provide clean multi-statement definitions without shell escaping.
-- Nested names, positional args (`$1`, `$@`) and default-value support cover most everyday tasks.
-- Multi-line commands, variables, and REPL make iterative development fast.
-- Global (`~/.runfile`) and project-specific (`./Runfile`) scopes.
+- **Zero Config**: Shell, Python, Node, or Ruby: right in your Runfile.
+- **Low Overhead**: Instant startup time.
+- **Shell Native**: Use the syntax you already know (`$1`, `&&`, pipes).
+- **Clean Namespace**: Organise tasks with `group:task` syntax.
+- **Global & Local**: Project-specific `./Runfile` or personal `~/.runfile`.
 
-### What are the alternatives?
+### Comparison
 
-- `make`: More about dependency tracking and rebuilding; heavyweight for simple command orchestration. `run` is easier for linear scripts and ad-hoc tasks.
-- `just`: Closer in spirit (task runner with recipes). `just` has richer features (recipe interpolation, shebangs, some safety) while `run` is simpler and more shell-native.
-- Plain shell scripts: More flexible but less discoverable and reusable. `run` provides a structured, listable command surface.
-- Language-based task runners (e.g., npm scripts, Mage): Offer ecosystem hooks and richer logic; `run` is lighter and language-agnostic.
+- **vs Make**: `run` is easier for linear scripts and doesn't require learning Makefile quirks (tabs vs spaces, `.PHONY`).
+- **vs Just**: `run` is closer to raw shell scripting. It doesn't have a custom language for variables or logic—it just delegates to your shell.
 
-## Prerequisites
-
-- [Homebrew package manager (macOS/Linux)](https://brew.sh/), [Scoop package manager (Windows)](https://scoop.sh/), OR [Rust toolchain with Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html)
-- **Windows users:** PowerShell is used by default (pwsh or powershell). You can override this by setting the `RUN_SHELL` environment variable to use other shells like Git Bash, WSL, or MSYS2.
+---
 
 ## Installation
 
-### macOS / Linux
+### Recommended
 
-Install via Homebrew:
-
-```sh
+**macOS/Linux (Homebrew)**
+```bash
 brew tap nihilok/tap
 brew install runfile
 ```
 
-### Windows
-
-Install via Scoop:
-
+**Windows (Scoop)**
 ```powershell
 scoop bucket add nihilok https://github.com/nihilok/scoop-bucket
 scoop install runfile
 ```
 
-OR
+### Alternative: Cargo
 
-Install via crates.io with Cargo:
+Works on all platforms:
 
-```
+```bash
 cargo install run
 ```
 
 ### Tab Completions
 
-After installation, enable tab completions for your shell:
+Auto-detect your shell and install completions:
 
-```
-run --install-completion  # Auto-detects your shell (bash/zsh/fish)
-run --install-completion bash  # Or specify explicitly
-```
-
-Or generate completion scripts manually:
-
-```sh
-run --generate-completion bash > ~/.local/share/bash-completion/completions/run
-run --generate-completion zsh > ~/.zsh/completion/_run
-run --generate-completion fish > ~/.config/fish/completions/run.fish
+```bash
+run --install-completion
 ```
 
-## Features
+Supports `bash`, `zsh`, `fish`, and `powershell`.
 
-- **Simple Function Definitions:** Define reusable functions in a `Runfile` with clean syntax
-- **Block Functions:** Use `{}` braces for multi-statement functions with cleaner syntax
-- **Nested Functions:** Organise related commands with colon notation (e.g., `docker:shell`, `python:test`)
-- **Argument Passing:** Pass arguments to functions using `$1`, `$2`, `$@`, etc.
-- **Default Values:** Set fallback values using bash-style syntax (e.g., `${2:-default}`)
-- **Multi-line Commands:** Chain commands with `&&` and split across lines with `\`
-- **Variable Support:** Define and use variables in your scripts
-- **Interactive REPL:** Start an interactive shell for testing commands
-- **List Functions:** Quickly view all available functions with `--list`
-- **Global or Project-Specific:** Use `~/.runfile` for global commands or `./Runfile` for project-specific ones
+---
 
 ## Quick Start
 
 Create a `Runfile` in your project root:
 
-```runfile
-# Build and run commands
-build() cargo build --release
-test() cargo test
+```bash
+# Simple one-liner
 dev() cargo run
 
-# Multi-statement functions using blocks
-ci() {
-    echo "Running CI pipeline..."
-    cargo fmt -- --check
-    cargo clippy
-    cargo test
-    echo "All checks passed!"
-}
-
-# Docker commands with arguments
-docker:shell() docker compose exec $1 bash
-docker:logs() docker compose logs -f $1
-
-# Git helpers with multiple arguments
-git:commit() git add . && git commit -m "$1" && echo "${2:-Done}"
-```
-
-Run your functions:
-
-```sh
-run build
-run docker shell web
-run git commit "Initial commit" "All set!"
-```
-
-## Usage
-
-### Basic Commands
-
-Call a function from your Runfile:
-```sh
-run build
-run test
-run lint
-```
-
-### Passing Arguments
-
-Functions can accept arguments which are available as `$1`, `$2`, `$@`, etc:
-```sh
-run docker shell app
-run git commit "Fix bug" "Completed"
-run deploy production us-east-1
-```
-
-### Nested Functions
-
-Organise related commands with colon notation and call them with spaces:
-```sh
-run python test      # Calls python:test()
-run docker shell web # Calls docker:shell() with "web" as $1
-run node dev         # Calls node:dev()
-```
-
-### List Available Functions
-
-View all functions defined in your Runfile:
-```sh
-run --list
-run -l
-```
-
-### Run a Script File
-
-Execute a standalone script file:
-```sh
-run myscript.run
-```
-
-### Interactive Mode
-
-Start a REPL to test commands interactively:
-```sh
-run
-```
-
-## Runfile Examples
-
-### Python (with uv)
-```runfile
-python:install() uv venv && uv pip install -r requirements.txt
-python:test() uv run pytest
-python:lint() uv run ruff check .
-python:format() uv run black .
-
-# Block function for complete CI
-python:ci() {
-    echo "Running Python CI..."
-    uv run ruff check .
-    uv run black --check .
-    uv run pytest --cov
-    echo "✓ All checks passed!"
-}
-```
-
-### Node.js
-```runfile
-node:install() npm install
-node:dev() npm run dev
-node:build() npm run build
-node:lint() npm run lint
-node:test() npm test
-```
-
-### Docker
-```runfile
-docker:build() docker build -t myapp .
-docker:run() docker run -it --rm myapp
-docker:shell() docker compose exec $1 bash
-docker:logs() docker compose logs -f $1
-docker:up() docker compose up -d
-docker:down() docker compose down
-
-# Deploy with multiple steps
-docker:deploy() {
-    echo "Building image..."
-    docker build -t myapp:$1 .
-    echo "Pushing to registry..."
-    docker push myapp:$1
-    echo "Restarting containers..."
-    docker compose up -d
-    echo "✓ Deployed version $1"
-}
-```
-
-### Git Helpers
-```runfile
-git:commit() git add . && git commit -m "$1" && echo "${2:-Done}"
-git:amend() git commit --amend --no-edit
-git:push() git push origin $(git branch --show-current)
-```
-
-### Block Functions
-
-Use `{}` braces for cleaner multi-statement functions:
-
-```runfile
-# Multi-line block (newline separated)
+# Multi-step task
 deploy() {
     echo "Building..."
     cargo build --release
-    echo "Testing..."
-    cargo test
-    echo "Deploying to $1..."
-    scp target/release/app server:/app/
+    echo "Deploying..."
+    scp target/release/app server:/bin/
 }
 
-# Inline block (semicolon separated)
-quick() { echo "Starting..."; cargo check; echo "Done!" }
-
-# Traditional backslash continuation (still supported)
-deploy_old() echo "Deploying to $1..." \
-    && cargo build --release \
-    && scp target/release/app server:/app/ \
-    && echo "Deploy complete!"
+# Use Python for complex logic
+# @shell python
+stats() {
+    import sys
+    lines = sum(1 for line in open(sys.argv[1]))
+    print(f"{sys.argv[1]}: {lines} lines")
+}
 ```
 
-### Using All Arguments
-```runfile
-echo_all() echo "All args: $@"
-forward() docker exec myapp $@
+Run your tasks:
+
+```bash
+$ run dev
+$ run deploy
+$ run stats src/main.rs
 ```
 
-## Runfile Syntax
+List available tasks:
 
-- **Function Definition:** `name() command` or `name() command1 && command2`
-- **Block Functions:** `name() { command1; command2 }` or multi-line with newlines
-- **Nested Functions:** `category:name() command`
-- **Arguments:** Access with `$1`, `$2`, `$3`, etc. or `$@` for all arguments
-- **Default Values:** Use bash syntax like `${1:-default_value}`
-- **Multi-line:** End lines with `\` to continue on the next line, or use `{}` blocks
-- **Comments:** Lines starting with `#` are comments
-- **Variables:** Define with `name=value` and use with `$name`
+```bash
+$ run --list
+```
+
+---
+
+## The Runfile Syntax
+
+`run` parses your `Runfile` to find function definitions. The syntax is designed to be familiar to anyone who has used `bash` or `sh`.
+
+### Basic Functions
+
+For simple, one-line commands, you don't need braces.
+
+```bash
+# Usage: run dev
+dev() cargo run
+
+# Usage: run fmt
+fmt() cargo fmt
+```
+
+### Block Syntax
+
+Use `{}` for multi-statement functions. This avoids the need for trailing backslashes.
+
+```bash
+ci() {
+    echo "Running CI..."
+    cargo fmt -- --check
+    cargo clippy
+    cargo test
+    echo "Done!"
+}
+```
+
+### Arguments & Defaults
+
+Arguments are passed directly to the underlying shell. Access them using standard positional variables: `$1`, `$2`, `$@`.
+
+```bash
+# Usage: run commit "Initial commit"
+git:commit() {
+    git add .
+    git commit -m "$1"
+}
+
+# Usage: run deploy prod v2
+# $1 = prod, $2 = v2 (defaults to 'latest' if missing)
+deploy() {
+    env=$1
+    version=${2:-latest} 
+    echo "Deploying $version to $env..."
+}
+
+# Pass all arguments through
+test() {
+    # Usage: run test --release --nocapture
+    cargo test $@
+}
+```
+
+### Attributes & Polyglot Scripts
+
+You can use comment attributes (`# @key value`) immediately before a function definition to modify its behaviour.
+
+#### Platform Guards (`@os`)
+
+Restrict functions to specific operating systems. This allows you to define platform-specific implementations of the same task.
+
+```bash
+# @os windows
+clean() del /Q dist
+
+# @os unix
+clean() rm -rf dist
+```
+
+When you run `run clean`, only the variant matching your current OS will execute.
+
+#### Interpreter Selection (`@shell` / `@lang`)
+
+Execute the function body using a specific interpreter instead of the default shell. This allows you to write Python, Node, or Ruby directly in your Runfile.
+
+**Python example:**
+```python
+# @shell python
+calc() {
+    import sys, math
+    radius = float(sys.argv[1])
+    print(f"Area: {math.pi * radius**2:.2f}")
+}
+```
+
+```bash
+$ run calc 5
+Area: 78.54
+```
+
+**Node.js example:**
+```javascript
+# @shell node
+server() {
+    const port = process.argv[1] || 3000;
+    require('http').createServer((req, res) => {
+        res.end('Hello!');
+    }).listen(port);
+    console.log(`Server running on port ${port}`);
+}
+```
+
+```bash
+$ run server 8080
+Server running on port 8080
+```
+
+**Supported interpreters:** `python`, `node`, `ruby`, `pwsh`, `bash`
+
+### Nested Namespaces
+
+Organise related commands using colons. `run` parses `name:subname` as a single identifier.
+
+```bash
+docker:build() docker build -t app .
+docker:up() docker compose up -d
+docker:logs() docker compose logs -f
+```
+
+Execute them with spaces:
+
+```bash
+$ run docker build
+$ run docker logs
+```
+
+---
 
 ## Configuration
-
-Place your `Runfile` in one of these locations:
-- `./Runfile` - Project-specific commands (checked first)
-- `~/.runfile` - Global commands available everywhere
-
-Functions are executed in the underlying shell, so you can use any standard shell syntax, pipes, redirects, etc.
 
 ### Shell Selection
 
 By default, `run` uses:
-- **Windows:** PowerShell (`pwsh` if available, otherwise `powershell`)
-- **Unix-like systems:** `sh`
 
-You can override this by setting the `RUN_SHELL` environment variable:
+- **Windows**: PowerShell (`pwsh` if available, else `powershell`)
+- **Unix**: `sh`
 
-```sh
-# Use a different shell temporarily
+You can override this default by setting the `RUN_SHELL` environment variable.
+
+```bash
+# Force Zsh for this command
 RUN_SHELL=zsh run build
 
-# Set it for your session (bash/zsh)
+# Make it permanent for your session
 export RUN_SHELL=bash
-
-# Set it for your session (PowerShell)
-$env:RUN_SHELL = "bash"
-
-# Windows users can use other shells like Git Bash
-$env:RUN_SHELL = "bash"
-run build
-
-# Or use cmd (syntax in Runfile must be cmd-compatible)
-set RUN_SHELL=cmd
-run build
 ```
 
-This allows you to use any shell you prefer, as long as it supports the `-c` flag for executing commands.
+**Note**: The commands in your Runfile must be compatible with the configured shell, unless an explicit interpreter (e.g., `# @shell python`) is defined for that function.
+
+### Global Runfile
+
+Create a `~/.runfile` in your home directory to define global commands available anywhere.
+
+```bash
+# ~/.runfile
+
+# Usage: run update
+update() {
+    brew update
+    brew upgrade
+    rustup update
+}
+
+# Usage: run clone <repo>
+clone() {
+    git clone "https://github.com/$1"
+    cd "$(basename "$1" .git)"
+}
+```
+
+If a local `./Runfile` exists, `run` looks there first. If the command isn't found locally, it falls back to `~/.runfile`.
+
+---
 
 ## License
 
