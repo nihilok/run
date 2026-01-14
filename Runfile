@@ -4,7 +4,7 @@
 docker_shell() docker compose exec $1 bash
 
 # Nested command with colon notation
-docker:shell() docker compose exec $1 bash
+docker:shell() docker compose exec ${1:-app} bash
 
 # Another nested command example
 docker:logs() docker compose logs -f $1
@@ -43,3 +43,46 @@ deploy:minor() {
 deploy:major() {
     ./scripts/deploy.sh major
 }
+
+# Windows specific command (will not be listed on non-Windows systems)
+# @os windows
+deploy:example() {
+    echo "Running Windows-specific deployment steps..."
+    ./scripts/deploy_windows.bat
+}
+
+# Will run on unix systems only as windows version is defined above
+deploy:example() {
+    echo "Running Unix-specific deployment steps..."
+    ./scripts/deploy_unix.sh
+}
+
+# Will only run on unix systems
+# @os unix
+incompatible_with_pwsh() echo "" | grep
+
+# Will run in pwsh even on unix systems
+# @shell pwsh
+pwsh_example() {
+    Write-Host "This runs in PowerShell!"
+}
+
+# Inline Python
+# @shell python
+python:hello() {
+    print("Hello from inline Python!")
+    for i in range(3):
+        print(f"Count: {i}")
+}
+
+# Inline Node.js
+# @shell node
+node:hello() {
+    console.log("Hello from inline Node.js!");
+    for (let i = 0; i < 3; i++) {
+        console.log(`Count: ${i}`);
+    }
+}
+
+# Inline semicolon block
+function test_inline() { echo "a"; echo "b"; echo "c" }

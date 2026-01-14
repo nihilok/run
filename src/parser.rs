@@ -131,7 +131,7 @@ pub fn parse_script(input: &str) -> Result<Program, Box<pest::error::Error<Rule>
                         // Item wraps the actual content
                         if let Some(content) = inner_pair.into_inner().next() {
                             match content.as_rule() {
-                                Rule::comment | Rule::attribute_comment => {
+                                Rule::comment => {
                                     // Skip comments - attributes are collected in parse_statement
                                 }
                                 _ => {
@@ -175,17 +175,25 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
             if let Some(body_pair) = inner.next() {
                 match body_pair.as_rule() {
                     Rule::block => {
-                        // Get the block_content
-                        let block_content = body_pair
-                            .into_inner()
-                            .find(|p| p.as_rule() == Rule::block_content)?;
-                        
-                        // Get the raw content
-                        let content_str = block_content.as_str();
-                        
+                        // Get the block content by stripping the braces from the block
+                        // block_content is an atomic rule, so we extract it from the raw string
+                        let block_str = body_pair.as_str();
+                        // Remove leading '{' and trailing '}' but DON'T trim - we need to preserve
+                        // internal indentation structure for proper dedentation
+                        let content_str = block_str
+                            .strip_prefix('{')
+                            .unwrap_or(block_str)
+                            .strip_suffix('}')
+                            .unwrap_or(block_str);
+
                         // Split by newlines to process line by line
-                        let lines: Vec<&str> = content_str.lines().collect();
-                        
+                        let all_lines: Vec<&str> = content_str.lines().collect();
+
+                        // Skip leading and trailing empty/whitespace-only lines
+                        let start = all_lines.iter().position(|l| !l.trim().is_empty()).unwrap_or(0);
+                        let end = all_lines.iter().rposition(|l| !l.trim().is_empty()).map(|i| i + 1).unwrap_or(all_lines.len());
+                        let lines: Vec<&str> = if start < end { all_lines[start..end].to_vec() } else { vec![] };
+
                         // Find the minimum indentation (excluding empty lines)
                         let min_indent = lines.iter()
                             .filter(|line| !line.trim().is_empty())
@@ -211,19 +219,32 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
                         
                         // Join into a single command or split by semicolons for inline blocks
                         let full_content = dedented_lines.join("\n");
-                        let commands: Vec<String> = if full_content.contains(';') {
-                            // Semicolon-separated inline block
-                            full_content
+
+                        // Check if this function has a custom shell attribute
+                        let has_custom_shell = attributes
+                            .iter()
+                            .any(|attr| matches!(attr, Attribute::Shell(_)));
+
+                        let trimmed_content = full_content.trim().to_string();
+
+                        let commands: Vec<String> = if has_custom_shell {
+                            // For custom shells (Python, Node, etc.), never split by semicolons
+                            // The entire script should be passed as-is to the interpreter
+                            vec![trimmed_content]
+                        } else if !trimmed_content.contains('\n') && trimmed_content.contains(';') {
+                            // Single-line block with semicolons: split into separate commands
+                            // e.g., { echo "a"; echo "b"; echo "c" }
+                            trimmed_content
                                 .split(';')
                                 .map(|s| s.trim().to_string())
                                 .filter(|s| !s.is_empty())
                                 .collect()
                         } else {
-                            // Multi-line block - keep as single command
-                            vec![full_content.trim().to_string()]
+                            // Multi-line block - keep as single script
+                            vec![trimmed_content]
                         };
-                        
-                        Some(Statement::BlockFunctionDef { 
+
+                        Some(Statement::BlockFunctionDef {
                             name, 
                             commands,
                             attributes,

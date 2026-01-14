@@ -1777,3 +1777,155 @@ simple() print("Simple inline Python")
     }
 }
 
+#[test]
+fn test_inline_block_with_semicolons() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // Test traditional () syntax with inline block containing semicolons
+    create_runfile(
+        temp_dir.path(),
+        r#"
+test_inline() { echo "a"; echo "b"; echo "c" }
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("test_inline")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("a"));
+    assert!(stdout.contains("b"));
+    assert!(stdout.contains("c"));
+}
+
+#[test]
+fn test_inline_block_with_trailing_semicolon() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // Test with trailing semicolon before closing brace
+    create_runfile(
+        temp_dir.path(),
+        r#"
+test_trailing() { echo "x"; echo "y"; echo "z"; }
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("test_trailing")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("x"));
+    assert!(stdout.contains("y"));
+    assert!(stdout.contains("z"));
+}
+
+#[test]
+fn test_function_keyword_inline_block_with_semicolons() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // Test function keyword syntax with inline block
+    create_runfile(
+        temp_dir.path(),
+        r#"
+function test_func { echo "first"; echo "second"; echo "third" }
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("test_func")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("first"));
+    assert!(stdout.contains("second"));
+    assert!(stdout.contains("third"));
+}
+
+#[test]
+fn test_shell_node_multiline_with_loop() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // Test Node.js with multi-line code containing a for loop
+    // This ensures newlines are preserved when passed to node -e
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @shell node
+counter() {
+    console.log("Starting count");
+    for (let i = 0; i < 3; i++) {
+        console.log(`Count: ${i}`);
+    }
+    console.log("Done");
+}
+"#,
+    );
+
+    if is_node_available() {
+        let output = Command::new(&binary)
+            .arg("counter")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Starting count"));
+        assert!(stdout.contains("Count: 0"));
+        assert!(stdout.contains("Count: 1"));
+        assert!(stdout.contains("Count: 2"));
+        assert!(stdout.contains("Done"));
+    }
+}
+
+#[test]
+fn test_shell_python_multiline_with_loop() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // Test Python with multi-line code containing a for loop
+    // This ensures indentation is preserved for Python
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @shell python
+counter() {
+    print("Starting count")
+    for i in range(3):
+        print(f"Count: {i}")
+    print("Done")
+}
+"#,
+    );
+
+    if is_python_available() {
+        let output = Command::new(&binary)
+            .arg("counter")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Starting count"));
+        assert!(stdout.contains("Count: 0"));
+        assert!(stdout.contains("Count: 1"));
+        assert!(stdout.contains("Count: 2"));
+        assert!(stdout.contains("Done"));
+    }
+}
