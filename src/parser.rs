@@ -1,6 +1,6 @@
 // Parser implementation using pest
 
-use crate::ast::{Expression, Program, Statement};
+use crate::ast::{Attribute, Expression, OsPlatform, Program, ShellType, Statement};
 use pest::Parser;
 use pest_derive::Parser;
 
@@ -34,6 +34,85 @@ fn preprocess_escaped_newlines(input: &str) -> String {
     result
 }
 
+// Parse attributes from lines of the original input
+fn parse_attributes_from_lines(input: &str, line_num: usize) -> Vec<Attribute> {
+    let mut attributes = Vec::new();
+    let lines: Vec<&str> = input.lines().collect();
+    
+    // Look backward from the function definition line to collect attributes
+    let mut i = line_num.saturating_sub(1);
+    loop {
+        if i >= lines.len() {
+            break;
+        }
+        
+        let line = lines[i].trim();
+        
+        // If we hit an empty line or a non-comment line, stop
+        if line.is_empty() || (!line.starts_with('#')) {
+            break;
+        }
+        
+        // If it's an attribute comment, parse it
+        if line.starts_with("# @") || line.starts_with("#@") {
+            if let Some(attr) = parse_attribute_line(line) {
+                attributes.push(attr);
+            }
+        } else if line.starts_with('#') {
+            // Regular comment - continue looking backward
+        } else {
+            break;
+        }
+        
+        if i == 0 {
+            break;
+        }
+        i -= 1;
+    }
+    
+    // Reverse since we collected them backward
+    attributes.reverse();
+    attributes
+}
+
+fn parse_attribute_line(line: &str) -> Option<Attribute> {
+    // Parse "# @os <platform>" or "# @shell <shell>"
+    let line = line.trim();
+    
+    // Remove "# " or "#" prefix and "@" symbol
+    let without_hash = line.strip_prefix("# @").or_else(|| line.strip_prefix("#@"))?;
+    let parts: Vec<&str> = without_hash.split_whitespace().collect();
+    
+    if parts.len() < 2 {
+        return None;
+    }
+    
+    match parts[0] {
+        "os" => {
+            let platform = match parts[1] {
+                "windows" => OsPlatform::Windows,
+                "linux" => OsPlatform::Linux,
+                "macos" => OsPlatform::MacOS,
+                "unix" => OsPlatform::Unix,
+                _ => return None,
+            };
+            Some(Attribute::Os(platform))
+        }
+        "shell" => {
+            let shell = match parts[1] {
+                "python" => ShellType::Python,
+                "node" => ShellType::Node,
+                "ruby" => ShellType::Ruby,
+                "pwsh" => ShellType::Pwsh,
+                "bash" => ShellType::Bash,
+                _ => return None,
+            };
+            Some(Attribute::Shell(shell))
+        }
+        _ => None,
+    }
+}
+
 pub fn parse_script(input: &str) -> Result<Program, Box<pest::error::Error<Rule>>> {
     let preprocessed = preprocess_escaped_newlines(input);
     let pairs = ScriptParser::parse(Rule::program, &preprocessed)?;
@@ -47,11 +126,11 @@ pub fn parse_script(input: &str) -> Result<Program, Box<pest::error::Error<Rule>
                         // Item wraps the actual content
                         if let Some(content) = inner_pair.into_inner().next() {
                             match content.as_rule() {
-                                Rule::comment => {
-                                    // Skip comments
+                                Rule::comment | Rule::attribute_comment => {
+                                    // Skip comments - attributes are collected in parse_statement
                                 }
                                 _ => {
-                                    if let Some(stmt) = parse_statement(content) {
+                                    if let Some(stmt) = parse_statement(content, input) {
                                         statements.push(stmt);
                                     }
                                 }
@@ -68,7 +147,7 @@ pub fn parse_script(input: &str) -> Result<Program, Box<pest::error::Error<Rule>
     Ok(Program { statements })
 }
 
-fn parse_statement(pair: pest::iterators::Pair<Rule>) -> Option<Statement> {
+fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> Option<Statement> {
     match pair.as_rule() {
         Rule::assignment => {
             let mut inner = pair.into_inner();
@@ -80,6 +159,10 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>) -> Option<Statement> {
             })
         }
         Rule::function_def => {
+            let span = pair.as_span();
+            let line_num = original_input[..span.start()].lines().count();
+            let attributes = parse_attributes_from_lines(original_input, line_num);
+            
             let mut inner = pair.into_inner();
             let name = inner.next()?.as_str().to_string();
 
@@ -87,19 +170,66 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>) -> Option<Statement> {
             if let Some(body_pair) = inner.next() {
                 match body_pair.as_rule() {
                     Rule::block => {
-                        let commands: Vec<String> = body_pair
+                        // Get the block_content
+                        let block_content = body_pair
                             .into_inner()
-                            .filter(|p| p.as_rule() == Rule::block_line)
-                            .map(|p| p.as_str().trim().to_string())
-                            .filter(|s| !s.is_empty())
+                            .find(|p| p.as_rule() == Rule::block_content)?;
+                        
+                        // Get the raw content
+                        let content_str = block_content.as_str();
+                        
+                        // Split by newlines to process line by line
+                        let lines: Vec<&str> = content_str.lines().collect();
+                        
+                        // Find the minimum indentation (excluding empty lines)
+                        let min_indent = lines.iter()
+                            .filter(|line| !line.trim().is_empty())
+                            .map(|line| {
+                                let trimmed_start = line.len() - line.trim_start().len();
+                                trimmed_start
+                            })
+                            .min()
+                            .unwrap_or(0);
+                        
+                        // Build dedented lines
+                        let dedented_lines: Vec<String> = lines.iter()
+                            .map(|line| {
+                                if line.trim().is_empty() {
+                                    String::new()
+                                } else if line.len() > min_indent {
+                                    line[min_indent..].to_string()
+                                } else {
+                                    line.to_string()
+                                }
+                            })
                             .collect();
-                        Some(Statement::BlockFunctionDef { name, commands })
+                        
+                        // Join into a single command or split by semicolons for inline blocks
+                        let full_content = dedented_lines.join("\n");
+                        let commands: Vec<String> = if full_content.contains(';') {
+                            // Semicolon-separated inline block
+                            full_content
+                                .split(';')
+                                .map(|s| s.trim().to_string())
+                                .filter(|s| !s.is_empty())
+                                .collect()
+                        } else {
+                            // Multi-line block - keep as single command
+                            vec![full_content.trim().to_string()]
+                        };
+                        
+                        Some(Statement::BlockFunctionDef { 
+                            name, 
+                            commands,
+                            attributes,
+                        })
                     }
                     Rule::command => {
                         let command_template = parse_command(body_pair);
                         Some(Statement::SimpleFunctionDef {
                             name,
                             command_template,
+                            attributes,
                         })
                     }
                     _ => None,
@@ -218,9 +348,10 @@ mod tests {
         let input = "server() echo port=${1:-8080}";
         let result = parse_script(input).unwrap();
 
-        if let Statement::SimpleFunctionDef { name, command_template } = &result.statements[0] {
+        if let Statement::SimpleFunctionDef { name, command_template, attributes } = &result.statements[0] {
             assert_eq!(name, "server");
             assert_eq!(command_template, "echo port=${1:-8080}", "Command template has unexpected spacing");
+            assert_eq!(attributes.len(), 0);
         } else {
             panic!("Expected SimpleFunctionDef");
         }

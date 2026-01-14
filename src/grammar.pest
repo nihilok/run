@@ -16,6 +16,14 @@ item = {
 
 comment = { "#" ~ (!NL ~ ANY)* }
 
+// Attribute comment: # @os <platform> or # @shell <shell>
+attribute_comment = { "#" ~ WHITESPACE* ~ "@" ~ (attribute_os | attribute_shell) }
+attribute_os = { "os" ~ WHITESPACE+ ~ os_platform }
+attribute_shell = { "shell" ~ WHITESPACE+ ~ shell_type }
+
+os_platform = { "windows" | "linux" | "macos" | "unix" }
+shell_type = { "python" | "node" | "ruby" | "pwsh" | "bash" }
+
 // Function definition: supports multiple bash-like syntaxes
 // - name() command or name() { ... }            (original syntax)
 // - function name { ... }                       (keyword, no parens, block or inline command)
@@ -29,10 +37,14 @@ function_def = {
 
 // Block: { statement; statement; ... } or { statement\n statement\n ... }
 // Allows trailing semicolons and empty blocks
-block = { "{" ~ NL* ~ (block_line ~ (block_sep ~ block_line)*)? ~ block_sep? ~ NL* ~ "}" }
+// Now handles nested braces in quoted strings and expressions
+block = { "{" ~ NL* ~ block_content ~ NL* ~ "}" }
+block_content = @{ (block_item ~ (block_sep ~ block_item)*)? ~ block_sep? }
 block_sep = _{ ";" ~ NL* | NL+ }
-block_line = @{ block_char+ }
-block_char = _{ !("}" | ";" | NL) ~ ANY }
+block_item = @{ (quoted_block_string | nested_brace | block_safe_char)+ }
+quoted_block_string = @{ "\"" ~ ("\\\"" | (!"\"" ~ ANY))* ~ "\"" | "'" ~ ("\\'" | (!"'" ~ ANY))* ~ "'" }
+nested_brace = @{ "{" ~ (quoted_block_string | nested_brace | (!("}" | "{") ~ ANY))* ~ "}" }
+block_safe_char = @{ !("}" | "{" | ";" | NL | "\"" | "'") ~ ANY }
 
 // Function call: name() or name(arg1, arg2, ...)
 function_call = { identifier ~ "(" ~ (argument_list)? ~ ")" }

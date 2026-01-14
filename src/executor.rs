@@ -1,6 +1,6 @@
 //! Script execution and error formatting.
 
-use crate::{ast, config, interpreter, parser};
+use crate::{config, interpreter, parser};
 use std::fs;
 use std::path::PathBuf;
 
@@ -140,18 +140,17 @@ pub fn list_functions() {
     // Parse the config to extract function names
     match parser::parse_script(&config_content) {
         Ok(program) => {
-            let mut functions = Vec::new();
-            for statement in program.statements {
-                match statement {
-                    ast::Statement::SimpleFunctionDef { name, .. } => {
-                        functions.push(name);
-                    }
-                    ast::Statement::BlockFunctionDef { name, .. } => {
-                        functions.push(name);
-                    }
-                    _ => {}
-                }
+            // Use interpreter to handle platform filtering
+            let mut interpreter = interpreter::Interpreter::new();
+            
+            // Execute to load function definitions (this applies platform filtering)
+            if let Err(e) = interpreter.execute(program) {
+                eprintln!("Error loading functions: {}", e);
+                std::process::exit(1);
             }
+            
+            // Get the list of available functions
+            let functions = interpreter.list_available_functions();
 
             if functions.is_empty() {
                 println!("No functions defined in Runfile.");

@@ -1329,3 +1329,436 @@ function keyword_inline echo "keyword inline"
     assert!(String::from_utf8_lossy(&output4.stdout).contains("keyword inline"));
 }
 
+// Tests for RFC 001: Attribute Comments (Platform Guards & Interpreter Selection)
+
+#[test]
+fn test_os_attribute_unix_on_unix() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @os unix
+clean() echo "Unix clean"
+
+# @os windows
+clean() echo "Windows clean"
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("clean")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    // On Unix (Linux/macOS), only the unix variant should be available
+    if cfg!(unix) {
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Unix clean"));
+        assert!(!stdout.contains("Windows clean"));
+    }
+}
+
+#[test]
+fn test_os_attribute_windows_on_unix() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @os windows
+clean() echo "Windows only"
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("clean")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    // On Unix, the windows-only function should not be found
+    if cfg!(unix) {
+        assert!(!output.status.success());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("Function 'clean' not found"));
+    }
+}
+
+#[test]
+fn test_os_attribute_linux() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @os linux
+build() echo "Linux build"
+
+# @os macos
+build() echo "macOS build"
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("build")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    // On Linux, only the Linux variant should be available
+    if cfg!(target_os = "linux") {
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Linux build"));
+    }
+}
+
+#[test]
+fn test_os_attribute_list_shows_platform_specific() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @os unix
+unix_func() echo "Unix function"
+
+# @os windows
+windows_func() echo "Windows function"
+
+no_attr_func() echo "No attribute"
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("--list")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    
+    // Should always show the function without attributes
+    assert!(stdout.contains("no_attr_func"));
+    
+    // On Unix, should show unix_func but not windows_func
+    if cfg!(unix) {
+        assert!(stdout.contains("unix_func"));
+        assert!(!stdout.contains("windows_func"));
+    }
+}
+
+#[test]
+fn test_shell_attribute_python() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @shell python
+math() {
+    import sys
+    result = 10 + 20
+    print(f"Result: {result}")
+}
+"#,
+    );
+
+    // Check if python is available
+    if which::which("python3").is_ok() || which::which("python").is_ok() {
+        let output = Command::new(&binary)
+            .arg("math")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Result: 30"));
+    }
+}
+
+#[test]
+fn test_shell_attribute_python_with_args() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @shell python
+calc() {
+    import sys
+    if len(sys.argv) > 1:
+        print(f"Argument: {sys.argv[1]}")
+    else:
+        print("No arguments")
+}
+"#,
+    );
+
+    // Check if python is available
+    if which::which("python3").is_ok() || which::which("python").is_ok() {
+        let output = Command::new(&binary)
+            .arg("calc")
+            .arg("hello")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Argument: hello"));
+    }
+}
+
+#[test]
+fn test_shell_attribute_node() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @shell node
+server() {
+    console.log("Server starting...");
+    console.log("Port: 3000");
+}
+"#,
+    );
+
+    // Check if node is available
+    if which::which("node").is_ok() {
+        let output = Command::new(&binary)
+            .arg("server")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Server starting..."));
+        assert!(stdout.contains("Port: 3000"));
+    }
+}
+
+#[test]
+fn test_shell_attribute_node_with_args() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @shell node
+greet() {
+    const args = process.argv.slice(2);
+    if (args.length > 0) {
+        console.log(`Hello, ${args[0]}!`);
+    } else {
+        console.log("Hello, World!");
+    }
+}
+"#,
+    );
+
+    // Check if node is available
+    if which::which("node").is_ok() {
+        let output = Command::new(&binary)
+            .arg("greet")
+            .arg("Alice")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Hello, Alice!"));
+    }
+}
+
+#[test]
+fn test_shell_attribute_bash_explicit() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @shell bash
+test_func() echo "Running in bash"
+"#,
+    );
+
+    // Bash should be available on Unix systems
+    if cfg!(unix) && which::which("bash").is_ok() {
+        let output = Command::new(&binary)
+            .arg("test_func")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Running in bash"));
+    }
+}
+
+#[test]
+fn test_shell_attribute_ruby() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @shell ruby
+hello() {
+    puts "Hello from Ruby!"
+    puts "Ruby version: #{RUBY_VERSION}"
+}
+"#,
+    );
+
+    // Check if ruby is available
+    if which::which("ruby").is_ok() {
+        let output = Command::new(&binary)
+            .arg("hello")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Hello from Ruby!"));
+    }
+}
+
+#[test]
+fn test_combined_os_and_shell_attributes() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @os unix
+# @shell python
+unix_python() {
+    print("Unix Python function")
+}
+"#,
+    );
+
+    // Only run on Unix with Python available
+    if cfg!(unix) && (which::which("python3").is_ok() || which::which("python").is_ok()) {
+        let output = Command::new(&binary)
+            .arg("unix_python")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Unix Python function"));
+    }
+}
+
+#[test]
+fn test_attribute_comment_not_confused_with_regular_comment() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# This is a regular comment
+# @os unix
+clean() echo "Unix clean"
+
+# Another regular comment
+build() echo "Regular build"
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("--list")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    
+    // Both functions should be listed (build always, clean on unix)
+    assert!(stdout.contains("build"));
+    if cfg!(unix) {
+        assert!(stdout.contains("clean"));
+    }
+}
+
+#[test]
+fn test_multiple_attributes_on_same_function() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @os linux
+# @os macos
+posix_func() echo "POSIX function"
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("posix_func")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    // Should work on both Linux and macOS
+    if cfg!(target_os = "linux") || cfg!(target_os = "macos") {
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("POSIX function"));
+    }
+}
+
+#[test]
+fn test_simple_function_with_shell_attribute() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @shell python
+simple() print("Simple inline Python")
+"#,
+    );
+
+    // Check if python is available
+    if which::which("python3").is_ok() || which::which("python").is_ok() {
+        let output = Command::new(&binary)
+            .arg("simple")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Simple inline Python"));
+    }
+}
+
