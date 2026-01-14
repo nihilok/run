@@ -39,9 +39,14 @@ fn parse_attributes_from_lines(input: &str, line_num: usize) -> Vec<Attribute> {
     let mut attributes = Vec::new();
     let lines: Vec<&str> = input.lines().collect();
     
+    if line_num == 0 {
+        return attributes;
+    }
+    
     // Look backward from the function definition line to collect attributes
-    let mut i = line_num.saturating_sub(1);
+    let mut i = line_num - 1;
     loop {
+        // Check if index is valid
         if i >= lines.len() {
             break;
         }

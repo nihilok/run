@@ -46,6 +46,21 @@ fn create_runfile(dir: &std::path::Path, content: &str) {
     fs::write(runfile_path, content).unwrap();
 }
 
+/// Helper to check if Python is available on the system
+fn is_python_available() -> bool {
+    which::which("python3").is_ok() || which::which("python").is_ok()
+}
+
+/// Helper to check if Node is available on the system
+fn is_node_available() -> bool {
+    which::which("node").is_ok()
+}
+
+/// Helper to check if Ruby is available on the system
+fn is_ruby_available() -> bool {
+    which::which("ruby").is_ok()
+}
+
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[test]
@@ -1474,7 +1489,7 @@ math() {
     );
 
     // Check if python is available
-    if which::which("python3").is_ok() || which::which("python").is_ok() {
+    if is_python_available() {
         let output = Command::new(&binary)
             .arg("math")
             .current_dir(temp_dir.path())
@@ -1507,7 +1522,7 @@ calc() {
     );
 
     // Check if python is available
-    if which::which("python3").is_ok() || which::which("python").is_ok() {
+    if is_python_available() {
         let output = Command::new(&binary)
             .arg("calc")
             .arg("hello")
@@ -1538,7 +1553,7 @@ server() {
     );
 
     // Check if node is available
-    if which::which("node").is_ok() {
+    if is_node_available() {
         let output = Command::new(&binary)
             .arg("server")
             .current_dir(temp_dir.path())
@@ -1573,7 +1588,7 @@ greet() {
     );
 
     // Check if node is available
-    if which::which("node").is_ok() {
+    if is_node_available() {
         let output = Command::new(&binary)
             .arg("greet")
             .arg("Alice")
@@ -1631,7 +1646,7 @@ hello() {
     );
 
     // Check if ruby is available
-    if which::which("ruby").is_ok() {
+    if is_ruby_available() {
         let output = Command::new(&binary)
             .arg("hello")
             .current_dir(temp_dir.path())
@@ -1661,7 +1676,7 @@ unix_python() {
     );
 
     // Only run on Unix with Python available
-    if cfg!(unix) && (which::which("python3").is_ok() || which::which("python").is_ok()) {
+    if cfg!(unix) && (is_python_available()) {
         let output = Command::new(&binary)
             .arg("unix_python")
             .current_dir(temp_dir.path())
@@ -1749,7 +1764,7 @@ simple() print("Simple inline Python")
     );
 
     // Check if python is available
-    if which::which("python3").is_ok() || which::which("python").is_ok() {
+    if is_python_available() {
         let output = Command::new(&binary)
             .arg("simple")
             .current_dir(temp_dir.path())

@@ -327,6 +327,15 @@ impl Interpreter {
     fn execute_command(&self, command: &str, attributes: &[Attribute]) -> Result<(), Box<dyn std::error::Error>> {
         self.execute_command_with_args(command, attributes, &[])
     }
+    
+    // Helper function to get the Python executable (prefers python3)
+    fn get_python_executable() -> String {
+        if which::which("python3").is_ok() {
+            "python3".to_string()
+        } else {
+            "python".to_string()
+        }
+    }
 
     fn execute_command_with_args(&self, command: &str, attributes: &[Attribute], args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         // Check if there's a custom shell attribute
@@ -340,14 +349,7 @@ impl Interpreter {
         let (shell_cmd, shell_arg) = if let Some(shell_type) = shell_attr {
             // Use the specified shell from attributes
             match shell_type {
-                ShellType::Python => {
-                    // Try python3 first, then python
-                    if which::which("python3").is_ok() {
-                        ("python3".to_string(), "-c".to_string())
-                    } else {
-                        ("python".to_string(), "-c".to_string())
-                    }
-                }
+                ShellType::Python => (Self::get_python_executable(), "-c".to_string()),
                 ShellType::Node => ("node".to_string(), "-e".to_string()),
                 ShellType::Ruby => ("ruby".to_string(), "-e".to_string()),
                 ShellType::Pwsh => ("pwsh".to_string(), "-c".to_string()),
