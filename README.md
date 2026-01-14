@@ -36,15 +36,7 @@ Install via Homebrew:
 
 ```sh
 brew tap nihilok/tap
-brew install run
-```
-
-OR
-
-Install via crates.io with Cargo:
-
-```sh
-cargo install run
+brew install runfile
 ```
 
 ### Windows
@@ -53,14 +45,14 @@ Install via Scoop:
 
 ```powershell
 scoop bucket add nihilok https://github.com/nihilok/scoop-bucket
-scoop install run
+scoop install runfile
 ```
 
 OR
 
 Install via crates.io with Cargo:
 
-```powershell
+```
 cargo install run
 ```
 
@@ -68,7 +60,7 @@ cargo install run
 
 After installation, enable tab completions for your shell:
 
-```sh
+```
 run --install-completion  # Auto-detects your shell (bash/zsh/fish)
 run --install-completion bash  # Or specify explicitly
 ```
