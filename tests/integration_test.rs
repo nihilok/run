@@ -1562,7 +1562,7 @@ fn test_shell_attribute_node_with_args() {
         r#"
 # @shell node
 greet() {
-    const args = process.argv.slice(2);
+    const args = process.argv.slice(1);
     if (args.length > 0) {
         console.log(`Hello, ${args[0]}!`);
     } else {
