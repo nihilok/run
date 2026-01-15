@@ -12,25 +12,11 @@
 //!
 //! See README.md for more details and examples.
 
-mod ast;
-mod completion;
-mod config;
-mod executor;
-mod interpreter;
-mod parser;
-mod repl;
-
 use clap::Parser as ClapParser;
-use completion::Shell;
+use run::{completion, config, executor, mcp, repl};
 use std::path::PathBuf;
 
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// Print an error message and exit with code 1.
-pub fn fatal_error(message: &str) -> ! {
-    eprintln!("{}", message);
-    std::process::exit(1);
-}
 
 /// CLI arguments for the run tool.
 #[derive(ClapParser)]
@@ -52,11 +38,19 @@ struct Cli {
 
     /// Generate shell completion script
     #[arg(long, value_name = "SHELL")]
-    generate_completion: Option<Shell>,
+    generate_completion: Option<completion::Shell>,
 
     /// Install shell completion (automatically detects shell and updates config)
     #[arg(long, value_name = "SHELL")]
-    install_completion: Option<Option<Shell>>,
+    install_completion: Option<Option<completion::Shell>>,
+
+    /// Inspect and output JSON schema for all functions
+    #[arg(long)]
+    inspect: bool,
+
+    /// Start MCP server for AI agent integration
+    #[arg(long)]
+    serve_mcp: bool,
 }
 
 /// Entry point for the CLI tool.
@@ -78,6 +72,18 @@ fn main() {
     // Handle --list flag
     if cli.list {
         executor::list_functions();
+        return;
+    }
+
+    // Handle --inspect flag
+    if cli.inspect {
+        mcp::print_inspect();
+        return;
+    }
+
+    // Handle --serve-mcp flag
+    if cli.serve_mcp {
+        mcp::serve_mcp();
         return;
     }
 

@@ -40,6 +40,23 @@ pub enum Expression {
 pub enum Attribute {
     Os(OsPlatform),
     Shell(ShellType),
+    Desc(String),
+    Arg(ArgMetadata),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArgMetadata {
+    pub position: usize,
+    pub name: String,
+    pub arg_type: ArgType,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArgType {
+    String,
+    Integer,
+    Boolean,
 }
 
 #[derive(Debug, Clone, PartialEq)]

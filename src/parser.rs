@@ -1,6 +1,6 @@
 // Parser implementation using pest
 
-use crate::ast::{Attribute, Expression, OsPlatform, Program, ShellType, Statement};
+use crate::ast::{ArgMetadata, ArgType, Attribute, Expression, OsPlatform, Program, ShellType, Statement};
 use pest::Parser;
 use pest_derive::Parser;
 
@@ -81,11 +81,22 @@ fn parse_attributes_from_lines(input: &str, line_num: usize) -> Vec<Attribute> {
 }
 
 fn parse_attribute_line(line: &str) -> Option<Attribute> {
-    // Parse "# @os <platform>" or "# @shell <shell>"
+    // Parse "# @os <platform>" or "# @shell <shell>" or "# @desc <text>" or "# @arg <spec>"
     let line = line.trim();
     
     // Remove "# " or "#" prefix and "@" symbol
     let without_hash = line.strip_prefix("# @").or_else(|| line.strip_prefix("#@"))?;
+    
+    // Handle @desc - everything after "@desc " is the description
+    if let Some(desc_text) = without_hash.strip_prefix("desc ") {
+        return Some(Attribute::Desc(desc_text.trim().to_string()));
+    }
+    
+    // Handle @arg - format: "1:name type description"
+    if let Some(arg_text) = without_hash.strip_prefix("arg ") {
+        return parse_arg_attribute(arg_text);
+    }
+    
     let parts: Vec<&str> = without_hash.split_whitespace().collect();
     
     if parts.len() < 2 {
@@ -118,6 +129,52 @@ fn parse_attribute_line(line: &str) -> Option<Attribute> {
         }
         _ => None,
     }
+}
+
+fn parse_arg_attribute(arg_text: &str) -> Option<Attribute> {
+    // Format: "1:name type description" or "1:name description" (type defaults to string)
+    let arg_text = arg_text.trim();
+    
+    // Split by ':' to get position and rest
+    let colon_pos = arg_text.find(':')?;
+    let position_str = &arg_text[..colon_pos];
+    let rest = &arg_text[colon_pos + 1..];
+    
+    let position: usize = position_str.parse().ok()?;
+    
+    // Split rest by whitespace
+    let parts: Vec<&str> = rest.split_whitespace().collect();
+    if parts.is_empty() {
+        return None;
+    }
+    
+    let name = parts[0].to_string();
+    
+    // Check if second part is a type
+    let (arg_type, desc_start_idx) = if parts.len() > 1 {
+        match parts[1] {
+            "string" => (ArgType::String, 2),
+            "integer" => (ArgType::Integer, 2),
+            "boolean" => (ArgType::Boolean, 2),
+            _ => (ArgType::String, 1), // Default to string, description starts at index 1
+        }
+    } else {
+        (ArgType::String, 1)
+    };
+    
+    // Join remaining parts as description
+    let description = if desc_start_idx < parts.len() {
+        parts[desc_start_idx..].join(" ")
+    } else {
+        String::new()
+    };
+    
+    Some(Attribute::Arg(ArgMetadata {
+        position,
+        name,
+        arg_type,
+        description,
+    }))
 }
 
 // Parse shebang from function body
@@ -404,6 +461,172 @@ mod tests {
             assert_eq!(name, "server");
             assert_eq!(command_template, "echo port=${1:-8080}", "Command template has unexpected spacing");
             assert_eq!(attributes.len(), 0);
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_parse_desc_attribute() {
+        let input = r#"
+# @desc Restarts the docker containers
+restart() docker compose restart
+"#;
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+            assert_eq!(name, "restart");
+            assert_eq!(attributes.len(), 1);
+            
+            if let Attribute::Desc(desc) = &attributes[0] {
+                assert_eq!(desc, "Restarts the docker containers");
+            } else {
+                panic!("Expected Desc attribute");
+            }
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_parse_arg_attribute_with_type() {
+        let input = r#"
+# @arg 1:service string The name of the service
+scale() docker compose scale $1
+"#;
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+            assert_eq!(name, "scale");
+            assert_eq!(attributes.len(), 1);
+            
+            if let Attribute::Arg(arg) = &attributes[0] {
+                assert_eq!(arg.position, 1);
+                assert_eq!(arg.name, "service");
+                assert_eq!(arg.arg_type, ArgType::String);
+                assert_eq!(arg.description, "The name of the service");
+            } else {
+                panic!("Expected Arg attribute");
+            }
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_parse_arg_attribute_integer_type() {
+        let input = r#"
+# @arg 2:replicas integer The number of instances
+scale() docker compose scale $1=$2
+"#;
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+            assert_eq!(name, "scale");
+            assert_eq!(attributes.len(), 1);
+            
+            if let Attribute::Arg(arg) = &attributes[0] {
+                assert_eq!(arg.position, 2);
+                assert_eq!(arg.name, "replicas");
+                assert_eq!(arg.arg_type, ArgType::Integer);
+                assert_eq!(arg.description, "The number of instances");
+            } else {
+                panic!("Expected Arg attribute");
+            }
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_parse_arg_attribute_boolean_type() {
+        let input = r#"
+# @arg 1:verbose boolean Enable verbose output
+test() echo "Verbose: $1"
+"#;
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+            assert_eq!(name, "test");
+            assert_eq!(attributes.len(), 1);
+            
+            if let Attribute::Arg(arg) = &attributes[0] {
+                assert_eq!(arg.position, 1);
+                assert_eq!(arg.name, "verbose");
+                assert_eq!(arg.arg_type, ArgType::Boolean);
+                assert_eq!(arg.description, "Enable verbose output");
+            } else {
+                panic!("Expected Arg attribute");
+            }
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_parse_multiple_attributes() {
+        let input = r#"
+# @desc Scale a specific service
+# @arg 1:service string The service name
+# @arg 2:replicas integer The number of instances
+scale() docker compose scale $1=$2
+"#;
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+            assert_eq!(name, "scale");
+            assert_eq!(attributes.len(), 3);
+            
+            // Check desc
+            if let Attribute::Desc(desc) = &attributes[0] {
+                assert_eq!(desc, "Scale a specific service");
+            } else {
+                panic!("Expected Desc attribute at position 0");
+            }
+            
+            // Check first arg
+            if let Attribute::Arg(arg) = &attributes[1] {
+                assert_eq!(arg.position, 1);
+                assert_eq!(arg.name, "service");
+                assert_eq!(arg.arg_type, ArgType::String);
+            } else {
+                panic!("Expected Arg attribute at position 1");
+            }
+            
+            // Check second arg
+            if let Attribute::Arg(arg) = &attributes[2] {
+                assert_eq!(arg.position, 2);
+                assert_eq!(arg.name, "replicas");
+                assert_eq!(arg.arg_type, ArgType::Integer);
+            } else {
+                panic!("Expected Arg attribute at position 2");
+            }
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_parse_arg_without_explicit_type() {
+        let input = r#"
+# @arg 1:name Some description without type
+greet() echo "Hello, $1"
+"#;
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+            assert_eq!(name, "greet");
+            assert_eq!(attributes.len(), 1);
+            
+            if let Attribute::Arg(arg) = &attributes[0] {
+                assert_eq!(arg.position, 1);
+                assert_eq!(arg.name, "name");
+                // Should default to string
+                assert_eq!(arg.arg_type, ArgType::String);
+                assert_eq!(arg.description, "Some description without type");
+            } else {
+                panic!("Expected Arg attribute");
+            }
         } else {
             panic!("Expected SimpleFunctionDef");
         }
