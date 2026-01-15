@@ -51,11 +51,20 @@ struct Cli {
     /// Start MCP server for AI agent integration
     #[arg(long)]
     serve_mcp: bool,
+
+    /// Path to Runfile or directory containing Runfile
+    #[arg(long, value_name = "PATH")]
+    runfile: Option<PathBuf>,
 }
 
 /// Entry point for the CLI tool.
 fn main() {
     let cli = Cli::parse();
+
+    // Set custom runfile path if provided
+    if let Some(ref runfile_path) = cli.runfile {
+        config::set_custom_runfile_path(Some(runfile_path.clone()));
+    }
 
     // Handle --install-completion flag
     if let Some(shell_opt) = cli.install_completion {
