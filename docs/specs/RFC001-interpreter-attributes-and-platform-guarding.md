@@ -4,7 +4,7 @@
 
 | Detail             | Value                                             |
 |--------------------|---------------------------------------------------|
-| **Status**         | Draft                                             |
+| **Status**         | Completed                                         |
 | **Target Version** | v0.2.1                                            |
 | **Type**           | Feature                                           |
 | **Topic**          | Cross-platform compatibility & Polyglot scripting |
