@@ -226,12 +226,8 @@ build() echo "Building..."
         .expect("Output should be valid JSON");
     
     let tools = json["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 1);
-    
-    let tool = &tools[0];
-    assert_eq!(tool["name"].as_str().unwrap(), "build");
-    // Should have empty or default description
-    assert!(tool["description"].as_str().is_some());
+    // Functions without @desc should not be included in MCP tool list
+    assert_eq!(tools.len(), 0);
 }
 
 #[test]
