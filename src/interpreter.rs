@@ -7,6 +7,7 @@ use std::process::{Command, Stdio};
 #[derive(Clone)]
 struct FunctionMetadata {
     attributes: Vec<Attribute>,
+    shebang: Option<String>,
 }
 
 pub struct Interpreter {
@@ -108,10 +109,10 @@ impl Interpreter {
 
         // Try direct match - block functions
         if let Some(commands) = self.block_functions.get(function_name).cloned() {
-            let attributes = self.function_metadata.get(function_name)
-                .map(|m| m.attributes.clone())
-                .unwrap_or_default();
-            return self.execute_block_commands(&commands, args, &attributes);
+            let metadata = self.function_metadata.get(function_name);
+            let attributes = metadata.map(|m| m.attributes.clone()).unwrap_or_default();
+            let shebang = metadata.and_then(|m| m.shebang.as_deref());
+            return self.execute_block_commands(&commands, args, &attributes, shebang);
         }
 
         // If we have args, try treating the first arg as a subcommand
@@ -125,10 +126,10 @@ impl Interpreter {
                 return self.execute_command(&command, attributes);
             }
             if let Some(commands) = self.block_functions.get(&nested_name).cloned() {
-                let attributes = self.function_metadata.get(&nested_name)
-                    .map(|m| m.attributes.clone())
-                    .unwrap_or_default();
-                return self.execute_block_commands(&commands, &args[1..], &attributes);
+                let metadata = self.function_metadata.get(&nested_name);
+                let attributes = metadata.map(|m| m.attributes.clone()).unwrap_or_default();
+                let shebang = metadata.and_then(|m| m.shebang.as_deref());
+                return self.execute_block_commands(&commands, &args[1..], &attributes, shebang);
             }
         }
 
@@ -143,10 +144,10 @@ impl Interpreter {
                 return self.execute_command(&command, attributes);
             }
             if let Some(commands) = self.block_functions.get(&with_colons).cloned() {
-                let attributes = self.function_metadata.get(&with_colons)
-                    .map(|m| m.attributes.clone())
-                    .unwrap_or_default();
-                return self.execute_block_commands(&commands, args, &attributes);
+                let metadata = self.function_metadata.get(&with_colons);
+                let attributes = metadata.map(|m| m.attributes.clone()).unwrap_or_default();
+                let shebang = metadata.and_then(|m| m.shebang.as_deref());
+                return self.execute_block_commands(&commands, args, &attributes, shebang);
             }
         }
 
@@ -179,10 +180,10 @@ impl Interpreter {
 
         // Check for block function definitions
         if let Some(commands) = self.block_functions.get(function_name).cloned() {
-            let attributes = self.function_metadata.get(function_name)
-                .map(|m| m.attributes.clone())
-                .unwrap_or_default();
-            return self.execute_block_commands(&commands, args, &attributes);
+            let metadata = self.function_metadata.get(function_name);
+            let attributes = metadata.map(|m| m.attributes.clone()).unwrap_or_default();
+            let shebang = metadata.and_then(|m| m.shebang.as_deref());
+            return self.execute_block_commands(&commands, args, &attributes, shebang);
         }
 
         // Check for full function definitions
@@ -271,17 +272,23 @@ impl Interpreter {
                     self.simple_functions.insert(name.clone(), command_template);
                     self.function_metadata.insert(
                         name,
-                        FunctionMetadata { attributes },
+                        FunctionMetadata { 
+                            attributes,
+                            shebang: None,
+                        },
                     );
                 }
             }
-            Statement::BlockFunctionDef { name, commands, attributes } => {
+            Statement::BlockFunctionDef { name, commands, attributes, shebang } => {
                 // Only store function if it matches the current platform
                 if Self::matches_current_platform(&attributes) {
                     self.block_functions.insert(name.clone(), commands);
                     self.function_metadata.insert(
                         name,
-                        FunctionMetadata { attributes },
+                        FunctionMetadata { 
+                            attributes,
+                            shebang: shebang.clone(),
+                        },
                     );
                 }
             }
@@ -303,6 +310,7 @@ impl Interpreter {
         commands: &[String],
         args: &[String],
         attributes: &[Attribute],
+        shebang: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // Check if there's a custom shell attribute
         let has_custom_shell = attributes
@@ -314,6 +322,25 @@ impl Interpreter {
             let full_script = commands.join("\n");
             let substituted = self.substitute_args(&full_script, args);
             self.execute_command_with_args(&substituted, attributes, args)?;
+        } else if let Some(shebang_str) = shebang {
+            // Use shebang if present (and no @shell attribute)
+            if let Some(shell_type) = Self::resolve_shebang_interpreter(shebang_str) {
+                // Create a synthetic Shell attribute from the shebang
+                let shebang_attributes = vec![Attribute::Shell(shell_type)];
+                let full_script = commands.join("\n");
+                // Strip the shebang line from the script
+                let stripped_script = Self::strip_shebang(&full_script);
+                let substituted = self.substitute_args(&stripped_script, args);
+                self.execute_command_with_args(&substituted, &shebang_attributes, args)?;
+            } else {
+                // Unknown interpreter - fall back to default shell with warning
+                eprintln!("Warning: Unknown interpreter in shebang '{}'. Falling back to default shell.", shebang_str);
+                // Execute with regular shell
+                for cmd in commands {
+                    let substituted = self.substitute_args(cmd, args);
+                    self.execute_command_with_args(&substituted, attributes, &[])?;
+                }
+            }
         } else {
             // For regular shell, execute commands one by one
             for cmd in commands {
@@ -337,6 +364,56 @@ impl Interpreter {
         }
     }
 
+    // Resolve interpreter from shebang to ShellType
+    fn resolve_shebang_interpreter(shebang: &str) -> Option<ShellType> {
+        // Extract the binary name from the shebang
+        let binary_name = if let Some(env_part) = shebang.strip_prefix("/usr/bin/env ") {
+            // Format: #!/usr/bin/env python
+            // Extract first word after "env"
+            env_part.split_whitespace().next()?.to_string()
+        } else {
+            // Format: #!/bin/bash or #!/usr/bin/python3
+            // Extract basename
+            std::path::Path::new(shebang)
+                .file_name()?
+                .to_str()?
+                .split_whitespace()
+                .next()?
+                .to_string()
+        };
+
+        // Map binary name to ShellType
+        match binary_name.as_str() {
+            "python" => Some(ShellType::Python),
+            "python3" => Some(ShellType::Python3),
+            "node" => Some(ShellType::Node),
+            "ruby" => Some(ShellType::Ruby),
+            "pwsh" | "powershell" => Some(ShellType::Pwsh),
+            "bash" => Some(ShellType::Bash),
+            "sh" => Some(ShellType::Sh),
+            _ => None,  // Unknown interpreter
+        }
+    }
+
+    // Strip shebang line from function body
+    fn strip_shebang(body: &str) -> String {
+        let lines: Vec<&str> = body.lines().collect();
+        let mut result_lines = Vec::new();
+        let mut found_shebang = false;
+        
+        for line in lines {
+            let trimmed = line.trim();
+            if !found_shebang && !trimmed.is_empty() && trimmed.starts_with("#!") {
+                // Skip the shebang line
+                found_shebang = true;
+                continue;
+            }
+            result_lines.push(line);
+        }
+        
+        result_lines.join("\n")
+    }
+
     fn execute_command_with_args(&self, command: &str, attributes: &[Attribute], args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         // Check if there's a custom shell attribute
         let shell_attr: Option<&ShellType> = attributes
@@ -350,10 +427,12 @@ impl Interpreter {
             // Use the specified shell from attributes
             match shell_type {
                 ShellType::Python => (Self::get_python_executable(), "-c".to_string()),
+                ShellType::Python3 => ("python3".to_string(), "-c".to_string()),
                 ShellType::Node => ("node".to_string(), "-e".to_string()),
                 ShellType::Ruby => ("ruby".to_string(), "-e".to_string()),
                 ShellType::Pwsh => ("pwsh".to_string(), "-c".to_string()),
                 ShellType::Bash => ("bash".to_string(), "-c".to_string()),
+                ShellType::Sh => ("sh".to_string(), "-c".to_string()),
             }
         } else {
             // Check for RUN_SHELL environment variable, otherwise use platform defaults

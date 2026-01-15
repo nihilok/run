@@ -20,6 +20,7 @@ pub enum Statement {
         name: String,
         commands: Vec<String>,
         attributes: Vec<Attribute>,
+        shebang: Option<String>,
     },
     FunctionCall {
         name: String,
@@ -52,8 +53,10 @@ pub enum OsPlatform {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ShellType {
     Python,
+    Python3,
     Node,
     Ruby,
     Pwsh,
     Bash,
+    Sh,
 }
