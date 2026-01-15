@@ -76,14 +76,20 @@ fn extract_function_metadata(
     }
     
     // Only return a tool if it has a description
-    description.map(|desc| Tool {
-        name: name.to_string(),
-        description: desc,
-        input_schema: InputSchema {
-            schema_type: "object".to_string(),
-            properties,
-            required,
-        },
+    description.map(|desc| {
+        // Sanitize tool name: MCP spec requires [a-zA-Z0-9_-] only
+        // Replace colons with double underscores
+        let sanitized_name = name.replace(':', "__");
+
+        Tool {
+            name: sanitized_name,
+            description: desc,
+            input_schema: InputSchema {
+                schema_type: "object".to_string(),
+                properties,
+                required,
+            },
+        }
     })
 }
 
@@ -128,6 +134,47 @@ pub fn inspect() -> Result<InspectOutput, String> {
     }
     
     Ok(InspectOutput { tools })
+}
+
+/// Resolve a sanitized tool name back to the original function name
+/// This is needed because MCP requires [a-zA-Z0-9_-] but we support colons in function names
+fn resolve_tool_name(sanitized_name: &str) -> Result<String, JsonRpcError> {
+    let config_content = config::load_config()
+        .ok_or_else(|| JsonRpcError {
+            code: -32603,
+            message: "No Runfile found".to_string(),
+            data: None,
+        })?;
+
+    let program = parser::parse_script(&config_content)
+        .map_err(|e| JsonRpcError {
+            code: -32603,
+            message: format!("Parse error: {}", e),
+            data: None,
+        })?;
+
+    // Look for a function whose sanitized name matches
+    for statement in program.statements {
+        let (name, attributes) = match statement {
+            Statement::SimpleFunctionDef { name, attributes, .. } => (name, attributes),
+            Statement::BlockFunctionDef { name, attributes, .. } => (name, attributes),
+            _ => continue,
+        };
+
+        // Check if this function has @desc (would be exposed as tool)
+        if attributes.iter().any(|a| matches!(a, Attribute::Desc(_))) {
+            let tool_name = name.replace(':', "__");
+            if tool_name == sanitized_name {
+                return Ok(name);
+            }
+        }
+    }
+
+    Err(JsonRpcError {
+        code: -32602,
+        message: format!("Tool not found: {}", sanitized_name),
+        data: None,
+    })
 }
 
 /// Print inspection output as JSON
@@ -328,12 +375,15 @@ fn handle_tools_call(
             data: None,
         })?;
     
+    // Resolve the sanitized tool name back to the original function name
+    let actual_function_name = resolve_tool_name(tool_name)?;
+
     let default_args = serde_json::json!({});
     let arguments = params_obj
         .get("arguments")
         .unwrap_or(&default_args);
     
-    // Map arguments to positional
+    // Map arguments to positional (use sanitized name for lookup)
     let positional_args = map_arguments_to_positional(tool_name, arguments)?;
     
     // Execute the function
@@ -350,8 +400,8 @@ fn handle_tools_call(
         })?;
     
     let mut cmd = Command::new(run_binary);
-    cmd.arg(tool_name);
-    
+    cmd.arg(&actual_function_name);  // Use the original function name with colons
+
     for arg in positional_args {
         cmd.arg(arg);
     }
