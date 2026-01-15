@@ -54,6 +54,22 @@ impl Interpreter {
         })
     }
 
+    // Helper to get attributes for simple functions (returns a slice reference)
+    fn get_simple_function_attributes(&self, name: &str) -> &[Attribute] {
+        self.function_metadata
+            .get(name)
+            .map(|m| m.attributes.as_slice())
+            .unwrap_or(&[])
+    }
+
+    // Helper to get attributes and shebang for block functions
+    fn get_block_function_metadata(&self, name: &str) -> (Vec<Attribute>, Option<&str>) {
+        self.function_metadata.get(name).map_or_else(
+            || (Vec::new(), None),
+            |m| (m.attributes.clone(), m.shebang.as_deref())
+        )
+    }
+
     pub fn execute(&mut self, program: Program) -> Result<(), Box<dyn std::error::Error>> {
         for statement in program.statements {
             self.execute_statement(statement)?;
@@ -101,17 +117,13 @@ impl Interpreter {
         // Try direct match first - simple functions
         if let Some(command_template) = self.simple_functions.get(function_name) {
             let command = self.substitute_args(command_template, args);
-            let attributes = self.function_metadata.get(function_name)
-                .map(|m| m.attributes.as_slice())
-                .unwrap_or(&[]);
+            let attributes = self.get_simple_function_attributes(function_name);
             return self.execute_command(&command, attributes);
         }
 
         // Try direct match - block functions
         if let Some(commands) = self.block_functions.get(function_name).cloned() {
-            let metadata = self.function_metadata.get(function_name);
-            let attributes = metadata.map(|m| m.attributes.clone()).unwrap_or_default();
-            let shebang = metadata.and_then(|m| m.shebang.as_deref());
+            let (attributes, shebang) = self.get_block_function_metadata(function_name);
             return self.execute_block_commands(&commands, args, &attributes, shebang);
         }
 
@@ -120,15 +132,11 @@ impl Interpreter {
             let nested_name = format!("{}:{}", function_name, args[0]);
             if let Some(command_template) = self.simple_functions.get(&nested_name) {
                 let command = self.substitute_args(command_template, &args[1..]);
-                let attributes = self.function_metadata.get(&nested_name)
-                    .map(|m| m.attributes.as_slice())
-                    .unwrap_or(&[]);
+                let attributes = self.get_simple_function_attributes(&nested_name);
                 return self.execute_command(&command, attributes);
             }
             if let Some(commands) = self.block_functions.get(&nested_name).cloned() {
-                let metadata = self.function_metadata.get(&nested_name);
-                let attributes = metadata.map(|m| m.attributes.clone()).unwrap_or_default();
-                let shebang = metadata.and_then(|m| m.shebang.as_deref());
+                let (attributes, shebang) = self.get_block_function_metadata(&nested_name);
                 return self.execute_block_commands(&commands, &args[1..], &attributes, shebang);
             }
         }
@@ -138,15 +146,11 @@ impl Interpreter {
         if with_colons != function_name {
             if let Some(command_template) = self.simple_functions.get(&with_colons) {
                 let command = self.substitute_args(command_template, args);
-                let attributes = self.function_metadata.get(&with_colons)
-                    .map(|m| m.attributes.as_slice())
-                    .unwrap_or(&[]);
+                let attributes = self.get_simple_function_attributes(&with_colons);
                 return self.execute_command(&command, attributes);
             }
             if let Some(commands) = self.block_functions.get(&with_colons).cloned() {
-                let metadata = self.function_metadata.get(&with_colons);
-                let attributes = metadata.map(|m| m.attributes.clone()).unwrap_or_default();
-                let shebang = metadata.and_then(|m| m.shebang.as_deref());
+                let (attributes, shebang) = self.get_block_function_metadata(&with_colons);
                 return self.execute_block_commands(&commands, args, &attributes, shebang);
             }
         }
@@ -172,17 +176,13 @@ impl Interpreter {
 
         if let Some(command_template) = self.simple_functions.get(function_name) {
             let command = self.substitute_args(command_template, args);
-            let attributes = self.function_metadata.get(function_name)
-                .map(|m| m.attributes.as_slice())
-                .unwrap_or(&[]);
+            let attributes = self.get_simple_function_attributes(function_name);
             return self.execute_command(&command, attributes);
         }
 
         // Check for block function definitions
         if let Some(commands) = self.block_functions.get(function_name).cloned() {
-            let metadata = self.function_metadata.get(function_name);
-            let attributes = metadata.map(|m| m.attributes.clone()).unwrap_or_default();
-            let shebang = metadata.and_then(|m| m.shebang.as_deref());
+            let (attributes, shebang) = self.get_block_function_metadata(function_name);
             return self.execute_block_commands(&commands, args, &attributes, shebang);
         }
 
