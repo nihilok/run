@@ -106,10 +106,12 @@ fn parse_attribute_line(line: &str) -> Option<Attribute> {
         "shell" => {
             let shell = match parts[1] {
                 "python" => ShellType::Python,
+                "python3" => ShellType::Python3,
                 "node" => ShellType::Node,
                 "ruby" => ShellType::Ruby,
                 "pwsh" => ShellType::Pwsh,
                 "bash" => ShellType::Bash,
+                "sh" => ShellType::Sh,
                 _ => return None,
             };
             Some(Attribute::Shell(shell))
