@@ -10,6 +10,7 @@ pub mod interpreter;
 pub mod mcp;
 pub mod parser;
 pub mod repl;
+pub mod utils;
 
 /// Print an error message and exit with code 1.
 pub fn fatal_error(message: &str) -> ! {

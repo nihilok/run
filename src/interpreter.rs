@@ -1,6 +1,7 @@
 // Interpreter to execute the AST
 
-use crate::ast::{Attribute, Expression, OsPlatform, Program, ShellType, Statement};
+use crate::ast::{Attribute, Expression, Program, ShellType, Statement};
+use crate::utils;
 use std::collections::HashMap;
 use std::process::{Command, Stdio};
 
@@ -29,31 +30,6 @@ impl Interpreter {
         }
     }
     
-    fn matches_current_platform(attributes: &[Attribute]) -> bool {
-        // If no OS attributes, function is available on all platforms
-        let os_attrs: Vec<&OsPlatform> = attributes
-            .iter()
-            .filter_map(|attr| match attr {
-                Attribute::Os(platform) => Some(platform),
-                _ => None,
-            })
-            .collect();
-        
-        if os_attrs.is_empty() {
-            return true;
-        }
-        
-        // Check if any of the OS attributes match the current platform
-        os_attrs.iter().any(|platform| {
-            match platform {
-                OsPlatform::Windows => cfg!(target_os = "windows"),
-                OsPlatform::Linux => cfg!(target_os = "linux"),
-                OsPlatform::MacOS => cfg!(target_os = "macos"),
-                OsPlatform::Unix => cfg!(unix),  // Matches Linux or macOS
-            }
-        })
-    }
-
     // Helper to get attributes for simple functions (returns a slice reference)
     fn get_simple_function_attributes(&self, name: &str) -> &[Attribute] {
         self.function_metadata
@@ -268,7 +244,7 @@ impl Interpreter {
                 attributes,
             } => {
                 // Only store function if it matches the current platform
-                if Self::matches_current_platform(&attributes) {
+                if utils::matches_current_platform(&attributes) {
                     self.simple_functions.insert(name.clone(), command_template);
                     self.function_metadata.insert(
                         name,
@@ -281,7 +257,7 @@ impl Interpreter {
             }
             Statement::BlockFunctionDef { name, commands, attributes, shebang } => {
                 // Only store function if it matches the current platform
-                if Self::matches_current_platform(&attributes) {
+                if utils::matches_current_platform(&attributes) {
                     self.block_functions.insert(name.clone(), commands);
                     self.function_metadata.insert(
                         name,

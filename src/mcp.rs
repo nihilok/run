@@ -5,8 +5,8 @@
 //! - MCP server for JSON-RPC 2.0 communication
 //! - Argument mapping from named JSON parameters to positional arguments
 
-use crate::ast::{ArgType, Attribute, Statement};
-use crate::{config, parser};
+use crate::ast::{Attribute, Statement};
+use crate::{config, parser, utils};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -57,11 +57,7 @@ fn extract_function_metadata(
                 description = desc.clone();
             }
             Attribute::Arg(arg_meta) => {
-                let param_type = match arg_meta.arg_type {
-                    ArgType::String => "string",
-                    ArgType::Integer => "integer",
-                    ArgType::Boolean => "boolean",
-                };
+                let param_type = utils::arg_type_to_json_type(&arg_meta.arg_type);
                 
                 properties.insert(
                     arg_meta.name.clone(),
@@ -88,55 +84,6 @@ fn extract_function_metadata(
     }
 }
 
-/// Check if function should be included based on OS platform filters
-fn should_include_function(attributes: &[Attribute]) -> bool {
-    use crate::ast::OsPlatform;
-    
-    let os_attributes: Vec<&OsPlatform> = attributes
-        .iter()
-        .filter_map(|attr| {
-            if let Attribute::Os(platform) = attr {
-                Some(platform)
-            } else {
-                None
-            }
-        })
-        .collect();
-    
-    // If no OS attributes, include the function
-    if os_attributes.is_empty() {
-        return true;
-    }
-    
-    // Check if any OS attribute matches the current platform
-    for platform in os_attributes {
-        match platform {
-            OsPlatform::Windows => {
-                if cfg!(windows) {
-                    return true;
-                }
-            }
-            OsPlatform::Linux => {
-                if cfg!(target_os = "linux") {
-                    return true;
-                }
-            }
-            OsPlatform::MacOS => {
-                if cfg!(target_os = "macos") {
-                    return true;
-                }
-            }
-            OsPlatform::Unix => {
-                if cfg!(unix) {
-                    return true;
-                }
-            }
-        }
-    }
-    
-    false
-}
-
 /// Generate inspection output from Runfile
 pub fn inspect() -> Result<InspectOutput, String> {
     let config_content = config::load_config_or_exit();
@@ -153,7 +100,7 @@ pub fn inspect() -> Result<InspectOutput, String> {
                 attributes,
                 ..
             } => {
-                if should_include_function(&attributes) {
+                if utils::matches_current_platform(&attributes) {
                     tools.push(extract_function_metadata(&name, &attributes));
                 }
             }
@@ -162,7 +109,7 @@ pub fn inspect() -> Result<InspectOutput, String> {
                 attributes,
                 ..
             } => {
-                if should_include_function(&attributes) {
+                if utils::matches_current_platform(&attributes) {
                     tools.push(extract_function_metadata(&name, &attributes));
                 }
             }
@@ -567,24 +514,5 @@ mod tests {
         let replicas_param = tool.input_schema.properties.get("replicas").unwrap();
         assert_eq!(replicas_param.param_type, "integer");
         assert_eq!(replicas_param.description, "Number of replicas");
-    }
-
-    #[test]
-    fn test_should_include_function_no_os_filter() {
-        let attributes = vec![Attribute::Desc("Test".to_string())];
-        assert!(should_include_function(&attributes));
-    }
-
-    #[test]
-    fn test_should_include_function_with_unix_filter() {
-        use crate::ast::OsPlatform;
-        let attributes = vec![Attribute::Os(OsPlatform::Unix)];
-        
-        // Should include on Unix systems
-        if cfg!(unix) {
-            assert!(should_include_function(&attributes));
-        } else {
-            assert!(!should_include_function(&attributes));
-        }
     }
 }
