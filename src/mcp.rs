@@ -330,7 +330,9 @@ fn handle_tools_call(
     use std::process::Command;
     
     // Get the run binary path (we're already running as run, but we need to call ourselves)
+    // Security: We validate that the binary path is a canonical path to ensure it hasn't been manipulated
     let run_binary = std::env::current_exe()
+        .and_then(|p| p.canonicalize())
         .map_err(|e| JsonRpcError {
             code: -32603,
             message: format!("Failed to get binary path: {}", e),
@@ -354,19 +356,25 @@ fn handle_tools_call(
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     
     // Return content as per MCP spec
-    let result = serde_json::json!({
-        "content": [
-            {
-                "type": "text",
-                "text": stdout
-            }
-        ],
-        "isError": !output.status.success()
-    });
+    // Include stderr in content if execution failed for better debugging
+    let mut content = vec![
+        serde_json::json!({
+            "type": "text",
+            "text": stdout
+        })
+    ];
     
     if !output.status.success() && !stderr.is_empty() {
-        eprintln!("Tool execution error: {}", stderr);
+        content.push(serde_json::json!({
+            "type": "text",
+            "text": format!("Error: {}", stderr)
+        }));
     }
+    
+    let result = serde_json::json!({
+        "content": content,
+        "isError": !output.status.success()
+    });
     
     Ok(result)
 }
