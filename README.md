@@ -55,6 +55,7 @@ Perfect for **project automation**, **CI scripts**, and **personal workflows**.
   - [Arguments & Defaults](#arguments--defaults)
   - [Attributes & Polyglot Scripts](#attributes--polyglot-scripts)
   - [Nested Namespaces](#nested-namespaces)
+  - [AI Agent Integration (MCP)](#ai-agent-integration-mcp)
 - [Configuration](#configuration)
   - [Shell Selection](#shell-selection)
   - [Global Runfile](#global-runfile)
@@ -76,6 +77,7 @@ It hits a common sweet spot — lightweight, readable, and shell-native for quic
 
 - **vs Make**: `run` is easier for linear scripts and doesn't require learning Makefile quirks (tabs vs spaces, `.PHONY`).
 - **vs Just**: `run` is closer to raw shell scripting. It doesn't have a custom language for variables or logic—it just delegates to your shell.
+- **vs Both**: `run` is the only task runner with built-in Model Context Protocol support, letting AI agents like Claude discover and execute your tools automatically.
 
 ---
 
@@ -291,6 +293,77 @@ Execute them with spaces:
 $ run docker build
 $ run docker logs
 ```
+
+---
+
+## AI Agent Integration (MCP)
+
+`run` includes built-in support for the **Model Context Protocol (MCP)**, allowing AI agents like Claude to discover and execute your Runfile functions as tools.
+
+### Exposing Functions to AI Agents
+
+Use `@desc` and `@arg` attributes to provide metadata for AI agents:
+
+```bash
+# @desc Search the codebase for specific patterns
+# @arg 1:pattern string The regex pattern to search for
+# @shell python
+search() {
+    import sys, os, re
+    pattern = sys.argv[1]
+    for root, dirs, files in os.walk('.'):
+        for file in files:
+            if file.endswith('.py'):
+                path = os.path.join(root, file)
+                with open(path) as f:
+                    for i, line in enumerate(f, 1):
+                        if re.search(pattern, line):
+                            print(f"{path}:{i}: {line.strip()}")
+}
+
+# @desc Deploy the application to a specific environment
+# @arg 1:environment string Target environment (staging|prod)
+deploy() {
+    ./scripts/deploy.sh $1
+}
+```
+
+### MCP Server Mode
+
+Start `run` as an MCP server to enable AI agent integration:
+
+```bash
+run --serve-mcp
+```
+
+Configure in your AI client (e.g., Claude Desktop):
+
+```json
+{
+  "mcpServers": {
+    "my-project": {
+      "command": "run",
+      "args": ["--serve-mcp"],
+      "cwd": "/path/to/your/project"
+    }
+  }
+}
+```
+
+Now AI agents can:
+- Discover available tools via `run --inspect`
+- Execute functions with typed parameters
+- Receive structured outputs
+
+### Inspect Tool Schema
+
+View the generated JSON schema for all MCP-enabled functions:
+
+```bash
+run --inspect
+```
+
+This outputs the tool definitions that AI agents will see, useful for debugging and validation.
 
 ---
 
