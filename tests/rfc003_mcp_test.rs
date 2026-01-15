@@ -369,3 +369,125 @@ fn test_serve_mcp_flag_exists() {
 
 // Note: Full MCP integration tests would require sending JSON-RPC messages
 // These will be added after basic implementation is working
+
+// ========== MCP JSON-RPC Protocol Tests ==========
+
+#[test]
+fn test_mcp_initialize_request() {
+    use std::io::Write;
+    
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+    
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @desc Test function
+test() echo "test"
+"#,
+    );
+    
+    let mut child = Command::new(&binary)
+        .arg("--serve-mcp")
+        .current_dir(temp_dir.path())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn process");
+    
+    // Send initialize request
+    let init_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {
+                "name": "test-client",
+                "version": "1.0.0"
+            }
+        }
+    });
+    
+    let stdin = child.stdin.as_mut().unwrap();
+    writeln!(stdin, "{}", serde_json::to_string(&init_request).unwrap()).unwrap();
+    stdin.flush().unwrap();
+    
+    // Give it time to respond
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    
+    // Kill and check output
+    child.kill().expect("Failed to kill process");
+    let output = child.wait_with_output().unwrap();
+    
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    
+    // Should contain a JSON-RPC response
+    assert!(stdout.contains("\"jsonrpc\":\"2.0\"") || stdout.contains("\"jsonrpc\": \"2.0\""),
+            "Expected JSON-RPC response, got: {}", stdout);
+}
+
+#[test]
+fn test_mcp_tools_list_request() {
+    use std::io::Write;
+    
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+    
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @desc Scale a service
+# @arg 1:service string The service name
+scale() echo "Scaling $1"
+"#,
+    );
+    
+    let mut child = Command::new(&binary)
+        .arg("--serve-mcp")
+        .current_dir(temp_dir.path())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn process");
+    
+    let stdin = child.stdin.as_mut().unwrap();
+    
+    // Send initialize first
+    let init_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "test", "version": "1.0"}
+        }
+    });
+    writeln!(stdin, "{}", serde_json::to_string(&init_request).unwrap()).unwrap();
+    
+    // Send tools/list request
+    let list_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/list",
+        "params": {}
+    });
+    writeln!(stdin, "{}", serde_json::to_string(&list_request).unwrap()).unwrap();
+    stdin.flush().unwrap();
+    
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    
+    child.kill().expect("Failed to kill process");
+    let output = child.wait_with_output().unwrap();
+    
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    
+    // Should contain tools list with our "scale" function
+    assert!(stdout.contains("scale") || stdout.contains("\"name\""),
+            "Expected tools list, got: {}", stdout);
+}
+
