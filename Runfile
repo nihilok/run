@@ -1,16 +1,19 @@
 # Example Runfile with simple function definitions
 
 # Simple function with argument substitution
+# @desc "Open a shell in the specified Docker container"
+# @arg 1:container "The name of the container to open a shell in"
 docker_shell() docker compose exec $1 bash
 
 # Nested command with colon notation
+# @desc "Open a shell in the specified Docker container (default: app)"
+# @arg 1:container "The name of the container to open a shell in"
 docker:shell() docker compose exec ${1:-app} bash
 
 # Another nested command example
+# @desc "Follow logs for the specified Docker container"
+# @arg 1:container "The name of the container to follow logs for"
 docker:logs() docker compose logs -f $1
-
-# Function with multiple arguments
-git:commit() git add . && git commit -m "$1" && echo "${2:-done}"
 
 # Function using $@ for all arguments
 echo_all() echo "All args: $@"
