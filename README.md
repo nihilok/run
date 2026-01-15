@@ -214,7 +214,7 @@ test() {
 
 ### Attributes & Polyglot Scripts
 
-You can use comment attributes (`# @key value`) immediately before a function definition to modify its behaviour.
+You can use comment attributes (`# @key value`) or shebang lines to modify function behaviour and select interpreters.
 
 #### Platform Guards (`@os`)
 
@@ -230,13 +230,40 @@ clean() rm -rf dist
 
 When you run `run clean`, only the variant matching your current OS will execute.
 
-#### Interpreter Selection (`@shell` / `@lang`)
+#### Interpreter Selection
 
-Execute the function body using a specific interpreter instead of the default shell. This allows you to write Python, Node, or Ruby directly in your Runfile.
+There are two ways to specify a custom interpreter:
 
-**Python example:**
+**1. Shebang detection** (recommended):
+
+The first line of your function body can be a shebang, just like standalone scripts:
+
 ```python
-# @shell python
+analyze() {
+    #!/usr/bin/env python
+    import sys, json
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+        print(f"Found {len(data)} records")
+}
+```
+
+```javascript
+server() {
+    #!/usr/bin/env node
+    const port = process.argv[1] || 3000;
+    require('http').createServer((req, res) => {
+        res.end('Hello!');
+    }).listen(port);
+}
+```
+
+**2. Attribute syntax** (`@shell`):
+
+Use comment attributes for explicit control or when you need to override a shebang:
+
+```python
+# @shell python3
 calc() {
     import sys, math
     radius = float(sys.argv[1])
@@ -244,29 +271,9 @@ calc() {
 }
 ```
 
-```bash
-$ run calc 5
-Area: 78.54
-```
+**Precedence**: If both are present, `@shell` takes precedence over the shebang.
 
-**Node.js example:**
-```javascript
-# @shell node
-server() {
-    const port = process.argv[1] || 3000;
-    require('http').createServer((req, res) => {
-        res.end('Hello!');
-    }).listen(port);
-    console.log(`Server running on port ${port}`);
-}
-```
-
-```bash
-$ run server 8080
-Server running on port 8080
-```
-
-**Supported interpreters:** `python`, `node`, `ruby`, `pwsh`, `bash`
+**Supported interpreters:** `python`, `python3`, `node`, `ruby`, `pwsh`, `bash`, `sh`
 
 ### Nested Namespaces
 

@@ -86,3 +86,10 @@ node:hello() {
 
 # Inline semicolon block
 function test_inline() { echo "a"; echo "b"; echo "c" }
+
+# Inline Python using Shebang notation
+python:count() {
+    #!/usr/bin/env python3
+    for i in range(5):
+        print(f"Number: {i}")
+}
