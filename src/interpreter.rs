@@ -396,6 +396,7 @@ impl Interpreter {
     }
 
     // Strip shebang line from function body
+    // Removes the first shebang line (skipping comments before it)
     fn strip_shebang(body: &str) -> String {
         let lines: Vec<&str> = body.lines().collect();
         let mut result_lines = Vec::new();
@@ -403,8 +404,13 @@ impl Interpreter {
         
         for line in lines {
             let trimmed = line.trim();
+            // Skip comments before shebang
+            if !found_shebang && !trimmed.is_empty() && trimmed.starts_with('#') && !trimmed.starts_with("#!") {
+                result_lines.push(line);
+                continue;
+            }
+            // Skip the shebang line itself
             if !found_shebang && !trimmed.is_empty() && trimmed.starts_with("#!") {
-                // Skip the shebang line
                 found_shebang = true;
                 continue;
             }
