@@ -35,14 +35,18 @@ docker:deploy() {
 }
 
 # Deploy commands:
+
+# @desc Increment patch version and deploy
 deploy:patch() {
     ./scripts/deploy.sh patch
 }
 
+# @desc Increment minor version and deploy
 deploy:minor() {
     ./scripts/deploy.sh minor
 }
 
+# @desc Increment major version and deploy
 deploy:major() {
     ./scripts/deploy.sh major
 }
