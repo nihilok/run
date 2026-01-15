@@ -2320,3 +2320,307 @@ broken() {
     assert!(stdout.contains("First line"));
     assert!(stdout.contains("Should use default shell, not Python"));
 }
+
+// ========== Tests for --runfile Feature ==========
+
+#[test]
+fn test_runfile_flag_with_file_path() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // Create a Runfile in a non-standard location
+    let custom_runfile = temp_dir.path().join("CustomRunfile");
+    fs::write(
+        &custom_runfile,
+        r#"
+test_function() {
+    echo "Hello from custom Runfile"
+}
+"#,
+    ).unwrap();
+
+    // Run with --runfile pointing to the file
+    let output = Command::new(&binary)
+        .arg("--runfile")
+        .arg(&custom_runfile)
+        .arg("test_function")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "Command should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Hello from custom Runfile"));
+}
+
+#[test]
+fn test_runfile_flag_with_directory_path() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // Create a subdirectory with a Runfile
+    let subdir = temp_dir.path().join("project");
+    fs::create_dir(&subdir).unwrap();
+
+    create_runfile(
+        &subdir,
+        r#"
+greet() {
+    echo "Hello from subdirectory Runfile"
+}
+"#,
+    );
+
+    // Run from a different directory, pointing --runfile to the subdirectory
+    let output = Command::new(&binary)
+        .arg("--runfile")
+        .arg(&subdir)
+        .arg("greet")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "Command should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Hello from subdirectory Runfile"));
+}
+
+#[test]
+fn test_runfile_flag_overrides_current_directory() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // Create a Runfile in the current directory
+    create_runfile(
+        temp_dir.path(),
+        r#"
+main() {
+    echo "From current directory"
+}
+"#,
+    );
+
+    // Create a different Runfile in a subdirectory
+    let subdir = temp_dir.path().join("other");
+    fs::create_dir(&subdir).unwrap();
+    create_runfile(
+        &subdir,
+        r#"
+main() {
+    echo "From other directory"
+}
+"#,
+    );
+
+    // Run from temp_dir but point --runfile to subdir
+    let output = Command::new(&binary)
+        .arg("--runfile")
+        .arg(&subdir)
+        .arg("main")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "Command should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("From other directory"));
+    assert!(!stdout.contains("From current directory"));
+}
+
+#[test]
+fn test_runfile_flag_with_list() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let custom_runfile = temp_dir.path().join("MyRunfile");
+    fs::write(
+        &custom_runfile,
+        r#"
+build() echo "building"
+test() echo "testing"
+"#,
+    ).unwrap();
+
+    let output = Command::new(&binary)
+        .arg("--runfile")
+        .arg(&custom_runfile)
+        .arg("--list")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "Command should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("build"));
+    assert!(stdout.contains("test"));
+}
+
+#[test]
+fn test_runfile_flag_nonexistent_file() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let nonexistent = temp_dir.path().join("DoesNotExist");
+
+    let output = Command::new(&binary)
+        .arg("--runfile")
+        .arg(&nonexistent)
+        .arg("--list")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(!output.status.success(), "Command should fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("No Runfile found"));
+}
+
+#[test]
+fn test_runfile_flag_with_relative_path() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // Create a subdirectory with a Runfile
+    let subdir = temp_dir.path().join("configs");
+    fs::create_dir(&subdir).unwrap();
+
+    let runfile_path = subdir.join("project.runfile");
+    fs::write(
+        &runfile_path,
+        r#"
+relative_test() {
+    echo "Loaded via relative path"
+}
+"#,
+    ).unwrap();
+
+    // Run with a relative path
+    let output = Command::new(&binary)
+        .arg("--runfile")
+        .arg("configs/project.runfile")
+        .arg("relative_test")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "Command should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Loaded via relative path"));
+}
+
+#[test]
+fn test_runfile_flag_with_inspect() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let custom_runfile = temp_dir.path().join("TestRunfile");
+    fs::write(
+        &custom_runfile,
+        r#"
+# @desc Test function for inspection
+# @arg 1:name string The name to greet
+greet() {
+    echo "Hello, $1"
+}
+"#,
+    ).unwrap();
+
+    let output = Command::new(&binary)
+        .arg("--runfile")
+        .arg(&custom_runfile)
+        .arg("--inspect")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "Command should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Parse JSON to verify structure
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .expect("Output should be valid JSON");
+
+    assert!(json["tools"].is_array());
+    let tools = json["tools"].as_array().unwrap();
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0]["name"].as_str().unwrap(), "greet");
+    assert_eq!(tools[0]["description"].as_str().unwrap(), "Test function for inspection");
+}
+
+#[test]
+fn test_runfile_flag_with_nested_functions() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let custom_runfile = temp_dir.path().join("NestedRunfile");
+    fs::write(
+        &custom_runfile,
+        r#"
+docker:up() {
+    echo "Starting containers"
+}
+
+docker:down() {
+    echo "Stopping containers"
+}
+"#,
+    ).unwrap();
+
+    // Test first nested function
+    let output1 = Command::new(&binary)
+        .arg("--runfile")
+        .arg(&custom_runfile)
+        .arg("docker:up")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output1.status.success());
+    let stdout1 = String::from_utf8_lossy(&output1.stdout);
+    assert!(stdout1.contains("Starting containers"));
+
+    // Test second nested function
+    let output2 = Command::new(&binary)
+        .arg("--runfile")
+        .arg(&custom_runfile)
+        .arg("docker:down")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output2.status.success());
+    let stdout2 = String::from_utf8_lossy(&output2.stdout);
+    assert!(stdout2.contains("Stopping containers"));
+}
+
+#[test]
+fn test_runfile_flag_with_absolute_path() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let custom_runfile = temp_dir.path().join("AbsoluteRunfile");
+    fs::write(
+        &custom_runfile,
+        r#"
+absolute_test() {
+    echo "Using absolute path"
+}
+"#,
+    ).unwrap();
+
+    // Use the absolute path
+    let absolute_path = custom_runfile.canonicalize().unwrap();
+
+    let output = Command::new(&binary)
+        .arg("--runfile")
+        .arg(&absolute_path)
+        .arg("absolute_test")
+        .current_dir("/tmp") // Run from a different directory
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success(), "Command should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Using absolute path"));
+}
+
