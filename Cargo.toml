@@ -1,6 +1,6 @@
 [package]
 name = "run"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 authors = ["nihilok nihilok@jarv.dev", "sebastian <s@porto5.com>"]
 description = "A lightweight task runner for defining and executing shell commands with a clean, readable syntax."
