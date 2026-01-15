@@ -1929,3 +1929,394 @@ counter() {
         assert!(stdout.contains("Done"));
     }
 }
+
+// ========== Shebang Detection Tests (RFC002) ==========
+
+#[test]
+fn test_shebang_python_basic() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+analyze() {
+    #!/usr/bin/env python
+    import sys
+    print("Hello from Python via shebang!")
+}
+"#,
+    );
+
+    if is_python_available() {
+        let output = Command::new(&binary)
+            .arg("analyze")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Hello from Python via shebang!"));
+    }
+}
+
+#[test]
+fn test_shebang_python3_explicit() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+calc() {
+    #!/usr/bin/env python3
+    import math
+    print(f"Pi is {math.pi:.2f}")
+}
+"#,
+    );
+
+    if which::which("python3").is_ok() {
+        let output = Command::new(&binary)
+            .arg("calc")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Pi is 3.14"));
+    }
+}
+
+#[test]
+fn test_shebang_node() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+server() {
+    #!/usr/bin/env node
+    console.log("Node server via shebang");
+    console.log("Port: 3000");
+}
+"#,
+    );
+
+    if is_node_available() {
+        let output = Command::new(&binary)
+            .arg("server")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Node server via shebang"));
+        assert!(stdout.contains("Port: 3000"));
+    }
+}
+
+#[test]
+fn test_shebang_bash() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+setup() {
+    #!/usr/bin/env bash
+    echo "Setting up with bash shebang"
+    echo "Configuration complete"
+}
+"#,
+    );
+
+    if cfg!(unix) && which::which("bash").is_ok() {
+        let output = Command::new(&binary)
+            .arg("setup")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Setting up with bash shebang"));
+        assert!(stdout.contains("Configuration complete"));
+    }
+}
+
+#[test]
+fn test_shebang_direct_path_bash() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+test_func() {
+    #!/bin/bash
+    echo "Using direct bash path"
+}
+"#,
+    );
+
+    if cfg!(unix) && which::which("bash").is_ok() {
+        let output = Command::new(&binary)
+            .arg("test_func")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Using direct bash path"));
+    }
+}
+
+#[test]
+fn test_shebang_direct_path_sh() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+simple() {
+    #!/bin/sh
+    echo "Using sh"
+}
+"#,
+    );
+
+    if cfg!(unix) {
+        let output = Command::new(&binary)
+            .arg("simple")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Using sh"));
+    }
+}
+
+#[test]
+fn test_shebang_with_args() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+process() {
+    #!/usr/bin/env python
+    import sys
+    if len(sys.argv) > 1:
+        print(f"Processing: {sys.argv[1]}")
+    else:
+        print("No args")
+}
+"#,
+    );
+
+    if is_python_available() {
+        let output = Command::new(&binary)
+            .arg("process")
+            .arg("data.json")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Processing: data.json"));
+    }
+}
+
+#[test]
+fn test_shebang_precedence_attribute_wins() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // @shell attribute should take precedence over shebang
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @shell python
+test_precedence() {
+    #!/usr/bin/env node
+    # This should execute with Python, not Node
+    import sys
+    print("Python wins!")
+}
+"#,
+    );
+
+    if is_python_available() {
+        let output = Command::new(&binary)
+            .arg("test_precedence")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Python wins!"));
+        // Should NOT contain Node.js error messages
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!stderr.contains("SyntaxError"));
+    }
+}
+
+#[test]
+fn test_shebang_with_comment_before() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+analyze() {
+    # This is a comment
+    #!/usr/bin/env python
+    import sys
+    print("Shebang after comment")
+}
+"#,
+    );
+
+    if is_python_available() {
+        let output = Command::new(&binary)
+            .arg("analyze")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Shebang after comment"));
+    }
+}
+
+#[test]
+fn test_shebang_multiline_code() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+counter() {
+    #!/usr/bin/env python
+    print("Counting")
+    for i in range(3):
+        print(f"Number: {i}")
+    print("Done")
+}
+"#,
+    );
+
+    if is_python_available() {
+        let output = Command::new(&binary)
+            .arg("counter")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Counting"));
+        assert!(stdout.contains("Number: 0"));
+        assert!(stdout.contains("Number: 1"));
+        assert!(stdout.contains("Number: 2"));
+        assert!(stdout.contains("Done"));
+    }
+}
+
+#[test]
+fn test_shebang_ruby() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+greet() {
+    #!/usr/bin/env ruby
+    puts "Hello from Ruby via shebang!"
+}
+"#,
+    );
+
+    if is_ruby_available() {
+        let output = Command::new(&binary)
+            .arg("greet")
+            .current_dir(temp_dir.path())
+            .output()
+            .expect("Failed to execute command");
+
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("Hello from Ruby via shebang!"));
+    }
+}
+
+#[test]
+fn test_no_shebang_uses_default_shell() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+simple() {
+    echo "No shebang, using default shell"
+}
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("simple")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("No shebang, using default shell"));
+}
+
+#[test]
+fn test_shebang_not_first_line_ignored() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // Shebang not on first non-empty line should be ignored
+    create_runfile(
+        temp_dir.path(),
+        r#"
+broken() {
+    echo "First line"
+    #!/usr/bin/env python
+    echo "Should use default shell, not Python"
+}
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("broken")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("First line"));
+    assert!(stdout.contains("Should use default shell, not Python"));
+}

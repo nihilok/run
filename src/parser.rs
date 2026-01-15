@@ -118,6 +118,78 @@ fn parse_attribute_line(line: &str) -> Option<Attribute> {
     }
 }
 
+// Parse shebang from function body
+// Returns the shebang string if found on the first non-empty, non-comment line
+// Lines starting with # (but not #!) are skipped
+fn parse_shebang(body: &str) -> Option<String> {
+    body.lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .find(|line| {
+            // Find the first line that is either a shebang or not a comment
+            !line.starts_with('#') || line.starts_with("#!")
+        })
+        .and_then(|line| {
+            if line.starts_with("#!") {
+                Some(line[2..].trim().to_string())
+            } else {
+                None
+            }
+        })
+}
+
+// Resolve interpreter from shebang to ShellType
+// Handles /usr/bin/env <interpreter> and direct paths like /bin/bash
+fn resolve_shebang_interpreter(shebang: &str) -> Option<ShellType> {
+    // Extract the binary name from the shebang
+    let binary_name = if let Some(env_part) = shebang.strip_prefix("/usr/bin/env ") {
+        // Format: #!/usr/bin/env python
+        // Extract first word after "env"
+        env_part.split_whitespace().next()?.to_string()
+    } else {
+        // Format: #!/bin/bash or #!/usr/bin/python3
+        // Extract basename
+        std::path::Path::new(shebang)
+            .file_name()?
+            .to_str()?
+            .split_whitespace()
+            .next()?
+            .to_string()
+    };
+
+    // Map binary name to ShellType
+    match binary_name.as_str() {
+        "python" => Some(ShellType::Python),
+        "python3" => Some(ShellType::Python3),
+        "node" => Some(ShellType::Node),
+        "ruby" => Some(ShellType::Ruby),
+        "pwsh" | "powershell" => Some(ShellType::Pwsh),
+        "bash" => Some(ShellType::Bash),
+        "sh" => Some(ShellType::Sh),
+        _ => None,  // Unknown interpreter - will be handled by caller
+    }
+}
+
+// Strip shebang line from function body
+// Removes the first line if it's a shebang
+fn strip_shebang(body: &str) -> String {
+    let lines: Vec<&str> = body.lines().collect();
+    let mut result_lines = Vec::new();
+    let mut found_shebang = false;
+    
+    for line in lines {
+        let trimmed = line.trim();
+        if !found_shebang && !trimmed.is_empty() && trimmed.starts_with("#!") {
+            // Skip the shebang line
+            found_shebang = true;
+            continue;
+        }
+        result_lines.push(line);
+    }
+    
+    result_lines.join("\n")
+}
+
 pub fn parse_script(input: &str) -> Result<Program, Box<pest::error::Error<Rule>>> {
     let preprocessed = preprocess_escaped_newlines(input);
     let pairs = ScriptParser::parse(Rule::program, &preprocessed)?;
@@ -230,7 +302,7 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
                         let commands: Vec<String> = if has_custom_shell {
                             // For custom shells (Python, Node, etc.), never split by semicolons
                             // The entire script should be passed as-is to the interpreter
-                            vec![trimmed_content]
+                            vec![trimmed_content.clone()]
                         } else if !trimmed_content.contains('\n') && trimmed_content.contains(';') {
                             // Single-line block with semicolons: split into separate commands
                             // e.g., { echo "a"; echo "b"; echo "c" }
@@ -241,13 +313,17 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
                                 .collect()
                         } else {
                             // Multi-line block - keep as single script
-                            vec![trimmed_content]
+                            vec![trimmed_content.clone()]
                         };
+
+                        // Parse shebang from the content
+                        let shebang = parse_shebang(&trimmed_content);
 
                         Some(Statement::BlockFunctionDef {
                             name, 
                             commands,
                             attributes,
+                            shebang,
                         })
                     }
                     Rule::command => {
