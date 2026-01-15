@@ -7,14 +7,21 @@ description = "A lightweight task runner for defining and executing shell comman
 license = "MIT"
 repository = "https://github.com/nihilok/run"
 
+[lib]
+name = "run"
+path = "src/lib.rs"
+
 [dependencies]
 pest = "2.8.5"
 pest_derive = "2.8.5"
 clap = { version = "4.5", features = ["derive"] }
 which = "8.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 [dev-dependencies]
 tempfile = "3.24"
+serde_json = "1.0"
 
 [[bin]]
 name = "run"
