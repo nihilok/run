@@ -91,6 +91,7 @@ node:hello() {
 function test_inline() { echo "a"; echo "b"; echo "c" }
 
 # Inline Python using Shebang notation
+# @desc Count from 0 to 4 using Python
 python:count() {
     #!/usr/bin/env python3
     for i in range(5):

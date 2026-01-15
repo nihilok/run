@@ -80,6 +80,18 @@ fn parse_attributes_from_lines(input: &str, line_num: usize) -> Vec<Attribute> {
     attributes
 }
 
+// Strip surrounding quotes from a string
+fn strip_quotes(s: &str) -> String {
+    let trimmed = s.trim();
+    if (trimmed.starts_with('"') && trimmed.ends_with('"')) ||
+       (trimmed.starts_with('\'') && trimmed.ends_with('\'')) {
+        if trimmed.len() >= 2 {
+            return trimmed[1..trimmed.len()-1].to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
 fn parse_attribute_line(line: &str) -> Option<Attribute> {
     // Parse "# @os <platform>" or "# @shell <shell>" or "# @desc <text>" or "# @arg <spec>"
     let line = line.trim();
@@ -89,7 +101,7 @@ fn parse_attribute_line(line: &str) -> Option<Attribute> {
     
     // Handle @desc - everything after "@desc " is the description
     if let Some(desc_text) = without_hash.strip_prefix("desc ") {
-        return Some(Attribute::Desc(desc_text.trim().to_string()));
+        return Some(Attribute::Desc(strip_quotes(desc_text)));
     }
     
     // Handle @arg - format: "1:name type description"
@@ -164,7 +176,7 @@ fn parse_arg_attribute(arg_text: &str) -> Option<Attribute> {
     
     // Join remaining parts as description
     let description = if desc_start_idx < parts.len() {
-        parts[desc_start_idx..].join(" ")
+        strip_quotes(&parts[desc_start_idx..].join(" "))
     } else {
         String::new()
     };
@@ -624,6 +636,53 @@ greet() echo "Hello, $1"
                 // Should default to string
                 assert_eq!(arg.arg_type, ArgType::String);
                 assert_eq!(arg.description, "Some description without type");
+            } else {
+                panic!("Expected Arg attribute");
+            }
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_strip_quotes_from_desc() {
+        let input = r#"
+# @desc "Open a shell in the specified Docker container"
+docker_shell() docker compose exec bash
+"#;
+        let result = parse_script(input).unwrap();
+
+        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+            assert_eq!(name, "docker_shell");
+            assert_eq!(attributes.len(), 1);
+
+            if let Attribute::Desc(desc) = &attributes[0] {
+                assert_eq!(desc, "Open a shell in the specified Docker container");
+            } else {
+                panic!("Expected Desc attribute");
+            }
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_strip_quotes_from_arg() {
+        let input = r#"
+# @arg 1:container "The name of the container"
+shell() docker compose exec $1 bash
+"#;
+        let result = parse_script(input).unwrap();
+
+        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+            assert_eq!(name, "shell");
+            assert_eq!(attributes.len(), 1);
+
+            if let Attribute::Arg(arg) = &attributes[0] {
+                assert_eq!(arg.position, 1);
+                assert_eq!(arg.name, "container");
+                assert_eq!(arg.arg_type, ArgType::String);
+                assert_eq!(arg.description, "The name of the container");
             } else {
                 panic!("Expected Arg attribute");
             }

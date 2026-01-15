@@ -32,6 +32,7 @@ pub struct InputSchema {
 pub struct Tool {
     pub name: String,
     pub description: String,
+    #[serde(rename = "inputSchema")]
     pub input_schema: InputSchema,
 }
 
@@ -42,11 +43,12 @@ pub struct InspectOutput {
 }
 
 /// Extract metadata from function attributes
+/// Returns None if the function has no @desc attribute
 fn extract_function_metadata(
     name: &str,
     attributes: &[Attribute],
-) -> Tool {
-    let mut description = String::new();
+) -> Option<Tool> {
+    let mut description: Option<String> = None;
     let mut properties = HashMap::new();
     let mut required = Vec::new();
     
@@ -54,7 +56,7 @@ fn extract_function_metadata(
     for attr in attributes {
         match attr {
             Attribute::Desc(desc) => {
-                description = desc.clone();
+                description = Some(desc.clone());
             }
             Attribute::Arg(arg_meta) => {
                 let param_type = utils::arg_type_to_json_type(&arg_meta.arg_type);
@@ -73,21 +75,25 @@ fn extract_function_metadata(
         }
     }
     
-    Tool {
+    // Only return a tool if it has a description
+    description.map(|desc| Tool {
         name: name.to_string(),
-        description,
+        description: desc,
         input_schema: InputSchema {
             schema_type: "object".to_string(),
             properties,
             required,
         },
-    }
+    })
 }
 
 /// Generate inspection output from Runfile
 pub fn inspect() -> Result<InspectOutput, String> {
-    let config_content = config::load_config_or_exit();
-    
+    let config_content = match config::load_config() {
+        Some(content) => content,
+        None => return Ok(InspectOutput { tools: Vec::new() }), // No Runfile = no tools
+    };
+
     let program = parser::parse_script(&config_content)
         .map_err(|e| format!("Parse error: {}", e))?;
     
@@ -101,7 +107,9 @@ pub fn inspect() -> Result<InspectOutput, String> {
                 ..
             } => {
                 if utils::matches_current_platform(&attributes) {
-                    tools.push(extract_function_metadata(&name, &attributes));
+                    if let Some(tool) = extract_function_metadata(&name, &attributes) {
+                        tools.push(tool);
+                    }
                 }
             }
             Statement::BlockFunctionDef {
@@ -110,7 +118,9 @@ pub fn inspect() -> Result<InspectOutput, String> {
                 ..
             } => {
                 if utils::matches_current_platform(&attributes) {
-                    tools.push(extract_function_metadata(&name, &attributes));
+                    if let Some(tool) = extract_function_metadata(&name, &attributes) {
+                        tools.push(tool);
+                    }
                 }
             }
             _ => {}
@@ -380,18 +390,23 @@ fn handle_tools_call(
 }
 
 /// Process a single JSON-RPC request
-fn process_request(request: JsonRpcRequest) -> JsonRpcResponse {
+fn process_request(request: JsonRpcRequest) -> Option<JsonRpcResponse> {
+    // Handle notifications (requests without an id)
+    if request.id.is_none() {
+        // Process notification but don't send a response
+        match request.method.as_str() {
+            "initialized" | "notifications/initialized" => {
+                // Acknowledged, no response needed
+            }
+            _ => {
+                // Unknown notification, just ignore
+            }
+        }
+        return None;
+    }
+
     let result = match request.method.as_str() {
         "initialize" => handle_initialize(request.params),
-        "initialized" => {
-            // Notification - no response needed
-            return JsonRpcResponse {
-                jsonrpc: "2.0".to_string(),
-                id: None,
-                result: None,
-                error: None,
-            };
-        }
         "tools/list" => handle_tools_list(request.params),
         "tools/call" => handle_tools_call(request.params),
         _ => Err(JsonRpcError {
@@ -401,7 +416,7 @@ fn process_request(request: JsonRpcRequest) -> JsonRpcResponse {
         }),
     };
     
-    match result {
+    Some(match result {
         Ok(res) => JsonRpcResponse {
             jsonrpc: "2.0".to_string(),
             id: request.id,
@@ -414,7 +429,7 @@ fn process_request(request: JsonRpcRequest) -> JsonRpcResponse {
             result: None,
             error: Some(err),
         },
-    }
+    })
 }
 
 /// Serve MCP protocol over stdio
@@ -464,8 +479,8 @@ pub fn serve_mcp() {
         // Process request
         let response = process_request(request);
         
-        // Only send response if there's an ID (not a notification)
-        if response.id.is_some() || response.error.is_some() {
+        // Only send response if one was returned (not a notification)
+        if let Some(response) = response {
             if let Ok(json) = serde_json::to_string(&response) {
                 let _ = writeln!(stdout, "{}", json);
                 let _ = stdout.flush();
@@ -482,12 +497,20 @@ mod tests {
     #[test]
     fn test_extract_function_metadata_with_desc() {
         let attributes = vec![Attribute::Desc("Test function".to_string())];
-        let tool = extract_function_metadata("test", &attributes);
-        
+        let tool = extract_function_metadata("test", &attributes).unwrap();
+
         assert_eq!(tool.name, "test");
         assert_eq!(tool.description, "Test function");
         assert!(tool.input_schema.properties.is_empty());
         assert!(tool.input_schema.required.is_empty());
+    }
+
+    #[test]
+    fn test_extract_function_metadata_without_desc() {
+        let attributes = vec![];
+        let tool = extract_function_metadata("test", &attributes);
+
+        assert!(tool.is_none());
     }
 
     #[test]
@@ -508,8 +531,8 @@ mod tests {
             }),
         ];
         
-        let tool = extract_function_metadata("scale", &attributes);
-        
+        let tool = extract_function_metadata("scale", &attributes).unwrap();
+
         assert_eq!(tool.name, "scale");
         assert_eq!(tool.description, "Scale service");
         assert_eq!(tool.input_schema.properties.len(), 2);
