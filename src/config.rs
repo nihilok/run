@@ -1,7 +1,24 @@
 //! Configuration file (Runfile) discovery and loading.
 
+use std::cell::RefCell;
 use std::fs;
 use std::path::PathBuf;
+
+thread_local! {
+    static CUSTOM_RUNFILE_PATH: RefCell<Option<PathBuf>> = RefCell::new(None);
+}
+
+/// Set a custom runfile path for the current thread
+pub fn set_custom_runfile_path(path: Option<PathBuf>) {
+    CUSTOM_RUNFILE_PATH.with(|p| {
+        *p.borrow_mut() = path;
+    });
+}
+
+/// Get the custom runfile path if set
+fn get_custom_runfile_path() -> Option<PathBuf> {
+    CUSTOM_RUNFILE_PATH.with(|p| p.borrow().clone())
+}
 
 /// Get the user's home directory in a cross-platform way.
 pub fn get_home_dir() -> Option<PathBuf> {
@@ -27,9 +44,31 @@ pub fn get_home_dir() -> Option<PathBuf> {
     None
 }
 
+/// Load a Runfile from a specific path (file or directory)
+/// If path is a directory, looks for Runfile inside it
+/// Returns Some(content) if found, None otherwise
+pub fn load_from_path(path: &PathBuf) -> Option<String> {
+    let runfile_path = if path.is_dir() {
+        path.join("Runfile")
+    } else {
+        path.clone()
+    };
+    
+    if runfile_path.exists() {
+        fs::read_to_string(&runfile_path).ok()
+    } else {
+        None
+    }
+}
+
 /// Search for a Runfile in the current directory or upwards, then fallback to ~/.runfile.
 /// Returns Some(content) if a file is found (even if empty), or None if no file exists.
 pub fn load_config() -> Option<String> {
+    // First, check if a custom runfile path is set
+    if let Some(custom_path) = get_custom_runfile_path() {
+        return load_from_path(&custom_path);
+    }
+    
     // Start from the current directory and search upwards
     let mut current_dir = match std::env::current_dir() {
         Ok(dir) => dir,
