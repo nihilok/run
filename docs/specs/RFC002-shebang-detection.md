@@ -4,7 +4,7 @@
 
 | Detail             | Value                                  |
 |--------------------|----------------------------------------|
-| **Status**         | Draft                                  |
+| **Status**         | Completed                              |
 | **Target Version** | v0.2.2                                 |
 | **Type**           | Feature                                |
 | **Topic**          | Shebang detection within function body |
