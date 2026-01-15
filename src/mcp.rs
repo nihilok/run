@@ -391,6 +391,20 @@ fn handle_tools_call(
 
 /// Process a single JSON-RPC request
 fn process_request(request: JsonRpcRequest) -> Option<JsonRpcResponse> {
+    // Validate JSON-RPC version
+    if request.jsonrpc != "2.0" {
+        return Some(JsonRpcResponse {
+            jsonrpc: "2.0".to_string(),
+            id: request.id,
+            result: None,
+            error: Some(JsonRpcError {
+                code: -32600,
+                message: format!("Invalid JSON-RPC version: {}", request.jsonrpc),
+                data: None,
+            }),
+        });
+    }
+
     // Handle notifications (requests without an id)
     if request.id.is_none() {
         // Process notification but don't send a response
@@ -545,5 +559,51 @@ mod tests {
         let replicas_param = tool.input_schema.properties.get("replicas").unwrap();
         assert_eq!(replicas_param.param_type, "integer");
         assert_eq!(replicas_param.description, "Number of replicas");
+    }
+
+    #[test]
+    fn test_process_request_invalid_jsonrpc_version() {
+        let request = JsonRpcRequest {
+            jsonrpc: "1.0".to_string(),
+            id: Some(serde_json::json!(1)),
+            method: "initialize".to_string(),
+            params: None,
+        };
+
+        let response = process_request(request);
+        assert!(response.is_some());
+
+        let response = response.unwrap();
+        assert_eq!(response.jsonrpc, "2.0");
+        assert!(response.error.is_some());
+
+        let error = response.error.unwrap();
+        assert_eq!(error.code, -32600);
+        assert!(error.message.contains("Invalid JSON-RPC version"));
+    }
+
+    #[test]
+    fn test_process_request_valid_jsonrpc_version() {
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: Some(serde_json::json!(1)),
+            method: "initialize".to_string(),
+            params: Some(serde_json::json!({
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {
+                    "name": "test-client",
+                    "version": "1.0.0"
+                }
+            })),
+        };
+
+        let response = process_request(request);
+        assert!(response.is_some());
+
+        let response = response.unwrap();
+        assert_eq!(response.jsonrpc, "2.0");
+        assert!(response.result.is_some());
+        assert!(response.error.is_none());
     }
 }

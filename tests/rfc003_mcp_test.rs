@@ -186,7 +186,7 @@ scale() docker compose scale $1=$2
     assert_eq!(tool["name"].as_str().unwrap(), "scale");
     assert_eq!(tool["description"].as_str().unwrap(), "Scale a specific service");
     
-    let schema = &tool["input_schema"];
+    let schema = &tool["inputSchema"];
     assert_eq!(schema["type"].as_str().unwrap(), "object");
     
     let properties = &schema["properties"];
@@ -294,8 +294,8 @@ test() echo "Verbose: $1"
     
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     let tool = &json["tools"][0];
-    let properties = &tool["input_schema"]["properties"];
-    
+    let properties = &tool["inputSchema"]["properties"];
+
     assert_eq!(properties["verbose"]["type"].as_str().unwrap(), "boolean");
 }
 
