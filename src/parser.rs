@@ -138,58 +138,6 @@ fn parse_shebang(body: &str) -> Option<String> {
         })
 }
 
-// Resolve interpreter from shebang to ShellType
-// Handles /usr/bin/env <interpreter> and direct paths like /bin/bash
-fn resolve_shebang_interpreter(shebang: &str) -> Option<ShellType> {
-    // Extract the binary name from the shebang
-    let binary_name = if let Some(env_part) = shebang.strip_prefix("/usr/bin/env ") {
-        // Format: #!/usr/bin/env python
-        // Extract first word after "env"
-        env_part.split_whitespace().next()?.to_string()
-    } else {
-        // Format: #!/bin/bash or #!/usr/bin/python3
-        // Extract basename
-        std::path::Path::new(shebang)
-            .file_name()?
-            .to_str()?
-            .split_whitespace()
-            .next()?
-            .to_string()
-    };
-
-    // Map binary name to ShellType
-    match binary_name.as_str() {
-        "python" => Some(ShellType::Python),
-        "python3" => Some(ShellType::Python3),
-        "node" => Some(ShellType::Node),
-        "ruby" => Some(ShellType::Ruby),
-        "pwsh" | "powershell" => Some(ShellType::Pwsh),
-        "bash" => Some(ShellType::Bash),
-        "sh" => Some(ShellType::Sh),
-        _ => None,  // Unknown interpreter - will be handled by caller
-    }
-}
-
-// Strip shebang line from function body
-// Removes the first line if it's a shebang
-fn strip_shebang(body: &str) -> String {
-    let lines: Vec<&str> = body.lines().collect();
-    let mut result_lines = Vec::new();
-    let mut found_shebang = false;
-    
-    for line in lines {
-        let trimmed = line.trim();
-        if !found_shebang && !trimmed.is_empty() && trimmed.starts_with("#!") {
-            // Skip the shebang line
-            found_shebang = true;
-            continue;
-        }
-        result_lines.push(line);
-    }
-    
-    result_lines.join("\n")
-}
-
 pub fn parse_script(input: &str) -> Result<Program, Box<pest::error::Error<Rule>>> {
     let preprocessed = preprocess_escaped_newlines(input);
     let pairs = ScriptParser::parse(Rule::program, &preprocessed)?;
