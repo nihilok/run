@@ -298,17 +298,126 @@ impl Interpreter {
         TranspilerInterpreter::default()
     }
 
+    /// Collect compatible sibling function names for call site rewriting
+    fn collect_compatible_siblings(&self, target_name: &str, target_interpreter: &TranspilerInterpreter) -> Vec<String> {
+        let mut compatible = Vec::new();
+
+        // Check simple functions
+        for name in self.simple_functions.keys() {
+            if name == target_name {
+                continue;
+            }
+            let metadata = self.function_metadata.get(name);
+            let attributes = metadata.map(|m| m.attributes.as_slice()).unwrap_or(&[]);
+            let func_interpreter = self.resolve_function_interpreter(name, attributes, None);
+
+            if target_interpreter.is_compatible_with(&func_interpreter) {
+                compatible.push(name.clone());
+            }
+        }
+
+        // Check block functions
+        for name in self.block_functions.keys() {
+            if name == target_name {
+                continue;
+            }
+            let metadata = self.function_metadata.get(name);
+            let (attributes, shebang) = metadata.map_or_else(
+                || (Vec::new(), None),
+                |m| (m.attributes.clone(), m.shebang.as_deref())
+            );
+            let func_interpreter = self.resolve_function_interpreter(name, &attributes, shebang);
+
+            if target_interpreter.is_compatible_with(&func_interpreter) {
+                if !compatible.contains(name) {
+                    compatible.push(name.clone());
+                }
+            }
+        }
+
+        compatible
+    }
+
+    /// Collect incompatible sibling function names (those with colons that need run wrappers)
+    fn collect_incompatible_colon_siblings(&self, target_name: &str, target_interpreter: &TranspilerInterpreter) -> Vec<String> {
+        let mut incompatible = Vec::new();
+
+        // Check simple functions
+        for name in self.simple_functions.keys() {
+            if name == target_name || !name.contains(':') {
+                continue;
+            }
+            let metadata = self.function_metadata.get(name);
+            let attributes = metadata.map(|m| m.attributes.as_slice()).unwrap_or(&[]);
+            let func_interpreter = self.resolve_function_interpreter(name, attributes, None);
+
+            if !target_interpreter.is_compatible_with(&func_interpreter) {
+                incompatible.push(name.clone());
+            }
+        }
+
+        // Check block functions
+        for name in self.block_functions.keys() {
+            if name == target_name || !name.contains(':') {
+                continue;
+            }
+            let metadata = self.function_metadata.get(name);
+            let (attributes, shebang) = metadata.map_or_else(
+                || (Vec::new(), None),
+                |m| (m.attributes.clone(), m.shebang.as_deref())
+            );
+            let func_interpreter = self.resolve_function_interpreter(name, &attributes, shebang);
+
+            if !target_interpreter.is_compatible_with(&func_interpreter) {
+                if !incompatible.contains(name) {
+                    incompatible.push(name.clone());
+                }
+            }
+        }
+
+        incompatible
+    }
+
+    /// Build wrapper functions for incompatible siblings (calls `run <function>`)
+    fn build_incompatible_wrappers(&self, target_name: &str, target_interpreter: &TranspilerInterpreter) -> String {
+        let incompatible = self.collect_incompatible_colon_siblings(target_name, target_interpreter);
+
+        if incompatible.is_empty() {
+            return String::new();
+        }
+
+        let mut wrappers = String::new();
+
+        for name in &incompatible {
+            let sanitized = transpiler::sanitize_name(name);
+            // Convert colon notation to space notation for run command
+            // e.g., "node:hello" -> "node hello"
+            let run_args = name.replace(':', " ");
+
+            let wrapper = match target_interpreter {
+                TranspilerInterpreter::Pwsh => {
+                    format!("function {} {{\n    run {} @args\n}}", sanitized, run_args)
+                }
+                _ => {
+                    format!("{}() {{\n    run {} \"$@\"\n}}", sanitized, run_args)
+                }
+            };
+
+            wrappers.push_str(&wrapper);
+            wrappers.push_str("\n\n");
+        }
+
+        wrappers
+    }
+
     /// Build a preamble of all compatible sibling functions
     fn build_function_preamble(&self, target_name: &str, target_interpreter: &TranspilerInterpreter) -> String {
         let mut preamble = String::new();
         
-        // Collect all sibling function names (for call site rewriting)
-        let sibling_names: Vec<&str> = self.simple_functions.keys()
-            .chain(self.block_functions.keys())
-            .filter(|&name| name != target_name)
-            .map(|s| s.as_str())
-            .collect();
-        
+        // Collect only compatible sibling function names (for call site rewriting)
+        let compatible_siblings = self.collect_compatible_siblings(target_name, target_interpreter);
+        let sibling_names: Vec<&str> = compatible_siblings.iter().map(|s| s.as_str()).collect();
+
         // Transpile simple functions
         for (name, command_template) in &self.simple_functions {
             if name == target_name {
@@ -373,6 +482,12 @@ impl Interpreter {
             preamble.push_str("\n\n");
         }
         
+        // Add wrapper functions for incompatible siblings with colons
+        let wrappers = self.build_incompatible_wrappers(target_name, target_interpreter);
+        if !wrappers.is_empty() {
+            preamble.push_str(&wrappers);
+        }
+
         preamble
     }
 
@@ -433,13 +548,13 @@ impl Interpreter {
         // Determine the target interpreter
         let target_interpreter = self.resolve_function_interpreter(target_name, attributes, None);
         
-        // Collect all sibling function names for call site rewriting
-        let sibling_names: Vec<&str> = self.simple_functions.keys()
-            .chain(self.block_functions.keys())
-            .filter(|&name| name != target_name)
-            .map(|s| s.as_str())
-            .collect();
-        
+        // Collect compatible sibling names + incompatible colon siblings for call site rewriting
+        // Both need to be rewritten: compatible ones to their sanitized names,
+        // incompatible colon ones to wrapper functions that call `run`
+        let mut rewritable_names = self.collect_compatible_siblings(target_name, &target_interpreter);
+        rewritable_names.extend(self.collect_incompatible_colon_siblings(target_name, &target_interpreter));
+        let sibling_names: Vec<&str> = rewritable_names.iter().map(|s| s.as_str()).collect();
+
         // Rewrite call sites in the command template
         let rewritten_body = transpiler::rewrite_call_sites(command_template, &sibling_names);
         
@@ -524,13 +639,13 @@ impl Interpreter {
         // For shell-compatible languages (sh, bash, pwsh), build preamble and compose
         let full_script = commands.join("\n");
         
-        // Collect all sibling function names for call site rewriting
-        let sibling_names: Vec<&str> = self.simple_functions.keys()
-            .chain(self.block_functions.keys())
-            .filter(|&name| name != target_name)
-            .map(|s| s.as_str())
-            .collect();
-        
+        // Collect compatible sibling names + incompatible colon siblings for call site rewriting
+        // Both need to be rewritten: compatible ones to their sanitized names,
+        // incompatible colon ones to wrapper functions that call `run`
+        let mut rewritable_names = self.collect_compatible_siblings(target_name, &target_interpreter);
+        rewritable_names.extend(self.collect_incompatible_colon_siblings(target_name, &target_interpreter));
+        let sibling_names: Vec<&str> = rewritable_names.iter().map(|s| s.as_str()).collect();
+
         // Rewrite call sites in the target body
         let rewritten_body = transpiler::rewrite_call_sites(&full_script, &sibling_names);
         
