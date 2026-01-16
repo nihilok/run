@@ -426,3 +426,234 @@ deploy:production() {
     assert!(stdout.contains("docker tag myapp:v1.0.0 myapp:latest"), "Expected TAG variable in tag");
     assert!(stdout.contains("Deploying to production"), "Expected ENV variable");
 }
+
+#[test]
+fn test_shell_calling_incompatible_colon_function_node() {
+    // Test that a shell function can call a node function with colon notation
+    // This should generate a wrapper function that calls `run node hello`
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let runfile = r#"
+# @shell node
+node:greet() {
+    console.log("Hello from Node.js!");
+}
+
+wrapper() {
+    echo "Before node call"
+    node:greet
+    echo "After node call"
+}
+"#;
+    create_runfile(temp_dir.path(), runfile);
+
+    let output = Command::new(&binary)
+        .arg("wrapper")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.contains("Before node call"), "Expected 'Before node call' in output");
+    assert!(stdout.contains("Hello from Node.js!"), "Expected Node.js output");
+    assert!(stdout.contains("After node call"), "Expected 'After node call' in output");
+}
+
+#[test]
+fn test_shell_calling_incompatible_colon_function_python() {
+    // Test that a shell function can call a python function with colon notation
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let runfile = r#"
+# @shell python
+python:count() {
+    for i in range(3):
+        print(f"Count: {i}")
+}
+
+wrapper() {
+    echo "Before python call"
+    python:count
+    echo "After python call"
+}
+"#;
+    create_runfile(temp_dir.path(), runfile);
+
+    let output = Command::new(&binary)
+        .arg("wrapper")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.contains("Before python call"), "Expected 'Before python call' in output");
+    assert!(stdout.contains("Count: 0"), "Expected Python count output");
+    assert!(stdout.contains("Count: 1"), "Expected Python count output");
+    assert!(stdout.contains("Count: 2"), "Expected Python count output");
+    assert!(stdout.contains("After python call"), "Expected 'After python call' in output");
+}
+
+#[test]
+fn test_shell_calling_multiple_incompatible_functions() {
+    // Test that a shell function can call multiple incompatible functions
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let runfile = r#"
+# @shell node
+node:hello() {
+    console.log("Hello from Node!");
+}
+
+# @shell python
+python:hello() {
+    print("Hello from Python!")
+}
+
+multi_call() {
+    echo "Starting multi-language calls"
+    node:hello
+    python:hello
+    echo "All calls complete"
+}
+"#;
+    create_runfile(temp_dir.path(), runfile);
+
+    let output = Command::new(&binary)
+        .arg("multi_call")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.contains("Starting multi-language calls"), "Expected start message");
+    assert!(stdout.contains("Hello from Node!"), "Expected Node.js output");
+    assert!(stdout.contains("Hello from Python!"), "Expected Python output");
+    assert!(stdout.contains("All calls complete"), "Expected completion message");
+}
+
+#[test]
+fn test_mixed_compatible_and_incompatible_calls() {
+    // Test mixing compatible (shell) and incompatible (polyglot) function calls
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let runfile = r#"
+# Compatible shell function
+build() echo "building..."
+
+# Incompatible node function
+# @shell node
+node:validate() {
+    console.log("Validating with Node.js...");
+}
+
+# Main function calls both
+ci() {
+    build
+    node:validate
+    echo "CI complete"
+}
+"#;
+    create_runfile(temp_dir.path(), runfile);
+
+    let output = Command::new(&binary)
+        .arg("ci")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.contains("building..."), "Expected build output");
+    assert!(stdout.contains("Validating with Node.js..."), "Expected Node.js validation output");
+    assert!(stdout.contains("CI complete"), "Expected CI complete message");
+}
+
+#[test]
+fn test_incompatible_function_without_colon_not_wrapped() {
+    // Functions without colons should NOT be wrapped (they'll fail if called directly)
+    // This test verifies that only colon-named functions get wrappers
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let runfile = r#"
+# Shell function that works fine
+shell_func() echo "shell works"
+
+# Python function without colon - cannot be called from shell directly
+# @shell python
+python_only() {
+    print("python only")
+}
+
+# This should work because it only calls shell_func
+safe_caller() {
+    shell_func
+    echo "done"
+}
+"#;
+    create_runfile(temp_dir.path(), runfile);
+
+    let output = Command::new(&binary)
+        .arg("safe_caller")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.contains("shell works"), "Expected shell_func output");
+    assert!(stdout.contains("done"), "Expected done message");
+}
+
+#[test]
+fn test_nested_colon_function_composition_with_polyglot() {
+    // Test deeply nested colon functions mixing shell and polyglot
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let runfile = r#"
+# Shell functions
+app:start() echo "app starting"
+app:stop() echo "app stopping"
+
+# Node function
+# @shell node
+node:healthcheck() {
+    console.log("Healthcheck: OK");
+}
+
+# Orchestrator
+deploy:full() {
+    app:start
+    node:healthcheck
+    app:stop
+}
+"#;
+    create_runfile(temp_dir.path(), runfile);
+
+    let output = Command::new(&binary)
+        .arg("deploy:full")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(stdout.contains("app starting"), "Expected app:start output");
+    assert!(stdout.contains("Healthcheck: OK"), "Expected node:healthcheck output");
+    assert!(stdout.contains("app stopping"), "Expected app:stop output");
+}
+

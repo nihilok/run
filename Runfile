@@ -101,3 +101,8 @@ python:count() {
     for i in range(5):
         print(f"Number: {i}")
 }
+
+nested() {
+    incompatible_with_pwsh
+    node:hello
+}
