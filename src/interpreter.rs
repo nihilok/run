@@ -1,6 +1,7 @@
 // Interpreter to execute the AST
 
 use crate::ast::{Attribute, Expression, Program, ShellType, Statement};
+use crate::transpiler::{self, Interpreter as TranspilerInterpreter};
 use crate::utils;
 use std::collections::HashMap;
 use std::process::{Command, Stdio};
@@ -91,43 +92,40 @@ impl Interpreter {
         // 3. Try replacing underscores with colons: "docker_shell" -> "docker:shell"
 
         // Try direct match first - simple functions
-        if let Some(command_template) = self.simple_functions.get(function_name) {
-            let command = self.substitute_args(command_template, args);
-            let attributes = self.get_simple_function_attributes(function_name);
-            return self.execute_command(&command, attributes);
+        if let Some(command_template) = self.simple_functions.get(function_name).cloned() {
+            let attributes = self.get_simple_function_attributes(function_name).to_vec();
+            return self.execute_simple_function(function_name, &command_template, args, &attributes);
         }
 
         // Try direct match - block functions
         if let Some(commands) = self.block_functions.get(function_name).cloned() {
             let (attributes, shebang) = self.get_block_function_metadata(function_name);
-            return self.execute_block_commands(&commands, args, &attributes, shebang);
+            return self.execute_block_commands(function_name, &commands, args, &attributes, shebang);
         }
 
         // If we have args, try treating the first arg as a subcommand
         if !args.is_empty() {
             let nested_name = format!("{}:{}", function_name, args[0]);
-            if let Some(command_template) = self.simple_functions.get(&nested_name) {
-                let command = self.substitute_args(command_template, &args[1..]);
-                let attributes = self.get_simple_function_attributes(&nested_name);
-                return self.execute_command(&command, attributes);
+            if let Some(command_template) = self.simple_functions.get(&nested_name).cloned() {
+                let attributes = self.get_simple_function_attributes(&nested_name).to_vec();
+                return self.execute_simple_function(&nested_name, &command_template, &args[1..], &attributes);
             }
             if let Some(commands) = self.block_functions.get(&nested_name).cloned() {
                 let (attributes, shebang) = self.get_block_function_metadata(&nested_name);
-                return self.execute_block_commands(&commands, &args[1..], &attributes, shebang);
+                return self.execute_block_commands(&nested_name, &commands, &args[1..], &attributes, shebang);
             }
         }
 
         // Try replacing underscores with colons
         let with_colons = function_name.replace("_", ":");
         if with_colons != function_name {
-            if let Some(command_template) = self.simple_functions.get(&with_colons) {
-                let command = self.substitute_args(command_template, args);
-                let attributes = self.get_simple_function_attributes(&with_colons);
-                return self.execute_command(&command, attributes);
+            if let Some(command_template) = self.simple_functions.get(&with_colons).cloned() {
+                let attributes = self.get_simple_function_attributes(&with_colons).to_vec();
+                return self.execute_simple_function(&with_colons, &command_template, args, &attributes);
             }
             if let Some(commands) = self.block_functions.get(&with_colons).cloned() {
                 let (attributes, shebang) = self.get_block_function_metadata(&with_colons);
-                return self.execute_block_commands(&commands, args, &attributes, shebang);
+                return self.execute_block_commands(&with_colons, &commands, args, &attributes, shebang);
             }
         }
 
@@ -150,16 +148,15 @@ impl Interpreter {
         // Direct function call with args in parentheses
         // Try to find the function and execute it with substituted arguments
 
-        if let Some(command_template) = self.simple_functions.get(function_name) {
-            let command = self.substitute_args(command_template, args);
-            let attributes = self.get_simple_function_attributes(function_name);
-            return self.execute_command(&command, attributes);
+        if let Some(command_template) = self.simple_functions.get(function_name).cloned() {
+            let attributes = self.get_simple_function_attributes(function_name).to_vec();
+            return self.execute_simple_function(function_name, &command_template, args, &attributes);
         }
 
         // Check for block function definitions
         if let Some(commands) = self.block_functions.get(function_name).cloned() {
             let (attributes, shebang) = self.get_block_function_metadata(function_name);
-            return self.execute_block_commands(&commands, args, &attributes, shebang);
+            return self.execute_block_commands(function_name, &commands, args, &attributes, shebang);
         }
 
         // Check for full function definitions
@@ -281,49 +278,304 @@ impl Interpreter {
         Ok(())
     }
 
+    /// Resolve the interpreter for a given function
+    fn resolve_function_interpreter(&self, _name: &str, attributes: &[Attribute], shebang: Option<&str>) -> TranspilerInterpreter {
+        // Check for @shell attribute
+        for attr in attributes {
+            if let Attribute::Shell(shell_type) = attr {
+                return TranspilerInterpreter::from_shell_type(shell_type);
+            }
+        }
+        
+        // Check for shebang
+        if let Some(shebang_str) = shebang {
+            if let Some(shell_type) = Self::resolve_shebang_interpreter(shebang_str) {
+                return TranspilerInterpreter::from_shell_type(&shell_type);
+            }
+        }
+        
+        // Default to platform default
+        TranspilerInterpreter::default()
+    }
+
+    /// Build a preamble of all compatible sibling functions
+    fn build_function_preamble(&self, target_name: &str, target_interpreter: &TranspilerInterpreter) -> String {
+        let mut preamble = String::new();
+        
+        // Collect all sibling function names (for call site rewriting)
+        let sibling_names: Vec<&str> = self.simple_functions.keys()
+            .chain(self.block_functions.keys())
+            .filter(|&name| name != target_name)
+            .map(|s| s.as_str())
+            .collect();
+        
+        // Transpile simple functions
+        for (name, command_template) in &self.simple_functions {
+            if name == target_name {
+                continue;
+            }
+            
+            let metadata = self.function_metadata.get(name);
+            let attributes = metadata.map(|m| m.attributes.as_slice()).unwrap_or(&[]);
+            let func_interpreter = self.resolve_function_interpreter(name, attributes, None);
+            
+            if !target_interpreter.is_compatible_with(&func_interpreter) {
+                continue;
+            }
+            
+            // Rewrite call sites in the command template
+            let rewritten_body = transpiler::rewrite_call_sites(command_template, &sibling_names);
+            
+            let transpiled = match target_interpreter {
+                TranspilerInterpreter::Pwsh => {
+                    transpiler::transpile_to_pwsh(name, &rewritten_body, false)
+                }
+                _ => {
+                    transpiler::transpile_to_shell(name, &rewritten_body, false)
+                }
+            };
+            
+            preamble.push_str(&transpiled);
+            preamble.push_str("\n\n");
+        }
+        
+        // Transpile block functions
+        for (name, commands) in &self.block_functions {
+            if name == target_name {
+                continue;
+            }
+            
+            let metadata = self.function_metadata.get(name);
+            let (attributes, shebang) = metadata.map_or_else(
+                || (Vec::new(), None),
+                |m| (m.attributes.clone(), m.shebang.as_deref())
+            );
+            let func_interpreter = self.resolve_function_interpreter(name, &attributes, shebang);
+            
+            if !target_interpreter.is_compatible_with(&func_interpreter) {
+                continue;
+            }
+            
+            // Join commands and rewrite call sites
+            let body = commands.join("\n");
+            let rewritten_body = transpiler::rewrite_call_sites(&body, &sibling_names);
+            
+            let transpiled = match target_interpreter {
+                TranspilerInterpreter::Pwsh => {
+                    transpiler::transpile_to_pwsh(name, &rewritten_body, true)
+                }
+                _ => {
+                    transpiler::transpile_to_shell(name, &rewritten_body, true)
+                }
+            };
+            
+            preamble.push_str(&transpiled);
+            preamble.push_str("\n\n");
+        }
+        
+        preamble
+    }
+
+    /// Build a preamble of variable assignments
+    fn build_variable_preamble(&self, target_interpreter: &TranspilerInterpreter) -> String {
+        if self.variables.is_empty() {
+            return String::new();
+        }
+        
+        match target_interpreter {
+            TranspilerInterpreter::Pwsh => {
+                // PowerShell variable syntax: $VAR = "value"
+                self.variables
+                    .iter()
+                    .map(|(k, v)| format!("${} = \"{}\"", k, v.replace('"', "`\"")))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }
+            _ => {
+                // Shell variable syntax: VAR="value"
+                self.variables
+                    .iter()
+                    .map(|(k, v)| format!("{}=\"{}\"", k, v.replace('"', "\\\"")))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }
+        }
+    }
+
+    /// Execute a simple function with preambles for composition
+    fn execute_simple_function(
+        &self,
+        target_name: &str,
+        command_template: &str,
+        args: &[String],
+        attributes: &[Attribute],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Determine the target interpreter
+        let target_interpreter = self.resolve_function_interpreter(target_name, attributes, None);
+        
+        // Collect all sibling function names for call site rewriting
+        let sibling_names: Vec<&str> = self.simple_functions.keys()
+            .chain(self.block_functions.keys())
+            .filter(|&name| name != target_name)
+            .map(|s| s.as_str())
+            .collect();
+        
+        // Rewrite call sites in the command template
+        let rewritten_body = transpiler::rewrite_call_sites(command_template, &sibling_names);
+        
+        // Build variable preamble
+        let var_preamble = self.build_variable_preamble(&target_interpreter);
+        
+        // Build function preamble
+        let func_preamble = self.build_function_preamble(target_name, &target_interpreter);
+        
+        // Combine preambles and body
+        let combined_script = if var_preamble.is_empty() && func_preamble.is_empty() {
+            // No preamble needed, just use the command
+            rewritten_body.clone()
+        } else {
+            // Build full script with preambles and the command
+            let mut parts = Vec::new();
+            if !var_preamble.is_empty() {
+                parts.push(var_preamble);
+            }
+            if !func_preamble.is_empty() {
+                parts.push(func_preamble);
+            }
+            parts.push(rewritten_body.clone());
+            parts.join("\n")
+        };
+        
+        // Substitute args in the combined script
+        let substituted = self.substitute_args(&combined_script, args);
+        
+        // Execute as a single shell invocation
+        self.execute_single_shell_invocation(&substituted, &target_interpreter)
+    }
+
     fn execute_block_commands(
         &self,
+        target_name: &str,
         commands: &[String],
         args: &[String],
         attributes: &[Attribute],
         shebang: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // Check if there's a custom shell attribute
-        let has_custom_shell = attributes
-            .iter()
-            .any(|attr| matches!(attr, Attribute::Shell(_)));
+        // Determine the target interpreter
+        let target_interpreter = self.resolve_function_interpreter(target_name, attributes, shebang);
         
-        if has_custom_shell {
-            // For custom shells (Python, Node, Ruby, etc.), pass all commands as one block
+        // Check if this is a polyglot language (Python, Node, Ruby)
+        // These cannot use function composition, so we execute them without preamble
+        let is_polyglot = matches!(
+            target_interpreter,
+            TranspilerInterpreter::Python | TranspilerInterpreter::Python3 | 
+            TranspilerInterpreter::Node | TranspilerInterpreter::Ruby
+        );
+        
+        if is_polyglot {
+            // For polyglot languages, execute as before without preamble
             let full_script = commands.join("\n");
-            let substituted = self.substitute_args(&full_script, args);
-            self.execute_command_with_args(&substituted, attributes, args)?;
-        } else if let Some(shebang_str) = shebang {
-            // Use shebang if present (and no @shell attribute)
-            if let Some(shell_type) = Self::resolve_shebang_interpreter(shebang_str) {
-                // Create a synthetic Shell attribute from the shebang
-                let shebang_attributes = vec![Attribute::Shell(shell_type)];
-                let full_script = commands.join("\n");
-                // Strip the shebang line from the script
-                let stripped_script = Self::strip_shebang(&full_script);
-                let substituted = self.substitute_args(&stripped_script, args);
-                self.execute_command_with_args(&substituted, &shebang_attributes, args)?;
+            
+            // Strip shebang if present
+            let script = if shebang.is_some() {
+                Self::strip_shebang(&full_script)
             } else {
-                // Unknown interpreter - fall back to default shell with warning
-                eprintln!("Warning: Unknown interpreter in shebang '{}'. Falling back to default shell.", shebang_str);
-                // Execute with regular shell
-                for cmd in commands {
-                    let substituted = self.substitute_args(cmd, args);
-                    self.execute_command_with_args(&substituted, attributes, &[])?;
+                full_script
+            };
+            
+            let substituted = self.substitute_args(&script, args);
+            
+            // Execute with appropriate shell attribute
+            let exec_attributes: Vec<Attribute> = if let Some(attr) = attributes.iter().find(|a| matches!(a, Attribute::Shell(_))) {
+                vec![attr.clone()]
+            } else if let Some(shebang_str) = shebang {
+                if let Some(shell_type) = Self::resolve_shebang_interpreter(shebang_str) {
+                    vec![Attribute::Shell(shell_type)]
+                } else {
+                    Vec::new()
                 }
-            }
-        } else {
-            // For regular shell, execute commands one by one
-            for cmd in commands {
-                let substituted = self.substitute_args(cmd, args);
-                self.execute_command_with_args(&substituted, attributes, &[])?;
-            }
+            } else {
+                Vec::new()
+            };
+            
+            return self.execute_command_with_args(&substituted, &exec_attributes, args);
         }
+        
+        // For shell-compatible languages (sh, bash, pwsh), build preamble and compose
+        let full_script = commands.join("\n");
+        
+        // Collect all sibling function names for call site rewriting
+        let sibling_names: Vec<&str> = self.simple_functions.keys()
+            .chain(self.block_functions.keys())
+            .filter(|&name| name != target_name)
+            .map(|s| s.as_str())
+            .collect();
+        
+        // Rewrite call sites in the target body
+        let rewritten_body = transpiler::rewrite_call_sites(&full_script, &sibling_names);
+        
+        // Build variable preamble
+        let var_preamble = self.build_variable_preamble(&target_interpreter);
+        
+        // Build function preamble
+        let func_preamble = self.build_function_preamble(target_name, &target_interpreter);
+        
+        // Combine preambles and body
+        let combined_script = if var_preamble.is_empty() && func_preamble.is_empty() {
+            // No preamble needed, just use the body
+            rewritten_body.clone()
+        } else {
+            // Build full script with preambles
+            let mut parts = Vec::new();
+            if !var_preamble.is_empty() {
+                parts.push(var_preamble);
+            }
+            if !func_preamble.is_empty() {
+                parts.push(func_preamble);
+            }
+            parts.push(rewritten_body.clone());
+            parts.join("\n")
+        };
+        
+        // Substitute args in the combined script
+        let substituted = self.substitute_args(&combined_script, args);
+        
+        // Execute as a single shell invocation
+        self.execute_single_shell_invocation(&substituted, &target_interpreter)
+    }
+
+    /// Execute a script in a single shell invocation
+    fn execute_single_shell_invocation(
+        &self,
+        script: &str,
+        interpreter: &TranspilerInterpreter,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Handle Python separately to avoid temporary value issues
+        let python_cmd;
+        let (shell_cmd, shell_arg) = match interpreter {
+            TranspilerInterpreter::Sh => ("sh", "-c"),
+            TranspilerInterpreter::Bash => ("bash", "-c"),
+            TranspilerInterpreter::Pwsh => ("pwsh", "-Command"),
+            TranspilerInterpreter::Python => {
+                python_cmd = Self::get_python_executable();
+                (python_cmd.as_str(), "-c")
+            }
+            TranspilerInterpreter::Python3 => ("python3", "-c"),
+            TranspilerInterpreter::Node => ("node", "-e"),
+            TranspilerInterpreter::Ruby => ("ruby", "-e"),
+        };
+        
+        let status = Command::new(shell_cmd)
+            .arg(shell_arg)
+            .arg(script)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()?;
+        
+        if !status.success() {
+            return Err(format!("Command failed with status: {}", status).into());
+        }
+        
         Ok(())
     }
 
