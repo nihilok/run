@@ -10,6 +10,7 @@ pub mod interpreter;
 pub mod mcp;
 pub mod parser;
 pub mod repl;
+pub mod transpiler;
 pub mod utils;
 
 /// Print an error message and exit with code 1.
