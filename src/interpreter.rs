@@ -376,6 +376,26 @@ impl Interpreter {
         preamble
     }
 
+    /// Escape a string value for safe use in shell variable assignment
+    fn escape_shell_value(value: &str) -> String {
+        // Escape special shell characters
+        value
+            .replace('\\', "\\\\")  // Backslash must be first
+            .replace('"', "\\\"")   // Double quotes
+            .replace('$', "\\$")    // Dollar signs
+            .replace('`', "\\`")    // Backticks
+            .replace('!', "\\!")    // History expansion
+    }
+
+    /// Escape a string value for safe use in PowerShell variable assignment
+    fn escape_pwsh_value(value: &str) -> String {
+        // PowerShell uses backtick for escaping
+        value
+            .replace('`', "``")     // Backtick must be first
+            .replace('"', "`\"")    // Double quotes
+            .replace('$', "`$")     // Dollar signs
+    }
+
     /// Build a preamble of variable assignments
     fn build_variable_preamble(&self, target_interpreter: &TranspilerInterpreter) -> String {
         if self.variables.is_empty() {
@@ -387,7 +407,7 @@ impl Interpreter {
                 // PowerShell variable syntax: $VAR = "value"
                 self.variables
                     .iter()
-                    .map(|(k, v)| format!("${} = \"{}\"", k, v.replace('"', "`\"")))
+                    .map(|(k, v)| format!("${} = \"{}\"", k, Self::escape_pwsh_value(v)))
                     .collect::<Vec<_>>()
                     .join("\n")
             }
@@ -395,7 +415,7 @@ impl Interpreter {
                 // Shell variable syntax: VAR="value"
                 self.variables
                     .iter()
-                    .map(|(k, v)| format!("{}=\"{}\"", k, v.replace('"', "\\\"")))
+                    .map(|(k, v)| format!("{}=\"{}\"", k, Self::escape_shell_value(v)))
                     .collect::<Vec<_>>()
                     .join("\n")
             }

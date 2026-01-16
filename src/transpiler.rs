@@ -23,6 +23,8 @@ impl Interpreter {
                 | (Interpreter::Bash, Interpreter::Bash)
                 | (Interpreter::Pwsh, Interpreter::Pwsh)
                 | (Interpreter::Python, Interpreter::Python)
+                | (Interpreter::Python, Interpreter::Python3)  // Python and Python3 can compose
+                | (Interpreter::Python3, Interpreter::Python)  // Python3 and Python can compose
                 | (Interpreter::Python3, Interpreter::Python3)
                 | (Interpreter::Node, Interpreter::Node)
                 | (Interpreter::Ruby, Interpreter::Ruby)
@@ -279,11 +281,16 @@ mod tests {
     #[test]
     fn test_interpreter_compatibility_polyglot() {
         let python = Interpreter::Python;
+        let python3 = Interpreter::Python3;
         let node = Interpreter::Node;
         let ruby = Interpreter::Ruby;
         let sh = Interpreter::Sh;
         
-        // Python, Node, Ruby cannot compose with each other or with shell
+        // Python and Python3 can compose with each other
+        assert!(python.is_compatible_with(&python3));
+        assert!(python3.is_compatible_with(&python));
+        
+        // But not with other polyglot languages
         assert!(!python.is_compatible_with(&node));
         assert!(!python.is_compatible_with(&ruby));
         assert!(!python.is_compatible_with(&sh));
@@ -293,6 +300,7 @@ mod tests {
         
         // But they can compose with themselves
         assert!(python.is_compatible_with(&python));
+        assert!(python3.is_compatible_with(&python3));
         assert!(node.is_compatible_with(&node));
         assert!(ruby.is_compatible_with(&ruby));
     }
