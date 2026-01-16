@@ -3,9 +3,9 @@
 [![Crates.io](https://img.shields.io/crates/v/run.svg)](https://crates.io/crates/run)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-**Task runner that speaks shell, Python, Node, and Ruby.**
+**Lightweight task runner that speaks shell, Python, Node, and more, that communicates natively with your AI Agents.**
 
-Define tasks in a `Runfile`, run them from anywhere. No TOML, no YAML, no new syntax to learn.
+Define tasks in a `Runfile`, run them from anywhere. Make them available to AI via the in-built MCP server.
 
 ```bash
 # Runfile
@@ -55,6 +55,7 @@ Perfect for **project automation**, **CI scripts**, and **personal workflows**.
   - [Arguments & Defaults](#arguments--defaults)
   - [Attributes & Polyglot Scripts](#attributes--polyglot-scripts)
   - [Nested Namespaces](#nested-namespaces)
+  - [Function Composition](#function-composition)
   - [AI Agent Integration (MCP)](#ai-agent-integration-mcp)
 - [Configuration](#configuration)
   - [Shell Selection](#shell-selection)
@@ -294,6 +295,40 @@ $ run docker build
 $ run docker logs
 ```
 
+### Function Composition
+
+Functions can call other functions defined in the same Runfile, enabling task composition and code reuse without duplication.
+
+```bash
+# Base tasks
+build() cargo build --release
+test() cargo test
+lint() cargo clippy
+
+# Composed task that calls other functions
+ci() {
+    echo "Running CI pipeline..."
+    lint
+    test
+    build
+}
+
+# Deploy depends on successful build
+deploy() {
+    build || exit 1
+    echo "Deploying..."
+    scp target/release/app server:/bin/
+}
+```
+
+When you run `run ci`, all compatible functions are automatically injected into the execution scope, so you can call them directly without spawning new processes.
+
+**Key features:**
+- Functions can call sibling functions defined in the same file
+- Exit codes are properly propagated (use `|| exit 1` to stop on failure)
+- Works across different shells when interpreters are compatible
+- Top-level variables are also available to all functions
+
 ---
 
 ## AI Agent Integration (MCP)
@@ -343,12 +378,14 @@ Configure in your AI client (e.g., Claude Desktop):
   "mcpServers": {
     "my-project": {
       "command": "run",
-      "args": ["--serve-mcp"],
+      "args": ["--serve-mcp", "--runfile", "/path/to/your/project/Runfile"],
       "cwd": "/path/to/your/project"
     }
   }
 }
 ```
+
+**Note**: The `--runfile` argument is required to specify which Runfile the AI agent should use. This allows you to expose specific Runfiles to different AI contexts.
 
 Now AI agents can:
 - Discover available tools via `run --inspect`
