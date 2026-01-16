@@ -1,6 +1,6 @@
 # RFC004: Function Signature Notation
 
-**Status**: Draft | **Type**: Feature | **Target**: v0.3.1  
+**Status**: Draft | **Type**: Feature | **Target**: v0.3.2  
 **Topic**: Grammar: Function Signatures, MCP Integration, Parameter Typing
 
 ## Summary
