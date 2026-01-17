@@ -4,6 +4,7 @@
 //! It handles function definitions, variable substitution, and command execution
 //! with support for multiple interpreters (sh, bash, python, node, ruby, etc.)
 
+mod execution;
 mod preamble;
 mod shell;
 
@@ -320,8 +321,8 @@ impl Interpreter {
             self.resolve_function_interpreter(name, attrs, shebang)
         };
 
-        // Collect compatible sibling names + incompatible colon siblings for call site rewriting
-        let mut rewritable_names = preamble::collect_compatible_siblings(
+        // Collect all rewritable sibling names
+        let rewritable_names = execution::collect_rewritable_siblings(
             target_name,
             &target_interpreter,
             &self.simple_functions,
@@ -329,23 +330,13 @@ impl Interpreter {
             &self.function_metadata,
             &resolve_interpreter,
         );
-        rewritable_names.extend(preamble::collect_incompatible_colon_siblings(
-            target_name,
-            &target_interpreter,
-            &self.simple_functions,
-            &self.block_functions,
-            &self.function_metadata,
-            &resolve_interpreter,
-        ));
         let sibling_names: Vec<&str> = rewritable_names.iter().map(|s| s.as_str()).collect();
 
         // Rewrite call sites in the command template
         let rewritten_body = transpiler::rewrite_call_sites(command_template, &sibling_names);
 
-        // Build variable preamble
+        // Build preambles
         let var_preamble = preamble::build_variable_preamble(&self.variables, &target_interpreter);
-
-        // Build function preamble
         let func_preamble = preamble::build_function_preamble(
             target_name,
             &target_interpreter,
@@ -356,26 +347,14 @@ impl Interpreter {
         );
 
         // Combine preambles and body
-        let combined_script = if var_preamble.is_empty() && func_preamble.is_empty() {
-            // No preamble needed, just use the command
-            rewritten_body.clone()
-        } else {
-            // Build full script with preambles and the command
-            let mut parts = Vec::new();
-            if !var_preamble.is_empty() {
-                parts.push(var_preamble);
-            }
-            if !func_preamble.is_empty() {
-                parts.push(func_preamble);
-            }
-            parts.push(rewritten_body.clone());
-            parts.join("\n")
-        };
+        let combined_script = execution::build_combined_script(
+            var_preamble,
+            func_preamble,
+            rewritten_body,
+        );
 
-        // Substitute args in the combined script
+        // Substitute args and execute
         let substituted = self.substitute_args(&combined_script, args);
-
-        // Execute as a single shell invocation
         shell::execute_single_shell_invocation(&substituted, &target_interpreter)
     }
 
@@ -391,18 +370,16 @@ impl Interpreter {
         let target_interpreter = self.resolve_function_interpreter(target_name, attributes, shebang);
 
         // Check if this is a polyglot language (Python, Node, Ruby)
-        // These cannot use function composition, so we execute them without preamble
         let is_polyglot = matches!(
             target_interpreter,
             TranspilerInterpreter::Python | TranspilerInterpreter::Python3 |
             TranspilerInterpreter::Node | TranspilerInterpreter::Ruby
         );
 
-        if is_polyglot {
-            // For polyglot languages, execute as before without preamble
-            let full_script = commands.join("\n");
+        let full_script = commands.join("\n");
 
-            // Strip shebang if present
+        if is_polyglot {
+            // For polyglot languages, execute without preamble
             let script = if shebang.is_some() {
                 shell::strip_shebang(&full_script)
             } else {
@@ -410,33 +387,18 @@ impl Interpreter {
             };
 
             let substituted = self.substitute_args(&script, args);
-
-            // Execute with appropriate shell attribute
-            let exec_attributes: Vec<Attribute> = if let Some(attr) = attributes.iter().find(|a| matches!(a, Attribute::Shell(_))) {
-                vec![attr.clone()]
-            } else if let Some(shebang_str) = shebang {
-                if let Some(shell_type) = shell::resolve_shebang_interpreter(shebang_str) {
-                    vec![Attribute::Shell(shell_type)]
-                } else {
-                    Vec::new()
-                }
-            } else {
-                Vec::new()
-            };
+            let exec_attributes = execution::prepare_polyglot_attributes(attributes, shebang);
 
             return shell::execute_command_with_args(&substituted, &exec_attributes, args);
         }
 
-        // For shell-compatible languages (sh, bash, pwsh), build preamble and compose
-        let full_script = commands.join("\n");
-
-        // Create closure for resolve_interpreter
+        // For shell-compatible languages, build preamble and compose
         let resolve_interpreter = |name: &str, attrs: &[Attribute], shebang: Option<&str>| {
             self.resolve_function_interpreter(name, attrs, shebang)
         };
 
-        // Collect compatible sibling names + incompatible colon siblings for call site rewriting
-        let mut rewritable_names = preamble::collect_compatible_siblings(
+        // Collect all rewritable sibling names
+        let rewritable_names = execution::collect_rewritable_siblings(
             target_name,
             &target_interpreter,
             &self.simple_functions,
@@ -444,23 +406,11 @@ impl Interpreter {
             &self.function_metadata,
             &resolve_interpreter,
         );
-        rewritable_names.extend(preamble::collect_incompatible_colon_siblings(
-            target_name,
-            &target_interpreter,
-            &self.simple_functions,
-            &self.block_functions,
-            &self.function_metadata,
-            &resolve_interpreter,
-        ));
         let sibling_names: Vec<&str> = rewritable_names.iter().map(|s| s.as_str()).collect();
 
-        // Rewrite call sites in the target body
+        // Rewrite call sites and build preambles
         let rewritten_body = transpiler::rewrite_call_sites(&full_script, &sibling_names);
-
-        // Build variable preamble
         let var_preamble = preamble::build_variable_preamble(&self.variables, &target_interpreter);
-
-        // Build function preamble
         let func_preamble = preamble::build_function_preamble(
             target_name,
             &target_interpreter,
@@ -471,26 +421,14 @@ impl Interpreter {
         );
 
         // Combine preambles and body
-        let combined_script = if var_preamble.is_empty() && func_preamble.is_empty() {
-            // No preamble needed, just use the body
-            rewritten_body.clone()
-        } else {
-            // Build full script with preambles
-            let mut parts = Vec::new();
-            if !var_preamble.is_empty() {
-                parts.push(var_preamble);
-            }
-            if !func_preamble.is_empty() {
-                parts.push(func_preamble);
-            }
-            parts.push(rewritten_body.clone());
-            parts.join("\n")
-        };
+        let combined_script = execution::build_combined_script(
+            var_preamble,
+            func_preamble,
+            rewritten_body,
+        );
 
-        // Substitute args in the combined script
+        // Substitute args and execute
         let substituted = self.substitute_args(&combined_script, args);
-
-        // Execute as a single shell invocation
         shell::execute_single_shell_invocation(&substituted, &target_interpreter)
     }
 }

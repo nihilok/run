@@ -4,10 +4,11 @@
 //! converting text input into an Abstract Syntax Tree (AST).
 
 mod attributes;
+mod block;
 mod preprocessing;
 mod shebang;
 
-use crate::ast::{Attribute, Expression, Program, Statement};
+use crate::ast::{Expression, Program, Statement};
 use pest::Parser;
 use pest_derive::Parser;
 
@@ -72,77 +73,14 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
             if let Some(body_pair) = inner.next() {
                 match body_pair.as_rule() {
                     Rule::block => {
-                        // Get the block content by stripping the braces from the block
-                        // block_content is an atomic rule, so we extract it from the raw string
-                        let block_str = body_pair.as_str();
-                        // Remove leading '{' and trailing '}' but DON'T trim - we need to preserve
-                        // internal indentation structure for proper dedentation
-                        let content_str = block_str
-                            .strip_prefix('{')
-                            .unwrap_or(block_str)
-                            .strip_suffix('}')
-                            .unwrap_or(block_str);
+                        // Parse and dedent block content
+                        let full_content = block::parse_block_content(body_pair.as_str());
 
-                        // Split by newlines to process line by line
-                        let all_lines: Vec<&str> = content_str.lines().collect();
-
-                        // Skip leading and trailing empty/whitespace-only lines
-                        let start = all_lines.iter().position(|l| !l.trim().is_empty()).unwrap_or(0);
-                        let end = all_lines.iter().rposition(|l| !l.trim().is_empty()).map(|i| i + 1).unwrap_or(all_lines.len());
-                        let lines: Vec<&str> = if start < end { all_lines[start..end].to_vec() } else { vec![] };
-
-                        // Find the minimum indentation (excluding empty lines)
-                        let min_indent = lines.iter()
-                            .filter(|line| !line.trim().is_empty())
-                            .map(|line| {
-                                let trimmed_start = line.len() - line.trim_start().len();
-                                trimmed_start
-                            })
-                            .min()
-                            .unwrap_or(0);
-
-                        // Build dedented lines
-                        let dedented_lines: Vec<String> = lines.iter()
-                            .map(|line| {
-                                if line.trim().is_empty() {
-                                    String::new()
-                                } else if line.len() > min_indent {
-                                    line[min_indent..].to_string()
-                                } else {
-                                    line.to_string()
-                                }
-                            })
-                            .collect();
-
-                        // Join into a single command or split by semicolons for inline blocks
-                        let full_content = dedented_lines.join("\n");
-
-                        // Check if this function has a custom shell attribute
-                        let has_custom_shell = attributes
-                            .iter()
-                            .any(|attr| matches!(attr, Attribute::Shell(_)));
-
-                        let trimmed_content = full_content.trim().to_string();
-
-                        let commands: Vec<String> = if has_custom_shell {
-                            // For custom shells (Python, Node, etc.), never split by semicolons
-                            // The entire script should be passed as-is to the interpreter
-                            vec![trimmed_content.clone()]
-                        } else if !trimmed_content.contains('\n') && trimmed_content.contains(';') {
-                            // Single-line block with semicolons: split into separate commands
-                            // e.g., { echo "a"; echo "b"; echo "c" }
-                            trimmed_content
-                                .split(';')
-                                .map(|s| s.trim().to_string())
-                                .filter(|s| !s.is_empty())
-                                .collect()
-                        } else {
-                            // Multi-line block - keep as single script
-                            vec![trimmed_content.clone()]
-                        };
+                        // Split into commands based on shell type
+                        let commands = block::split_block_commands(&full_content, &attributes);
 
                         // Parse shebang from the content
-                        let shebang = shebang::parse_shebang(&trimmed_content);
+                        let shebang = shebang::parse_shebang(full_content.trim());
 
                         Some(Statement::BlockFunctionDef {
                             name,
@@ -270,7 +208,7 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> String {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::ast::ArgType;
+    use crate::ast::{ArgType, Attribute};
 
     #[test]
     fn test_parse_command_with_variable_after_equals() {
