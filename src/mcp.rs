@@ -181,9 +181,13 @@ fn resolve_tool_name(sanitized_name: &str) -> Result<String, JsonRpcError> {
 pub fn print_inspect() {
     match inspect() {
         Ok(output) => {
-            let json = serde_json::to_string_pretty(&output)
-                .expect("Failed to serialize to JSON");
-            println!("{}", json);
+            match serde_json::to_string_pretty(&output) {
+                Ok(json) => println!("{}", json),
+                Err(e) => {
+                    eprintln!("Error serializing output: {}", e);
+                    std::process::exit(1);
+                }
+            }
         }
         Err(e) => {
             eprintln!("Error: {}", e);
@@ -263,7 +267,11 @@ fn handle_tools_list(
     _params: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, JsonRpcError> {
     match inspect() {
-        Ok(output) => Ok(serde_json::to_value(output).unwrap()),
+        Ok(output) => serde_json::to_value(output).map_err(|e| JsonRpcError {
+            code: -32603,
+            message: format!("Failed to serialize tools: {}", e),
+            data: None,
+        }),
         Err(e) => Err(JsonRpcError {
             code: -32603,
             message: format!("Internal error: {}", e),
@@ -554,6 +562,7 @@ pub fn serve_mcp() {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::ast::{ArgMetadata, ArgType, Attribute};
