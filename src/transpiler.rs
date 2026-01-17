@@ -61,32 +61,32 @@ impl Interpreter {
 /// * `body` - Function body (command template or block)
 /// * `is_block` - Whether this is a block function
 pub fn transpile_to_shell(name: &str, body: &str, is_block: bool) -> String {
-    let sanitized = sanitize_name(name);
+    let sanitised = sanitise_name(name);
     
     if is_block {
         // Block function - body already contains multiple lines
         let indented = indent(body, "    ");
-        format!("{}() {{\n{}\n}}", sanitized, indented)
+        format!("{}() {{\n{}\n}}", sanitised, indented)
     } else {
         // Simple function - single command
-        format!("{}() {{\n    {}\n}}", sanitized, body)
+        format!("{}() {{\n    {}\n}}", sanitised, body)
     }
 }
 
 /// Transpile a function to PowerShell syntax
 pub fn transpile_to_pwsh(name: &str, body: &str, is_block: bool) -> String {
-    let sanitized = sanitize_name(name);
+    let sanitised = sanitise_name(name);
     
     if is_block {
         let indented = indent(body, "    ");
-        format!("function {} {{\n{}\n}}", sanitized, indented)
+        format!("function {} {{\n{}\n}}", sanitised, indented)
     } else {
-        format!("function {} {{\n    {}\n}}", sanitized, body)
+        format!("function {} {{\n    {}\n}}", sanitised, body)
     }
 }
 
-/// Sanitize function name by replacing colons with double underscores
-pub fn sanitize_name(name: &str) -> String {
+/// sanitise function name by replacing colons with double underscores
+pub fn sanitise_name(name: &str) -> String {
     name.replace(':', "__")
 }
 
@@ -104,17 +104,17 @@ fn indent(text: &str, prefix: &str) -> String {
         .join("\n")
 }
 
-/// Rewrite call sites in function body to use sanitized names
+/// Rewrite call sites in function body to use sanitised names
 /// 
-/// This replaces function names containing colons with their sanitized versions
+/// This replaces function names containing colons with their sanitised versions
 /// (colons replaced with double underscores). Only replaces whole-word matches.
 pub fn rewrite_call_sites(body: &str, sibling_names: &[&str]) -> String {
     let mut result = body.to_string();
     
     for sibling in sibling_names {
         if sibling.contains(':') {
-            let sanitized = sanitize_name(sibling);
-            result = replace_word(&result, sibling, &sanitized);
+            let sanitised = sanitise_name(sibling);
+            result = replace_word(&result, sibling, &sanitised);
         }
     }
     
@@ -221,10 +221,10 @@ mod tests {
     }
 
     #[test]
-    fn test_sanitize_name() {
-        assert_eq!(sanitize_name("docker:build"), "docker__build");
-        assert_eq!(sanitize_name("simple"), "simple");
-        assert_eq!(sanitize_name("multi:level:name"), "multi__level__name");
+    fn test_sanitise_name() {
+        assert_eq!(sanitise_name("docker:build"), "docker__build");
+        assert_eq!(sanitise_name("simple"), "simple");
+        assert_eq!(sanitise_name("multi:level:name"), "multi__level__name");
     }
 
     #[test]

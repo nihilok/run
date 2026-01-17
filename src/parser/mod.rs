@@ -1,6 +1,13 @@
-// Parser implementation using pest
+//! Parser implementation using pest
+//!
+//! This module provides parsing functionality for Run scripts,
+//! converting text input into an Abstract Syntax Tree (AST).
 
-use crate::ast::{ArgMetadata, ArgType, Attribute, Expression, OsPlatform, Program, ShellType, Statement};
+mod attributes;
+mod preprocessing;
+mod shebang;
+
+use crate::ast::{Attribute, Expression, Program, Statement};
 use pest::Parser;
 use pest_derive::Parser;
 
@@ -8,209 +15,8 @@ use pest_derive::Parser;
 #[grammar = "grammar.pest"]
 pub struct ScriptParser;
 
-// Preprocess input to join lines ending with a backslash
-fn preprocess_escaped_newlines(input: &str) -> String {
-    let mut result = String::new();
-    let lines = input.lines();
-    let mut buffer = String::new();
-    for line in lines {
-        let trimmed = line.trim_end();
-        if trimmed.ends_with('\\') {
-            if let Some(stripped) = trimmed.strip_suffix('\\') {
-                buffer.push_str(stripped);
-            }
-            buffer.push(' ');
-        } else {
-            buffer.push_str(trimmed);
-            result.push_str(buffer.trim_end());
-            result.push('\n');
-            buffer.clear();
-        }
-    }
-    if !buffer.is_empty() {
-        result.push_str(buffer.trim_end());
-        result.push('\n');
-    }
-    result
-}
-
-// Parse attributes from lines of the original input
-fn parse_attributes_from_lines(input: &str, line_num: usize) -> Vec<Attribute> {
-    let mut attributes = Vec::new();
-    let lines: Vec<&str> = input.lines().collect();
-    
-    if line_num == 0 {
-        return attributes;
-    }
-    
-    // Look backward from the function definition line to collect attributes
-    let mut i = line_num - 1;
-    loop {
-        // Check if index is valid
-        if i >= lines.len() {
-            break;
-        }
-        
-        let line = lines[i].trim();
-        
-        // If we hit an empty line or a non-comment line, stop
-        if line.is_empty() || (!line.starts_with('#')) {
-            break;
-        }
-        
-        // If it's an attribute comment, parse it
-        if line.starts_with("# @") || line.starts_with("#@") {
-            if let Some(attr) = parse_attribute_line(line) {
-                attributes.push(attr);
-            }
-        } else if line.starts_with('#') {
-            // Regular comment - continue looking backward
-        } else {
-            break;
-        }
-        
-        if i == 0 {
-            break;
-        }
-        i -= 1;
-    }
-    
-    // Reverse since we collected them backward
-    attributes.reverse();
-    attributes
-}
-
-// Strip surrounding quotes from a string
-fn strip_quotes(s: &str) -> String {
-    let trimmed = s.trim();
-    if (trimmed.starts_with('"') && trimmed.ends_with('"')) ||
-       (trimmed.starts_with('\'') && trimmed.ends_with('\'')) {
-        if trimmed.len() >= 2 {
-            return trimmed[1..trimmed.len()-1].to_string();
-        }
-    }
-    trimmed.to_string()
-}
-
-fn parse_attribute_line(line: &str) -> Option<Attribute> {
-    // Parse "# @os <platform>" or "# @shell <shell>" or "# @desc <text>" or "# @arg <spec>"
-    let line = line.trim();
-    
-    // Remove "# " or "#" prefix and "@" symbol
-    let without_hash = line.strip_prefix("# @").or_else(|| line.strip_prefix("#@"))?;
-    
-    // Handle @desc - everything after "@desc " is the description
-    if let Some(desc_text) = without_hash.strip_prefix("desc ") {
-        return Some(Attribute::Desc(strip_quotes(desc_text)));
-    }
-    
-    // Handle @arg - format: "1:name type description"
-    if let Some(arg_text) = without_hash.strip_prefix("arg ") {
-        return parse_arg_attribute(arg_text);
-    }
-    
-    let parts: Vec<&str> = without_hash.split_whitespace().collect();
-    
-    if parts.len() < 2 {
-        return None;
-    }
-    
-    match parts[0] {
-        "os" => {
-            let platform = match parts[1] {
-                "windows" => OsPlatform::Windows,
-                "linux" => OsPlatform::Linux,
-                "macos" => OsPlatform::MacOS,
-                "unix" => OsPlatform::Unix,
-                _ => return None,
-            };
-            Some(Attribute::Os(platform))
-        }
-        "shell" => {
-            let shell = match parts[1] {
-                "python" => ShellType::Python,
-                "python3" => ShellType::Python3,
-                "node" => ShellType::Node,
-                "ruby" => ShellType::Ruby,
-                "pwsh" => ShellType::Pwsh,
-                "bash" => ShellType::Bash,
-                "sh" => ShellType::Sh,
-                _ => return None,
-            };
-            Some(Attribute::Shell(shell))
-        }
-        _ => None,
-    }
-}
-
-fn parse_arg_attribute(arg_text: &str) -> Option<Attribute> {
-    // Format: "1:name type description" or "1:name description" (type defaults to string)
-    let arg_text = arg_text.trim();
-    
-    // Split by ':' to get position and rest
-    let colon_pos = arg_text.find(':')?;
-    let position_str = &arg_text[..colon_pos];
-    let rest = &arg_text[colon_pos + 1..];
-    
-    let position: usize = position_str.parse().ok()?;
-    
-    // Split rest by whitespace
-    let parts: Vec<&str> = rest.split_whitespace().collect();
-    if parts.is_empty() {
-        return None;
-    }
-    
-    let name = parts[0].to_string();
-    
-    // Check if second part is a type
-    let (arg_type, desc_start_idx) = if parts.len() > 1 {
-        match parts[1] {
-            "string" => (ArgType::String, 2),
-            "integer" => (ArgType::Integer, 2),
-            "boolean" => (ArgType::Boolean, 2),
-            _ => (ArgType::String, 1), // Default to string, description starts at index 1
-        }
-    } else {
-        (ArgType::String, 1)
-    };
-    
-    // Join remaining parts as description
-    let description = if desc_start_idx < parts.len() {
-        strip_quotes(&parts[desc_start_idx..].join(" "))
-    } else {
-        String::new()
-    };
-    
-    Some(Attribute::Arg(ArgMetadata {
-        position,
-        name,
-        arg_type,
-        description,
-    }))
-}
-
-// Parse shebang from function body
-// Returns the shebang string if found on the first non-empty, non-comment line
-// Lines starting with # (but not #!) are skipped
-fn parse_shebang(body: &str) -> Option<String> {
-    body.lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty())
-        .find(|line| {
-            // Find the first line that is either a shebang or not a comment
-            !line.starts_with('#') || line.starts_with("#!")
-        })
-        .and_then(|line| {
-            if line.starts_with("#!") {
-                Some(line[2..].trim().to_string())
-            } else {
-                None
-            }
-        })
-}
-
 pub fn parse_script(input: &str) -> Result<Program, Box<pest::error::Error<Rule>>> {
-    let preprocessed = preprocess_escaped_newlines(input);
+    let preprocessed = preprocessing::preprocess_escaped_newlines(input);
     let pairs = ScriptParser::parse(Rule::program, &preprocessed)?;
     let mut statements = Vec::new();
 
@@ -257,8 +63,8 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
         Rule::function_def => {
             let span = pair.as_span();
             let line_num = original_input[..span.start()].lines().count();
-            let attributes = parse_attributes_from_lines(original_input, line_num);
-            
+            let attributes = attributes::parse_attributes_from_lines(original_input, line_num);
+
             let mut inner = pair.into_inner();
             let name = inner.next()?.as_str().to_string();
 
@@ -294,7 +100,7 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
                             })
                             .min()
                             .unwrap_or(0);
-                        
+
                         // Build dedented lines
                         let dedented_lines: Vec<String> = lines.iter()
                             .map(|line| {
@@ -307,7 +113,7 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
                                 }
                             })
                             .collect();
-                        
+
                         // Join into a single command or split by semicolons for inline blocks
                         let full_content = dedented_lines.join("\n");
 
@@ -336,10 +142,10 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
                         };
 
                         // Parse shebang from the content
-                        let shebang = parse_shebang(&trimmed_content);
+                        let shebang = shebang::parse_shebang(&trimmed_content);
 
                         Some(Statement::BlockFunctionDef {
-                            name, 
+                            name,
                             commands,
                             attributes,
                             shebang,
@@ -464,6 +270,7 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> String {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use crate::ast::ArgType;
 
     #[test]
     fn test_parse_command_with_variable_after_equals() {
@@ -481,16 +288,16 @@ mod tests {
 
     #[test]
     fn test_parse_desc_attribute() {
-        let input = r#"
+        let input = r"
 # @desc Restarts the docker containers
 restart() docker compose restart
-"#;
+";
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
             assert_eq!(name, "restart");
             assert_eq!(attributes.len(), 1);
-            
+
             if let Attribute::Desc(desc) = &attributes[0] {
                 assert_eq!(desc, "Restarts the docker containers");
             } else {
@@ -503,16 +310,16 @@ restart() docker compose restart
 
     #[test]
     fn test_parse_arg_attribute_with_type() {
-        let input = r#"
+        let input = r"
 # @arg 1:service string The name of the service
 scale() docker compose scale $1
-"#;
+";
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
             assert_eq!(name, "scale");
             assert_eq!(attributes.len(), 1);
-            
+
             if let Attribute::Arg(arg) = &attributes[0] {
                 assert_eq!(arg.position, 1);
                 assert_eq!(arg.name, "service");
@@ -528,16 +335,16 @@ scale() docker compose scale $1
 
     #[test]
     fn test_parse_arg_attribute_integer_type() {
-        let input = r#"
+        let input = r"
 # @arg 2:replicas integer The number of instances
 scale() docker compose scale $1=$2
-"#;
+";
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
             assert_eq!(name, "scale");
             assert_eq!(attributes.len(), 1);
-            
+
             if let Attribute::Arg(arg) = &attributes[0] {
                 assert_eq!(arg.position, 2);
                 assert_eq!(arg.name, "replicas");
@@ -558,11 +365,11 @@ scale() docker compose scale $1=$2
 test() echo "Verbose: $1"
 "#;
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
             assert_eq!(name, "test");
             assert_eq!(attributes.len(), 1);
-            
+
             if let Attribute::Arg(arg) = &attributes[0] {
                 assert_eq!(arg.position, 1);
                 assert_eq!(arg.name, "verbose");
@@ -578,25 +385,25 @@ test() echo "Verbose: $1"
 
     #[test]
     fn test_parse_multiple_attributes() {
-        let input = r#"
+        let input = r"
 # @desc Scale a specific service
 # @arg 1:service string The service name
 # @arg 2:replicas integer The number of instances
 scale() docker compose scale $1=$2
-"#;
+";
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
             assert_eq!(name, "scale");
             assert_eq!(attributes.len(), 3);
-            
+
             // Check desc
             if let Attribute::Desc(desc) = &attributes[0] {
                 assert_eq!(desc, "Scale a specific service");
             } else {
                 panic!("Expected Desc attribute at position 0");
             }
-            
+
             // Check first arg
             if let Attribute::Arg(arg) = &attributes[1] {
                 assert_eq!(arg.position, 1);
@@ -605,7 +412,7 @@ scale() docker compose scale $1=$2
             } else {
                 panic!("Expected Arg attribute at position 1");
             }
-            
+
             // Check second arg
             if let Attribute::Arg(arg) = &attributes[2] {
                 assert_eq!(arg.position, 2);
@@ -626,11 +433,11 @@ scale() docker compose scale $1=$2
 greet() echo "Hello, $1"
 "#;
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
             assert_eq!(name, "greet");
             assert_eq!(attributes.len(), 1);
-            
+
             if let Attribute::Arg(arg) = &attributes[0] {
                 assert_eq!(arg.position, 1);
                 assert_eq!(arg.name, "name");

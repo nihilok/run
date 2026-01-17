@@ -1,0 +1,131 @@
+//! Argument mapping and tool name resolution
+
+use super::handlers::JsonRpcError;
+use crate::ast::{Attribute, Statement};
+use crate::{config, parser};
+use std::collections::HashMap;
+
+/// Resolve a sanitised tool name back to the original function name
+/// This is needed because MCP requires [a-zA-Z0-9_-] but we support colons in function names
+pub(super) fn resolve_tool_name(sanitised_name: &str) -> Result<String, JsonRpcError> {
+    let config_content = config::load_config()
+        .ok_or_else(|| JsonRpcError {
+            code: -32603,
+            message: "No Runfile found".to_string(),
+            data: None,
+        })?;
+
+    let program = parser::parse_script(&config_content)
+        .map_err(|e| JsonRpcError {
+            code: -32603,
+            message: format!("Parse error: {}", e),
+            data: None,
+        })?;
+
+    // Look for a function whose sanitised name matches
+    for statement in program.statements {
+        let (name, attributes) = match statement {
+            Statement::SimpleFunctionDef { name, attributes, .. } => (name, attributes),
+            Statement::BlockFunctionDef { name, attributes, .. } => (name, attributes),
+            _ => continue,
+        };
+
+        // Check if this function has @desc (would be exposed as tool)
+        if attributes.iter().any(|a| matches!(a, Attribute::Desc(_))) {
+            let tool_name = name.replace(':', "__");
+            if tool_name == sanitised_name {
+                return Ok(name);
+            }
+        }
+    }
+
+    Err(JsonRpcError {
+        code: -32602,
+        message: format!("Tool not found: {}", sanitised_name),
+        data: None,
+    })
+}
+
+/// Map JSON arguments to positional shell arguments
+pub(super) fn map_arguments_to_positional(
+    tool_name: &str,
+    json_args: &serde_json::Value,
+) -> Result<Vec<String>, JsonRpcError> {
+    // Load the Runfile to get function metadata
+    let config_content = match config::load_config() {
+        Some(content) => content,
+        None => {
+            return Err(JsonRpcError {
+                code: -32603,
+                message: "No Runfile found".to_string(),
+                data: None,
+            });
+        }
+    };
+
+    let program = match parser::parse_script(&config_content) {
+        Ok(prog) => prog,
+        Err(e) => {
+            return Err(JsonRpcError {
+                code: -32603,
+                message: format!("Parse error: {}", e),
+                data: None,
+            });
+        }
+    };
+
+    // Find the function and get its @arg attributes
+    let mut arg_mapping: HashMap<usize, String> = HashMap::new();
+
+    for statement in program.statements {
+        let (name, attributes) = match statement {
+            Statement::SimpleFunctionDef { name, attributes, .. } => (name, attributes),
+            Statement::BlockFunctionDef { name, attributes, .. } => (name, attributes),
+            _ => continue,
+        };
+
+        if name == tool_name {
+            // Extract argument metadata
+            for attr in attributes {
+                if let Attribute::Arg(arg_meta) = attr {
+                    arg_mapping.insert(arg_meta.position, arg_meta.name.clone());
+                }
+            }
+            break;
+        }
+    }
+
+    // If no @arg attributes found, return empty arguments
+    if arg_mapping.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Get the JSON object with arguments
+    let args_obj = json_args.as_object().ok_or_else(|| JsonRpcError {
+        code: -32602,
+        message: "Arguments must be an object".to_string(),
+        data: None,
+    })?;
+
+    // Build positional arguments array
+    let max_position = *arg_mapping.keys().max().unwrap_or(&0);
+    let mut positional_args = vec![String::new(); max_position];
+
+    for (position, param_name) in arg_mapping.iter() {
+        if let Some(value) = args_obj.get(param_name) {
+            let arg_str = match value {
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Number(n) => n.to_string(),
+                serde_json::Value::Bool(b) => b.to_string(),
+                serde_json::Value::Null => String::new(),
+                _ => value.to_string(),
+            };
+
+            if *position > 0 && *position <= positional_args.len() {
+                positional_args[position - 1] = arg_str;
+            }
+        }
+    }
+
+    Ok(positional_args)
+}
