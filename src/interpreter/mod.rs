@@ -54,6 +54,14 @@ impl Interpreter {
         )
     }
 
+    /// Execute a parsed program
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if:
+    /// - A statement fails to execute
+    /// - A function call references a non-existent function
+    /// - A command execution fails
     pub fn execute(&mut self, program: Program) -> Result<(), Box<dyn std::error::Error>> {
         for statement in program.statements {
             self.execute_statement(statement)?;
@@ -88,6 +96,18 @@ impl Interpreter {
         functions
     }
 
+    /// Call a function without parentheses, trying multiple name resolution strategies
+    ///
+    /// This method attempts to match function names in different ways:
+    /// 1. Direct match: "docker_shell" with args
+    /// 2. If args exist, try first arg as subcommand: "docker" + "shell" -> "docker:shell"
+    /// 3. Try replacing underscores with colons: "docker_shell" -> "docker:shell"
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if:
+    /// - The function is not found after trying all resolution strategies
+    /// - The function execution fails
     pub fn call_function_without_parens(
         &mut self,
         function_name: &str,
@@ -147,6 +167,13 @@ impl Interpreter {
         Err(format!("Function '{}' not found", function_name).into())
     }
 
+    /// Call a function with explicit arguments (parentheses syntax)
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if:
+    /// - The specified function is not found
+    /// - The function execution fails
     pub fn call_function_with_args(
         &mut self,
         function_name: &str,

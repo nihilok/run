@@ -89,6 +89,15 @@ pub(super) fn extract_function_metadata(
 }
 
 /// Generate inspection output from Runfile
+///
+/// Scans the Runfile for functions with `@desc` attributes and generates
+/// MCP tool definitions from their metadata.
+///
+/// # Errors
+///
+/// Returns `Err` if:
+/// - The Runfile cannot be parsed (syntax errors)
+/// - The parser encounters an unexpected error
 pub fn inspect() -> Result<InspectOutput, String> {
     let config_content = match config::load_config() {
         Some(content) => content,

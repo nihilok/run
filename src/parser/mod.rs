@@ -16,6 +16,16 @@ use pest_derive::Parser;
 #[grammar = "grammar.pest"]
 pub struct ScriptParser;
 
+/// Parse a Run script into an Abstract Syntax Tree (AST)
+///
+/// # Errors
+///
+/// Returns `Err` if the input contains syntax errors that violate the grammar,
+/// such as:
+/// - Invalid function definition syntax
+/// - Malformed attribute directives
+/// - Unmatched braces or parentheses
+/// - Invalid command syntax
 pub fn parse_script(input: &str) -> Result<Program, Box<pest::error::Error<Rule>>> {
     let preprocessed = preprocessing::preprocess_escaped_newlines(input);
     let pairs = ScriptParser::parse(Rule::program, &preprocessed)?;

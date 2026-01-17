@@ -94,6 +94,17 @@ fn process_request(request: JsonRpcRequest) -> Option<JsonRpcResponse> {
 }
 
 /// Serve MCP protocol over stdio
+///
+/// Runs an MCP (Model Context Protocol) server that listens for JSON-RPC 2.0
+/// requests on stdin and writes responses to stdout. This function runs indefinitely
+/// until the input stream is closed.
+///
+/// # Error Handling
+///
+/// This function handles errors internally and does not return them:
+/// - Parse errors are logged to stderr and returned as JSON-RPC error responses
+/// - I/O errors are logged to stderr and the server continues processing
+/// - Invalid requests receive JSON-RPC error responses per the MCP specification
 pub fn serve_mcp() {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
