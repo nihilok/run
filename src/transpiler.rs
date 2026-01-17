@@ -141,7 +141,10 @@ fn replace_word(text: &str, pattern: &str, replacement: &str) -> String {
                 if let Some(&next_ch) = chars.peek() {
                     peek_ahead.push(next_ch);
                     if next_ch == pattern_ch {
-                        matched.push(chars.next().unwrap());
+                        // We know next() will return Some because peek() just returned Some
+                        if let Some(consumed) = chars.next() {
+                            matched.push(consumed);
+                        }
                     } else {
                         // No match, output what we collected and continue
                         result.push_str(&matched.iter().collect::<String>());
@@ -181,6 +184,7 @@ fn is_word_char(c: char) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

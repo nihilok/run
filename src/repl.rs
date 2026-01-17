@@ -45,7 +45,10 @@ pub fn run_repl() {
     loop {
         // Print prompt
         print!("> ");
-        stdout.flush().unwrap();
+        if let Err(e) = stdout.flush() {
+            eprintln!("Error flushing stdout: {}", e);
+            break;
+        }
 
         // Read line
         let mut input = String::new();

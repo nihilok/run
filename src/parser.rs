@@ -461,6 +461,7 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
