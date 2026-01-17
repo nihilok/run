@@ -12,7 +12,7 @@ mod tools;
 // Re-export public API
 pub use tools::{inspect, print_inspect, InspectOutput, Tool};
 
-use handlers::{handle_initialise, handle_tools_call, handle_tools_list, JsonRpcError};
+use handlers::{handle_initialize, handle_tools_call, handle_tools_list, JsonRpcError};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 
@@ -56,7 +56,7 @@ fn process_request(request: JsonRpcRequest) -> Option<JsonRpcResponse> {
     if request.id.is_none() {
         // Process notification but don't send a response
         match request.method.as_str() {
-            "initialised" | "notifications/initialised" => {
+            "initialized" | "notifications/initialized" => {
                 // Acknowledged, no response needed
             }
             _ => {
@@ -67,7 +67,7 @@ fn process_request(request: JsonRpcRequest) -> Option<JsonRpcResponse> {
     }
 
     let result = match request.method.as_str() {
-        "initialise" => handle_initialise(request.params),
+        "initialize" => handle_initialize(request.params),
         "tools/list" => handle_tools_list(request.params),
         "tools/call" => handle_tools_call(request.params),
         _ => Err(JsonRpcError {
@@ -215,7 +215,7 @@ mod tests {
         let request = JsonRpcRequest {
             jsonrpc: "1.0".to_string(),
             id: Some(serde_json::json!(1)),
-            method: "initialise".to_string(),
+            method: "initialize".to_string(),
             params: None,
         };
 
@@ -236,7 +236,7 @@ mod tests {
         let request = JsonRpcRequest {
             jsonrpc: "2.0".to_string(),
             id: Some(serde_json::json!(1)),
-            method: "initialise".to_string(),
+            method: "initialize".to_string(),
             params: Some(serde_json::json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},

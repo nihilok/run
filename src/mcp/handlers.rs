@@ -30,8 +30,8 @@ struct ServerInfo {
     version: String,
 }
 
-/// Handle initialise request
-pub(super) fn handle_initialise(
+/// Handle initialize request
+pub(super) fn handle_initialize(
     _params: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, JsonRpcError> {
     let response = serde_json::json!({
