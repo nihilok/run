@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn test_extract_function_metadata_with_desc() {
         let attributes = vec![Attribute::Desc("Test function".to_string())];
-        let tool = extract_function_metadata("test", &attributes).unwrap();
+        let tool = extract_function_metadata("test", &attributes, &[]).unwrap();
 
         assert_eq!(tool.name, "test");
         assert_eq!(tool.description, "Test function");
@@ -182,7 +182,7 @@ mod tests {
     #[test]
     fn test_extract_function_metadata_without_desc() {
         let attributes = vec![];
-        let tool = extract_function_metadata("test", &attributes);
+        let tool = extract_function_metadata("test", &attributes, &[]);
 
         assert!(tool.is_none());
     }
@@ -205,7 +205,7 @@ mod tests {
             }),
         ];
 
-        let tool = extract_function_metadata("scale", &attributes).unwrap();
+        let tool = extract_function_metadata("scale", &attributes, &[]).unwrap();
 
         assert_eq!(tool.name, "scale");
         assert_eq!(tool.description, "Scale service");
@@ -219,6 +219,121 @@ mod tests {
         let replicas_param = tool.input_schema.properties.get("replicas").unwrap();
         assert_eq!(replicas_param.param_type, "integer");
         assert_eq!(replicas_param.description, "Number of replicas");
+    }
+
+    #[test]
+    fn test_extract_function_metadata_with_params() {
+        use crate::ast::Parameter;
+
+        let attributes = vec![Attribute::Desc("Deploy application".to_string())];
+        
+        let params = vec![
+            Parameter {
+                name: "env".to_string(),
+                param_type: ArgType::String,
+                default_value: None,
+                is_rest: false,
+            },
+            Parameter {
+                name: "version".to_string(),
+                param_type: ArgType::String,
+                default_value: Some("latest".to_string()),
+                is_rest: false,
+            },
+        ];
+
+        let tool = extract_function_metadata("deploy", &attributes, &params).unwrap();
+
+        assert_eq!(tool.name, "deploy");
+        assert_eq!(tool.description, "Deploy application");
+        assert_eq!(tool.input_schema.properties.len(), 2);
+        assert_eq!(tool.input_schema.required.len(), 1); // Only env is required
+
+        let env_param = tool.input_schema.properties.get("env").unwrap();
+        assert_eq!(env_param.param_type, "string");
+
+        let version_param = tool.input_schema.properties.get("version").unwrap();
+        assert_eq!(version_param.param_type, "string");
+        
+        // version should not be required since it has a default
+        assert!(tool.input_schema.required.contains(&"env".to_string()));
+        assert!(!tool.input_schema.required.contains(&"version".to_string()));
+    }
+
+    #[test]
+    fn test_extract_function_metadata_with_rest_param() {
+        use crate::ast::Parameter;
+
+        let attributes = vec![Attribute::Desc("Echo all arguments".to_string())];
+        
+        let params = vec![
+            Parameter {
+                name: "args".to_string(),
+                param_type: ArgType::String,
+                default_value: None,
+                is_rest: true,
+            },
+        ];
+
+        let tool = extract_function_metadata("echo_all", &attributes, &params).unwrap();
+
+        assert_eq!(tool.name, "echo_all");
+        assert_eq!(tool.input_schema.properties.len(), 1);
+        assert_eq!(tool.input_schema.required.len(), 0); // Rest params are not required
+
+        let args_param = tool.input_schema.properties.get("args").unwrap();
+        assert_eq!(args_param.param_type, "array");
+    }
+
+    #[test]
+    fn test_extract_function_metadata_params_with_arg_descriptions() {
+        use crate::ast::Parameter;
+
+        // Hybrid mode: params define types/defaults, @arg provides descriptions
+        let attributes = vec![
+            Attribute::Desc("Deploy application".to_string()),
+            Attribute::Arg(ArgMetadata {
+                position: 1,
+                name: "env".to_string(),
+                arg_type: ArgType::String,
+                description: "Target environment (staging|prod)".to_string(),
+            }),
+            Attribute::Arg(ArgMetadata {
+                position: 2,
+                name: "version".to_string(),
+                arg_type: ArgType::String,
+                description: "Version to deploy".to_string(),
+            }),
+        ];
+        
+        let params = vec![
+            Parameter {
+                name: "env".to_string(),
+                param_type: ArgType::String,
+                default_value: None,
+                is_rest: false,
+            },
+            Parameter {
+                name: "version".to_string(),
+                param_type: ArgType::String,
+                default_value: Some("latest".to_string()),
+                is_rest: false,
+            },
+        ];
+
+        let tool = extract_function_metadata("deploy", &attributes, &params).unwrap();
+
+        // Params take precedence for types/defaults, @arg provides descriptions
+        let env_param = tool.input_schema.properties.get("env").unwrap();
+        assert_eq!(env_param.param_type, "string");
+        assert_eq!(env_param.description, "Target environment (staging|prod)");
+
+        let version_param = tool.input_schema.properties.get("version").unwrap();
+        assert_eq!(version_param.description, "Version to deploy");
+        
+        // Only env should be required (version has default)
+        assert_eq!(tool.input_schema.required.len(), 1);
+        assert!(tool.input_schema.required.contains(&"env".to_string()));
     }
 
     #[test]
