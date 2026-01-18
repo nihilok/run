@@ -122,7 +122,13 @@ fn parse_arg_attribute(arg_text: &str) -> Option<Attribute> {
     let arg_text = arg_text.trim();
 
     // Check if it has a position prefix (number followed by colon)
-    let has_position = arg_text.chars().next()?.is_ascii_digit() && arg_text.contains(':');
+    // The prefix must be entirely numeric
+    let has_position = if let Some(colon_pos) = arg_text.find(':') {
+        let prefix = &arg_text[..colon_pos];
+        !prefix.is_empty() && prefix.chars().all(|c| c.is_ascii_digit())
+    } else {
+        false
+    };
 
     if has_position {
         // Old style: "1:name type description"
