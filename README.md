@@ -77,12 +77,6 @@ Point your AI agent at the Runfile, and it can discover and execute these tools 
 
 ### MCP Server Mode
 
-Start `run` as an MCP server:
-
-```bash
-run --serve-mcp
-```
-
 Configure in your AI client (e.g., Claude Desktop `claude_desktop_config.json`):
 
 ```json
@@ -97,6 +91,12 @@ Configure in your AI client (e.g., Claude Desktop `claude_desktop_config.json`):
 ```
 
 Now your AI agent can discover and call your tools automatically.
+
+For debugging purposes, you can start `run` as an MCP server yourself:
+
+```bash
+run --serve-mcp
+```
 
 ### Describing Tools for AI
 
