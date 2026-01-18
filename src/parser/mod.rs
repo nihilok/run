@@ -79,38 +79,51 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
             let mut inner = pair.into_inner();
             let name = inner.next()?.as_str().to_string();
 
-            // The next element is either a command or a block
-            if let Some(body_pair) = inner.next() {
-                match body_pair.as_rule() {
-                    Rule::block => {
-                        // Parse and dedent block content
-                        let full_content = block::parse_block_content(body_pair.as_str());
-
-                        // Split into commands based on shell type
-                        let commands = block::split_block_commands(&full_content, &attributes);
-
-                        // Parse shebang from the content
-                        let shebang = shebang::parse_shebang(full_content.trim());
-
-                        Some(Statement::BlockFunctionDef {
-                            name,
-                            commands,
-                            attributes,
-                            shebang,
-                        })
-                    }
-                    Rule::command => {
-                        let command_template = parse_command(body_pair);
-                        Some(Statement::SimpleFunctionDef {
-                            name,
-                            command_template,
-                            attributes,
-                        })
-                    }
-                    _ => None,
+            // Check if next element is param_list or body
+            let (params, body_pair) = if let Some(next) = inner.next() {
+                if next.as_rule() == Rule::param_list {
+                    // Parse parameters
+                    let params = parse_param_list(next)?;
+                    let body = inner.next()?;
+                    (params, body)
+                } else {
+                    // No params, this is the body
+                    (Vec::new(), next)
                 }
             } else {
-                None
+                return None;
+            };
+
+            // Parse body (block or command)
+            match body_pair.as_rule() {
+                Rule::block => {
+                    // Parse and dedent block content
+                    let full_content = block::parse_block_content(body_pair.as_str());
+
+                    // Split into commands based on shell type
+                    let commands = block::split_block_commands(&full_content, &attributes);
+
+                    // Parse shebang from the content
+                    let shebang = shebang::parse_shebang(full_content.trim());
+
+                    Some(Statement::BlockFunctionDef {
+                        name,
+                        params,
+                        commands,
+                        attributes,
+                        shebang,
+                    })
+                }
+                Rule::command => {
+                    let command_template = parse_command(body_pair);
+                    Some(Statement::SimpleFunctionDef {
+                        name,
+                        params,
+                        command_template,
+                        attributes,
+                    })
+                }
+                _ => None,
             }
         }
         Rule::function_call => {
@@ -214,6 +227,80 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> String {
     result.trim().to_string()
 }
 
+fn parse_param_list(pair: pest::iterators::Pair<Rule>) -> Option<Vec<crate::ast::Parameter>> {
+    let mut params = Vec::new();
+    
+    for inner in pair.into_inner() {
+        if inner.as_rule() == Rule::params {
+            for param_pair in inner.into_inner() {
+                if let Some(param) = parse_param(param_pair) {
+                    params.push(param);
+                }
+            }
+        }
+    }
+    
+    Some(params)
+}
+
+fn parse_param(pair: pest::iterators::Pair<Rule>) -> Option<crate::ast::Parameter> {
+    let mut inner = pair.into_inner();
+    let first = inner.next()?;
+    
+    // Check for rest parameter (...args)
+    if first.as_rule() == Rule::rest_param {
+        let name = first.into_inner().next()?.as_str().to_string();
+        return Some(crate::ast::Parameter {
+            name,
+            param_type: crate::ast::ArgType::String,
+            default_value: None,
+            is_rest: true,
+        });
+    }
+    
+    // Regular parameter (first is identifier from regular_param)
+    let name = first.as_str().to_string();
+    let mut param_type = crate::ast::ArgType::String;  // Default
+    let mut default_value = None;
+    
+    // Check for type annotation and default value
+    for next in inner {
+        match next.as_rule() {
+            Rule::param_type_annotation => {
+                if let Some(type_pair) = next.into_inner().next() {
+                    param_type = match type_pair.as_str() {
+                        "int" | "integer" => crate::ast::ArgType::Integer,
+                        "bool" | "boolean" => crate::ast::ArgType::Boolean,
+                        "str" | "string" => crate::ast::ArgType::String,
+                        _ => crate::ast::ArgType::String,
+                    };
+                }
+            }
+            Rule::param_default => {
+                if let Some(default_pair) = next.into_inner().next() {
+                    let val = default_pair.as_str().trim();
+                    // Strip surrounding quotes if present
+                    let val = if (val.starts_with('"') && val.ends_with('"')) 
+                              || (val.starts_with('\'') && val.ends_with('\'')) {
+                        &val[1..val.len()-1]
+                    } else {
+                        val
+                    };
+                    default_value = Some(val.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    
+    Some(crate::ast::Parameter {
+        name,
+        param_type,
+        default_value,
+        is_rest: false,
+    })
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -225,7 +312,7 @@ mod tests {
         let input = "server() echo port=${1:-8080}";
         let result = parse_script(input).unwrap();
 
-        if let Statement::SimpleFunctionDef { name, command_template, attributes } = &result.statements[0] {
+        if let Statement::SimpleFunctionDef { name, command_template, attributes, .. } = &result.statements[0] {
             assert_eq!(name, "server");
             assert_eq!(command_template, "echo port=${1:-8080}", "Command template has unexpected spacing");
             assert_eq!(attributes.len(), 0);

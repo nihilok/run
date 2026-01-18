@@ -5,6 +5,15 @@ pub struct Program {
     pub statements: Vec<Statement>,
 }
 
+/// Function parameter definition
+#[derive(Debug, Clone, PartialEq)]
+pub struct Parameter {
+    pub name: String,
+    pub param_type: ArgType,
+    pub default_value: Option<String>,
+    pub is_rest: bool,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Assignment {
@@ -13,11 +22,13 @@ pub enum Statement {
     },
     SimpleFunctionDef {
         name: String,
+        params: Vec<Parameter>,
         command_template: String,
         attributes: Vec<Attribute>,
     },
     BlockFunctionDef {
         name: String,
+        params: Vec<Parameter>,
         commands: Vec<String>,
         attributes: Vec<Attribute>,
         shebang: Option<String>,

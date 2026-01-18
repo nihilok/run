@@ -26,13 +26,31 @@ shell_type = { "python" | "node" | "ruby" | "pwsh" | "bash" }
 
 // Function definition: supports multiple bash-like syntaxes
 // - name() command or name() { ... }            (original syntax)
+// - name(params) command or name(params) { ... } (new signature syntax)
 // - function name { ... }                       (keyword, no parens, block or inline command)
 // - function name command                       (keyword required for paren-less inline)
 // - function name() { ... } or function name() command
 function_def = {
-    "function" ~ identifier ~ "(" ~ ")" ~ (block | command)
+    "function" ~ identifier ~ param_list ~ (block | command)
+    | "function" ~ identifier ~ "(" ~ ")" ~ (block | command)
     | "function" ~ identifier ~ (block | command)
+    | identifier ~ param_list ~ (block | command)
     | identifier ~ "(" ~ ")" ~ (block | command)
+}
+
+// Parameter list: (arg1, arg2: int, arg3: str = "default")
+param_list = { "(" ~ params ~ ")" }
+params = { param ~ ("," ~ param)* }
+param = { rest_param | regular_param }
+rest_param = { "..." ~ identifier }
+regular_param = { identifier ~ param_type_annotation? ~ param_default? }
+param_type_annotation = { ":" ~ param_type }
+param_type = { "int" | "str" | "bool" | "string" | "integer" | "boolean" }
+param_default = { "=" ~ default_value }
+default_value = @{ 
+    "\"" ~ ("\\\"" | (!"\"" ~ ANY))* ~ "\""   // Double-quoted string
+    | "'" ~ ("\\'" | (!"'" ~ ANY))* ~ "'"     // Single-quoted string  
+    | (!(WHITESPACE* ~ ("," | ")" | NL)) ~ ANY)+  // Unquoted value
 }
 
 // Block: { statement; statement; ... } or { statement\n statement\n ... }
