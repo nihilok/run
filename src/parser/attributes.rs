@@ -116,47 +116,77 @@ fn parse_attribute_line(line: &str) -> Option<Attribute> {
 
 /// Parse an @arg attribute specification
 fn parse_arg_attribute(arg_text: &str) -> Option<Attribute> {
-    // Format: "1:name type description" or "1:name description" (type defaults to string)
+    // Format: 
+    // - "1:name type description" (old style with position)
+    // - "name description" (new hybrid style without position)
     let arg_text = arg_text.trim();
 
-    // Split by ':' to get position and rest
-    let colon_pos = arg_text.find(':')?;
-    let position_str = &arg_text[..colon_pos];
-    let rest = &arg_text[colon_pos + 1..];
+    // Check if it has a position prefix (number followed by colon)
+    let has_position = arg_text.chars().next()?.is_ascii_digit() && arg_text.contains(':');
 
-    let position: usize = position_str.parse().ok()?;
+    if has_position {
+        // Old style: "1:name type description"
+        let colon_pos = arg_text.find(':')?;
+        let position_str = &arg_text[..colon_pos];
+        let rest = &arg_text[colon_pos + 1..];
 
-    // Split rest by whitespace
-    let parts: Vec<&str> = rest.split_whitespace().collect();
-    if parts.is_empty() {
-        return None;
-    }
+        let position: usize = position_str.parse().ok()?;
 
-    let name = parts[0].to_string();
-
-    // Check if second part is a type
-    let (arg_type, desc_start_idx) = if parts.len() > 1 {
-        match parts[1] {
-            "string" => (ArgType::String, 2),
-            "integer" => (ArgType::Integer, 2),
-            "boolean" => (ArgType::Boolean, 2),
-            _ => (ArgType::String, 1), // Default to string, description starts at index 1
+        // Split rest by whitespace
+        let parts: Vec<&str> = rest.split_whitespace().collect();
+        if parts.is_empty() {
+            return None;
         }
-    } else {
-        (ArgType::String, 1)
-    };
 
-    // Join remaining parts as description
-    let description = if desc_start_idx < parts.len() {
-        strip_quotes(&parts[desc_start_idx..].join(" "))
-    } else {
-        String::new()
-    };
+        let name = parts[0].to_string();
 
-    Some(Attribute::Arg(ArgMetadata {
-        position,
-        name,
-        arg_type,
-        description,
-    }))
+        // Check if second part is a type
+        let (arg_type, desc_start_idx) = if parts.len() > 1 {
+            match parts[1] {
+                "string" => (ArgType::String, 2),
+                "integer" => (ArgType::Integer, 2),
+                "boolean" => (ArgType::Boolean, 2),
+                _ => (ArgType::String, 1), // Default to string, description starts at index 1
+            }
+        } else {
+            (ArgType::String, 1)
+        };
+
+        // Join remaining parts as description
+        let description = if desc_start_idx < parts.len() {
+            strip_quotes(&parts[desc_start_idx..].join(" "))
+        } else {
+            String::new()
+        };
+
+        Some(Attribute::Arg(ArgMetadata {
+            position,
+            name,
+            arg_type,
+            description,
+        }))
+    } else {
+        // New hybrid style: "name description"
+        let parts: Vec<&str> = arg_text.split_whitespace().collect();
+        if parts.is_empty() {
+            return None;
+        }
+
+        let name = parts[0].to_string();
+        
+        // Rest is description
+        let description = if parts.len() > 1 {
+            strip_quotes(&parts[1..].join(" "))
+        } else {
+            String::new()
+        };
+
+        // For hybrid style, use position 0 as a marker (won't be used anyway)
+        Some(Attribute::Arg(ArgMetadata {
+            position: 0,
+            name,
+            arg_type: ArgType::String,
+            description,
+        }))
+    }
 }

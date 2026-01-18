@@ -537,6 +537,38 @@ shell() docker compose exec $1 bash
         }
     }
 
+    #[test]
+    fn test_arg_without_position_hybrid_mode() {
+        let input = r#"
+# @arg service The service to scale
+# @arg replicas Number of instances
+scale(service, replicas) docker compose scale $service=$replicas
+"#;
+        let result = parse_script(input).unwrap();
+
+        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+            assert_eq!(name, "scale");
+            assert_eq!(attributes.len(), 2);
+
+            if let Attribute::Arg(arg) = &attributes[0] {
+                assert_eq!(arg.name, "service");
+                assert_eq!(arg.description, "The service to scale");
+                assert_eq!(arg.position, 0); // Marker for hybrid mode
+            } else {
+                panic!("Expected Arg attribute");
+            }
+
+            if let Attribute::Arg(arg) = &attributes[1] {
+                assert_eq!(arg.name, "replicas");
+                assert_eq!(arg.description, "Number of instances");
+            } else {
+                panic!("Expected Arg attribute");
+            }
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
     // Tests for RFC004 function signature notation
 
     #[test]
