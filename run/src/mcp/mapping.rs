@@ -74,28 +74,64 @@ pub(super) fn map_arguments_to_positional(
         }
     };
 
-    // Find the function and get its @arg attributes
+    // Find the function and get its @arg attributes and parameters
     let mut arg_mapping: HashMap<usize, String> = HashMap::new();
+    let mut params_vec: Vec<crate::ast::Parameter> = Vec::new();
+    let mut arg_metadata_by_name: HashMap<String, usize> = HashMap::new();
 
     for statement in program.statements {
-        let (name, attributes) = match statement {
-            Statement::SimpleFunctionDef { name, attributes, .. } => (name, attributes),
-            Statement::BlockFunctionDef { name, attributes, .. } => (name, attributes),
+        let (name, attributes, params) = match statement {
+            Statement::SimpleFunctionDef { name, attributes, params, .. } => (name, attributes, params),
+            Statement::BlockFunctionDef { name, attributes, params, .. } => (name, attributes, params),
             _ => continue,
         };
 
         if name == tool_name {
-            // Extract argument metadata
+            // Extract argument metadata from @arg attributes
             for attr in attributes {
                 if let Attribute::Arg(arg_meta) = attr {
-                    arg_mapping.insert(arg_meta.position, arg_meta.name.clone());
+                    // Legacy mode: explicit position like @arg 1:name
+                    if arg_meta.position > 0 {
+                        arg_mapping.insert(arg_meta.position, arg_meta.name.clone());
+                    } else {
+                        // New mode: position 0 means match by name later
+                        arg_metadata_by_name.insert(arg_meta.name.clone(), 0);
+                    }
                 }
             }
+            params_vec = params;
             break;
         }
     }
 
-    // If no @arg attributes found, return empty arguments
+    // Smart matching: match parameters with @arg by name, or use parameter order
+    if !params_vec.is_empty() {
+        for (idx, param) in params_vec.iter().enumerate() {
+            if param.is_rest {
+                continue;
+            }
+            
+            let position = idx + 1;
+            
+            // Check if we already have this position from explicit @arg (legacy mode)
+            if arg_mapping.contains_key(&position) {
+                continue;
+            }
+            
+            // Check if there's an @arg with matching name (new mode)
+            if arg_metadata_by_name.contains_key(&param.name) {
+                arg_mapping.insert(position, param.name.clone());
+            } else if arg_mapping.values().any(|v| v == &param.name) {
+                // Already mapped by legacy @arg with explicit position
+                continue;
+            } else {
+                // No @arg metadata for this param, just use parameter order
+                arg_mapping.insert(position, param.name.clone());
+            }
+        }
+    }
+
+    // If still no mapping found, return empty arguments
     if arg_mapping.is_empty() {
         return Ok(Vec::new());
     }

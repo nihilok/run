@@ -125,7 +125,7 @@ pub(super) fn handle_tools_call(
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     // Return content as per MCP spec
-    // Include stderr in content if execution failed for better debugging
+    // Include both stdout and stderr for better debugging
     let mut content = vec![
         serde_json::json!({
             "type": "text",
@@ -133,10 +133,10 @@ pub(super) fn handle_tools_call(
         })
     ];
 
-    if !output.status.success() && !stderr.is_empty() {
+    if !stderr.is_empty() {
         content.push(serde_json::json!({
             "type": "text",
-            "text": format!("Error: {}", stderr)
+            "text": format!("STDERR:\n{}", stderr)
         }));
     }
 
