@@ -87,13 +87,17 @@ if [ "$UPDATED_VERSION" != "$NEW_VERSION" ]; then
     exit 1
 fi
 
+# Update runtool's run dependency version
+echo -e "${YELLOW}Updating runtool/Cargo.toml run dependency version...${NC}"
+sed -i.bak "s/run = { path = \"..\/run\", version = \".*\" }/run = { path = \"..\/run\", version = \"$NEW_VERSION\" }/" runtool/Cargo.toml && rm runtool/Cargo.toml.bak
+
 # Update Cargo.lock
 echo -e "${YELLOW}Updating Cargo.lock...${NC}"
 cargo build --release
 
 # Commit version bump
 echo -e "${YELLOW}Committing version bump...${NC}"
-git add Cargo.toml Cargo.lock
+git add Cargo.toml Cargo.lock runtool/Cargo.toml
 git commit -m "Bump version to $NEW_VERSION"
 
 # Run tests
