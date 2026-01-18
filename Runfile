@@ -1,9 +1,9 @@
 # Example Runfile with simple function definitions
 
 # Simple function with argument substitution
-# @desc "Open a shell in the specified Docker container"
-# @arg 1:container "The name of the container to open a shell in"
-docker_shell() docker compose exec $1 bash
+# @desc Open a shell in the specified Docker container
+# @arg 1:container The name of the container to open a shell in
+docker_shell(container) docker compose exec $container bash
 
 # Nested command with colon notation
 # @desc "Open a shell in the specified Docker container (default: app)"
@@ -105,4 +105,10 @@ python:count() {
 nested() {
     incompatible_with_pwsh
     node:hello
+}
+
+# @desc Example function using new signature notation
+# @arg some_arg "An example argument"
+new_signature_notation(some_arg: int) {
+    echo "Argument received: $1"
 }

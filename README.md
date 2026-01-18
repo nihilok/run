@@ -3,82 +3,134 @@
 [![Crates.io](https://img.shields.io/crates/v/run.svg)](https://crates.io/crates/run)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-**Lightweight task runner that speaks shell, Python, Node, and more, that communicates natively with your AI Agents.**
+**Give your AI agent tools. Write how you feel.**
 
-Define tasks in a `Runfile`, run them from anywhere. Make them available to AI via the in-built MCP server.
+Define functions in a `Runfile`. Your AI agent discovers and executes them via the built-in MCP server. You can run them from the terminal too—it's a fully-featured task runner. Shell, Python, Node—whatever fits the task.
 
 ```bash
 # Runfile
 
-build() cargo build --release
-
-# @os windows
-clean() del /Q dist
-
-# @os unix
-clean() rm -rf dist
-
+# @desc Search the codebase for a pattern
 # @shell python
-analyze() {
+# @arg pattern The regex pattern to search for
+search(pattern: str) {
+    import sys, os, re
+    for root, _, files in os.walk('.'):
+        for f in files:
+            path = os.path.join(root, f)
+            try:
+                for i, line in enumerate(open(path), 1):
+                    if re.search(sys.argv[1], line):
+                        print(f"{path}:{i}: {line.rstrip()}")
+            except: pass
+}
+
+# @desc Deploy to an environment
+deploy(env: str, version = "latest") {
+    echo "Deploying $version to $env..."
+    ./scripts/deploy.sh $env $version
+}
+
+# @desc Analyze a JSON file
+function analyze(file: str) {
+    #!/usr/bin/env python3
     import sys, json
     with open(sys.argv[1]) as f:
         data = json.load(f)
         print(f"Found {len(data)} records")
 }
-
-# @shell node
-server() {
-    require('http').createServer((req, res) => {
-        res.end('Hello from Runfile!');
-    }).listen(process.argv[1] || 3000);
-}
 ```
 
 ```bash
-$ run build
+$ run search "TODO"
+$ run deploy staging
 $ run analyze data.json
-$ run server 8080
 ```
 
-Perfect for **project automation**, **CI scripts**, and **personal workflows**.
+Point your AI agent at the Runfile, and it can discover and execute these tools automatically.
 
 ---
 
 ## Table of Contents
 
-- [Why run?](#why-run)
+- [AI Agent Integration (MCP)](#ai-agent-integration-mcp)
 - [Installation](#installation)
-- [Quick Start](#quick-start)
 - [The Runfile Syntax](#the-runfile-syntax)
   - [Basic Functions](#basic-functions)
   - [Block Syntax](#block-syntax)
-  - [Arguments & Defaults](#arguments--defaults)
+  - [Function Signatures](#function-signatures)
   - [Attributes & Polyglot Scripts](#attributes--polyglot-scripts)
   - [Nested Namespaces](#nested-namespaces)
   - [Function Composition](#function-composition)
-  - [AI Agent Integration (MCP)](#ai-agent-integration-mcp)
 - [Configuration](#configuration)
-  - [Shell Selection](#shell-selection)
-  - [Global Runfile](#global-runfile)
 - [License](#license)
 
 ---
 
-## Why run?
+## AI Agent Integration (MCP)
 
-It hits a common sweet spot — lightweight, readable, and shell-native for quick CLI automation without the overhead of heavier task systems.
+`run` has built-in support for the **Model Context Protocol (MCP)**, allowing AI agents like Claude to discover and execute your Runfile functions as tools.
 
-- **Zero Config**: Shell, Python, Node, or Ruby: right in your Runfile.
-- **Low Overhead**: Instant startup time.
-- **Shell Native**: Use the syntax you already know (`$1`, `&&`, pipes).
-- **Clean Namespace**: Organise tasks with `group:task` syntax.
-- **Global & Local**: Project-specific `./Runfile` or personal `~/.runfile`.
+### MCP Server Mode
 
-### Comparison
+Start `run` as an MCP server:
 
-- **vs Make**: `run` is easier for linear scripts and doesn't require learning Makefile quirks (tabs vs spaces, `.PHONY`).
-- **vs Just**: `run` is closer to raw shell scripting. It doesn't have a custom language for variables or logic—it just delegates to your shell.
-- **vs Both**: `run` is the only task runner with built-in Model Context Protocol support, letting AI agents like Claude discover and execute your tools automatically.
+```bash
+run --serve-mcp
+```
+
+Configure in your AI client (e.g., Claude Desktop `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "my-project": {
+      "command": "run",
+      "args": ["--serve-mcp", "--runfile", "/path/to/your/project/Runfile"],
+      "cwd": "/path/to/your/project"
+    }
+  }
+}
+```
+
+Now your AI agent can discover and call your tools automatically.
+
+### Describing Tools for AI
+
+Use `@desc` to describe what a function does, and declare parameters in the function signature:
+
+```bash
+# @desc Search the codebase for a regex pattern
+search(pattern: str) {
+    #!/usr/bin/env python3
+    import sys, os, re
+    for root, _, files in os.walk('.'):
+        for f in files:
+            path = os.path.join(root, f)
+            try:
+                for i, line in enumerate(open(path), 1):
+                    if re.search(sys.argv[1], line):
+                        print(f"{path}:{i}: {line.rstrip()}")
+            except: pass
+}
+
+# @desc Deploy the application to a specific environment
+deploy(environment: str, version = "latest") {
+    ./scripts/deploy.sh $environment $version
+}
+```
+
+Functions with `@desc` are automatically exposed as MCP tools with typed parameters.
+
+### Inspect Tool Schema
+
+View the generated JSON schema for all MCP-enabled functions:
+
+```bash
+run --inspect
+```
+
+This outputs the tool definitions that AI agents will see—useful for debugging and validation.
 
 ---
 
@@ -89,13 +141,13 @@ It hits a common sweet spot — lightweight, readable, and shell-native for quic
 **macOS/Linux (Homebrew)**
 ```bash
 brew tap nihilok/tap
-brew install runfile
+brew install runtool
 ```
 
 **Windows (Scoop)**
 ```powershell
 scoop bucket add nihilok https://github.com/nihilok/scoop-bucket
-scoop install runfile
+scoop install runtool
 ```
 
 ### Alternative: Cargo
@@ -103,7 +155,7 @@ scoop install runfile
 Works on all platforms:
 
 ```bash
-cargo install run
+cargo install runtool  # or: cargo install run
 ```
 
 ### Tab Completions
@@ -118,46 +170,6 @@ Supports `bash`, `zsh`, `fish`, and `powershell`.
 
 ---
 
-## Quick Start
-
-Create a `Runfile` in your project root:
-
-```bash
-# Simple one-liner
-dev() cargo run
-
-# Multi-step task
-deploy() {
-    echo "Building..."
-    cargo build --release
-    echo "Deploying..."
-    scp target/release/app server:/bin/
-}
-
-# Use Python for complex logic
-# @shell python
-stats() {
-    import sys
-    lines = sum(1 for line in open(sys.argv[1]))
-    print(f"{sys.argv[1]}: {lines} lines")
-}
-```
-
-Run your tasks:
-
-```bash
-$ run dev
-$ run deploy
-$ run stats src/main.rs
-```
-
-List available tasks:
-
-```bash
-$ run --list
-```
-
----
 
 ## The Runfile Syntax
 
@@ -189,31 +201,58 @@ ci() {
 }
 ```
 
-### Arguments & Defaults
+### Function Signatures
 
-Arguments are passed directly to the underlying shell. Access them using standard positional variables: `$1`, `$2`, `$@`.
+Declare parameters directly in the function signature for cleaner, self-documenting code:
 
 ```bash
-# Usage: run commit "Initial commit"
-git:commit() {
-    git add .
-    git commit -m "$1"
-}
-
-# Usage: run deploy prod v2
-# $1 = prod, $2 = v2 (defaults to 'latest' if missing)
-deploy() {
-    env=$1
-    version=${2:-latest} 
+# @desc Deploy to an environment
+deploy(env: str, version = "latest") {
     echo "Deploying $version to $env..."
+    ./scripts/deploy.sh $env $version
 }
 
-# Pass all arguments through
-test() {
-    # Usage: run test --release --nocapture
-    cargo test $@
+# @desc Resize an image
+resize(width: int, height: int, file: str) {
+    convert $file -resize ${width}x${height} output.png
 }
 ```
+
+**Type annotations** (`str`, `int`, `bool`) are used for:
+- MCP JSON schema generation (AI agents see typed parameters)
+- Self-documenting functions
+- Optional runtime validation
+
+**Default values** make parameters optional:
+
+```bash
+# version defaults to "latest" if not provided
+deploy(env: str, version = "latest") { ... }
+```
+
+**Legacy positional syntax** still works for simple cases:
+
+```bash
+# Access arguments as $1, $2, $@
+deploy() {
+    env=$1
+    version=${2:-latest}
+    ./scripts/deploy.sh $env $version
+}
+```
+
+**Combining with `@arg` for descriptions:**
+
+```bash
+# @desc Deploy the application
+# @arg env Target environment (staging|prod)
+# @arg version Version tag to deploy
+deploy(env: str, version = "latest") {
+    ./scripts/deploy.sh $env $version
+}
+```
+
+When both signature params and `@arg` exist, the signature defines names/types/defaults, and `@arg` provides descriptions for MCP.
 
 ### Attributes & Polyglot Scripts
 
@@ -331,78 +370,6 @@ When you run `run ci`, all compatible functions are automatically injected into 
 
 ---
 
-## AI Agent Integration (MCP)
-
-`run` includes built-in support for the **Model Context Protocol (MCP)**, allowing AI agents like Claude to discover and execute your Runfile functions as tools.
-
-### Exposing Functions to AI Agents
-
-Use `@desc` and `@arg` attributes to provide metadata for AI agents:
-
-```bash
-# @desc Search the codebase for specific patterns
-# @arg 1:pattern string The regex pattern to search for
-# @shell python
-search() {
-    import sys, os, re
-    pattern = sys.argv[1]
-    for root, dirs, files in os.walk('.'):
-        for file in files:
-            if file.endswith('.py'):
-                path = os.path.join(root, file)
-                with open(path) as f:
-                    for i, line in enumerate(f, 1):
-                        if re.search(pattern, line):
-                            print(f"{path}:{i}: {line.strip()}")
-}
-
-# @desc Deploy the application to a specific environment
-# @arg 1:environment string Target environment (staging|prod)
-deploy() {
-    ./scripts/deploy.sh $1
-}
-```
-
-### MCP Server Mode
-
-Start `run` as an MCP server to enable AI agent integration:
-
-```bash
-run --serve-mcp
-```
-
-Configure in your AI client (e.g., Claude Desktop):
-
-```json
-{
-  "mcpServers": {
-    "my-project": {
-      "command": "run",
-      "args": ["--serve-mcp", "--runfile", "/path/to/your/project/Runfile"],
-      "cwd": "/path/to/your/project"
-    }
-  }
-}
-```
-
-**Note**: The `--runfile` argument is required to specify which Runfile the AI agent should use. This allows you to expose specific Runfiles to different AI contexts.
-
-Now AI agents can:
-- Discover available tools via `run --inspect`
-- Execute functions with typed parameters
-- Receive structured outputs
-
-### Inspect Tool Schema
-
-View the generated JSON schema for all MCP-enabled functions:
-
-```bash
-run --inspect
-```
-
-This outputs the tool definitions that AI agents will see, useful for debugging and validation.
-
----
 
 ## Configuration
 
