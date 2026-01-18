@@ -37,23 +37,70 @@ pub struct InspectOutput {
     pub tools: Vec<Tool>,
 }
 
-/// Extract metadata from function attributes
+/// Extract metadata from function attributes and parameters
 /// Returns None if the function has no @desc attribute
 pub(super) fn extract_function_metadata(
     name: &str,
     attributes: &[Attribute],
+    params: &[crate::ast::Parameter],
 ) -> Option<Tool> {
     let mut description: Option<String> = None;
     let mut properties = HashMap::new();
     let mut required = Vec::new();
 
-    // Process attributes
+    // Build a map of @arg descriptions (name -> description)
+    let mut arg_descriptions: HashMap<String, String> = HashMap::new();
+
+    // Get description from attributes and collect @arg descriptions
     for attr in attributes {
         match attr {
             Attribute::Desc(desc) => {
                 description = Some(desc.clone());
             }
             Attribute::Arg(arg_meta) => {
+                // Store description keyed by name for lookup
+                arg_descriptions.insert(arg_meta.name.clone(), arg_meta.description.clone());
+            }
+            _ => {}
+        }
+    }
+
+    // If we have params, use them (takes precedence over @arg for type/default)
+    if !params.is_empty() {
+        for param in params.iter() {
+            let param_description = arg_descriptions
+                .get(&param.name)
+                .cloned()
+                .unwrap_or_default();
+
+            if param.is_rest {
+                // Rest parameter: array type, not required
+                properties.insert(
+                    param.name.clone(),
+                    ParameterSchema {
+                        param_type: "array".to_string(),
+                        description: param_description,
+                    },
+                );
+            } else {
+                properties.insert(
+                    param.name.clone(),
+                    ParameterSchema {
+                        param_type: utils::arg_type_to_json_type(&param.param_type).to_string(),
+                        description: param_description,
+                    },
+                );
+
+                // Only required if no default value and not rest
+                if param.default_value.is_none() {
+                    required.push(param.name.clone());
+                }
+            }
+        }
+    } else {
+        // Fall back to @arg attributes for backward compatibility
+        for attr in attributes {
+            if let Attribute::Arg(arg_meta) = attr {
                 let param_type = utils::arg_type_to_json_type(&arg_meta.arg_type);
 
                 properties.insert(
@@ -66,7 +113,6 @@ pub(super) fn extract_function_metadata(
 
                 required.push(arg_meta.name.clone());
             }
-            _ => {}
         }
     }
 
@@ -113,22 +159,24 @@ pub fn inspect() -> Result<InspectOutput, String> {
         match statement {
             Statement::SimpleFunctionDef {
                 name,
+                params,
                 attributes,
                 ..
             } => {
                 if utils::matches_current_platform(&attributes) {
-                    if let Some(tool) = extract_function_metadata(&name, &attributes) {
+                    if let Some(tool) = extract_function_metadata(&name, &attributes, &params) {
                         tools.push(tool);
                     }
                 }
             }
             Statement::BlockFunctionDef {
                 name,
+                params,
                 attributes,
                 ..
             } => {
                 if utils::matches_current_platform(&attributes) {
-                    if let Some(tool) = extract_function_metadata(&name, &attributes) {
+                    if let Some(tool) = extract_function_metadata(&name, &attributes, &params) {
                         tools.push(tool);
                     }
                 }
