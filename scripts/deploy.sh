@@ -5,11 +5,13 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Get current version from Cargo.toml
-CURRENT_VERSION=$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+# Get current version from workspace Cargo.toml
+CURRENT_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
 
+echo -e "${BLUE}=== Dual-Package Release for run + runtool ===${NC}"
 echo -e "${YELLOW}Current version: $CURRENT_VERSION${NC}"
 
 # Ask for new version or provide increment type
@@ -76,10 +78,10 @@ if [ -n "$(git status --porcelain)" ]; then
     exit 1
 fi
 
-# Update Cargo.toml
-echo -e "${YELLOW}Updating Cargo.toml...${NC}"
-perl -pi -e "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
-UPDATED_VERSION=$(grep -m1 '^version = ' Cargo.toml | sed 's/version = \"\(.*\)\"/\1/')
+# Update workspace Cargo.toml
+echo -e "${YELLOW}Updating workspace Cargo.toml...${NC}"
+sed -i.bak "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml && rm Cargo.toml.bak
+UPDATED_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
 if [ "$UPDATED_VERSION" != "$NEW_VERSION" ]; then
     echo -e "${RED}Version update failed (expected $NEW_VERSION, saw $UPDATED_VERSION).${NC}"
     exit 1
@@ -96,14 +98,27 @@ git commit -m "Bump version to $NEW_VERSION"
 
 # Run tests
 echo -e "${YELLOW}Running tests...${NC}"
-cargo test
+cargo test --all
 
-# Publish to crates.io
-echo -e "${YELLOW}Publishing to crates.io...${NC}"
+# Publish run crate first (runtool depends on it)
+echo -e "${BLUE}=== Publishing 'run' crate ===${NC}"
+cd run
 cargo publish
+cd ..
 
-# Wait a moment for crates.io to process
-echo -e "${YELLOW}Waiting for crates.io to process...${NC}"
+# Wait for crates.io to index the run crate
+echo -e "${YELLOW}Waiting for crates.io to index 'run' crate (5 minutes)...${NC}"
+echo -e "${YELLOW}This is necessary because 'runtool' depends on 'run'${NC}"
+sleep 300
+
+# Publish runtool crate
+echo -e "${BLUE}=== Publishing 'runtool' crate ===${NC}"
+cd runtool
+cargo publish
+cd ..
+
+# Wait a moment for final processing
+echo -e "${YELLOW}Waiting for final crates.io processing...${NC}"
 sleep 10
 
 # Push commit
@@ -116,10 +131,15 @@ git tag "v$NEW_VERSION"
 git push origin "v$NEW_VERSION"
 
 echo -e "${GREEN}✓ Successfully released version $NEW_VERSION!${NC}"
+echo -e "${GREEN}✓ Published 'run' v$NEW_VERSION to crates.io${NC}"
+echo -e "${GREEN}✓ Published 'runtool' v$NEW_VERSION to crates.io${NC}"
 echo -e "${GREEN}✓ GitHub Actions will now build release binaries${NC}"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 echo "  1. Wait for GitHub Actions to complete"
-echo "  2. Update Homebrew formula with new hash"
-echo "  3. Update Scoop manifest with new hash"
-echo "  4. Update AUR PKGBUILD"
+echo "  2. Verify both packages on crates.io:"
+echo "     - https://crates.io/crates/run"
+echo "     - https://crates.io/crates/runtool"
+echo "  3. Update Homebrew formula with new hash"
+echo "  4. Update Scoop manifest with new hash"
+echo "  5. Update AUR PKGBUILD"

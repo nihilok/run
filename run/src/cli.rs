@@ -1,19 +1,9 @@
-//! # run
+//! CLI module containing the main entry point logic.
 //!
-//! A simple scripting language for CLI automation, inspired by shell scripting and Makefiles.
-//! Define functions in a `Runfile` (or `~/.runfile`) and call them from the command line to streamline your development workflow.
-//!
-//! ## Usage
-//!
-//! - Run a script file: `run myscript.run`
-//! - Call a function: `run build`, `run docker shell app`
-//! - Pass arguments: `run start dev`, `run git commit "Initial commit"`
-//! - Interactive shell: `run`
-//!
-//! See README.md for more details and examples.
+//! This module is separated from main.rs to allow the runtool wrapper crate to reuse it.
 
+use crate::{completion, config, executor, mcp, repl};
 use clap::Parser as ClapParser;
-use run::{completion, config, executor, mcp, repl};
 use std::path::PathBuf;
 
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -57,8 +47,10 @@ struct Cli {
     runfile: Option<PathBuf>,
 }
 
-/// Entry point for the CLI tool.
-fn main() {
+/// Main CLI logic that can be called from external wrappers.
+///
+/// This function is public to allow the `runtool` wrapper crate to reuse the same logic.
+pub fn run_cli() {
     let cli = Cli::parse();
 
     // Set custom runfile path if provided

@@ -1,0 +1,32 @@
+[package]
+name = "run"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "a.k.a. runtool: the bridge between human and AI tooling"
+license.workspace = true
+repository.workspace = true
+include = [
+    "src/**/*",
+    "Cargo.toml",
+    "README.md",
+    "completions/**/*",
+]
+[lib]
+name = "run"
+path = "src/lib.rs"
+[dependencies]
+pest.workspace = true
+pest_derive.workspace = true
+clap.workspace = true
+which.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+[dev-dependencies]
+tempfile.workspace = true
+serde_json.workspace = true
+[lints]
+workspace = true
+[[bin]]
+name = "run"
+path = "src/main.rs"

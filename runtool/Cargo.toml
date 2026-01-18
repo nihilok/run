@@ -1,0 +1,15 @@
+[package]
+name = "runtool"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "a.k.a. run: the bridge between human and AI tooling"
+license.workspace = true
+repository.workspace = true
+[dependencies]
+run = { path = "../run" }
+[lints]
+workspace = true
+[[bin]]
+name = "run"
+path = "src/main.rs"
