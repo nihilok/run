@@ -83,7 +83,7 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
             let (params, body_pair) = if let Some(next) = inner.next() {
                 if next.as_rule() == Rule::param_list {
                     // Parse parameters
-                    let params = parse_param_list(next)?;
+                    let params = parse_param_list(next).unwrap_or_default();
                     let body = inner.next()?;
                     (params, body)
                 } else {
