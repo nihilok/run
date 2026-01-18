@@ -362,17 +362,9 @@ warning: output filename collision at /target/debug/run
 LINK : fatal error LNK1104: cannot open file 'run.exe'
 ```
 
-**Cause**: Both `run` and `runtool` crates were configured to output binaries with the same name (`run`/`run.exe`), causing the Windows linker to fail when building in parallel because it can't write to the same file simultaneously.
+**Cause**: Both `run` and `runtool` crates produce binaries with the same name (`run`/`run.exe`), causing the Windows linker to fail when building the workspace in parallel because it can't write to the same file simultaneously.
 
-**Solution**: Change the `runtool` binary name to be unique:
-```toml
-# runtool/Cargo.toml
-[[bin]]
-name = "runtool"  # Changed from "run"
-path = "src/main.rs"
-```
-
-Then update the GitHub Actions workflow to explicitly build the `run` binary:
+**Solution**: Update the GitHub Actions workflow to explicitly build only the `run` crate's binary:
 ```yaml
 - name: Build
   run: cargo build --release --target ${{ matrix.target }} --bin run
@@ -380,9 +372,9 @@ Then update the GitHub Actions workflow to explicitly build the `run` binary:
 
 **Result**: 
 - Users installing via `cargo install run` get the `run` binary
-- Users installing via `cargo install runtool` get the `runtool` binary
-- Both binaries have identical functionality
-- CI builds only the `run` binary for releases
+- Users installing via `cargo install runtool` also get the `run` binary (same functionality, different package name)
+- CI builds only the `run` binary for releases using `--bin run` flag
+- No conflicts because only one binary is built at a time in CI
 
 ### Issue: Resource path errors after restructuring
 
