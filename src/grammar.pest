@@ -42,16 +42,19 @@ function_def = {
 param_list = { "(" ~ params ~ ")" }
 params = { param ~ ("," ~ param)* }
 param = { rest_param | regular_param }
-rest_param = { "..." ~ identifier }
-regular_param = { identifier ~ param_type_annotation? ~ param_default? }
-param_type_annotation = { ":" ~ param_type }
-param_type = { "int" | "str" | "bool" | "string" | "integer" | "boolean" }
-param_default = { "=" ~ default_value }
+rest_param = { "..." ~ param_identifier }
+regular_param = { param_identifier ~ param_type_annotation? ~ param_default? }
+param_type_annotation = { ":" ~ WHITESPACE* ~ param_type }
+param_type = { "string" | "integer" | "boolean" | "int" | "str" | "bool" }
+param_default = { "=" ~ WHITESPACE* ~ default_value }
 default_value = @{ 
     "\"" ~ ("\\\"" | (!"\"" ~ ANY))* ~ "\""   // Double-quoted string
     | "'" ~ ("\\'" | (!"'" ~ ANY))* ~ "'"     // Single-quoted string  
     | (!(WHITESPACE* ~ ("," | ")" | NL)) ~ ANY)+  // Unquoted value
 }
+
+// Parameter identifier: like identifier but without colons (to avoid ambiguity with type annotations)
+param_identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
 // Block: { statement; statement; ... } or { statement\n statement\n ... }
 // Captures everything between braces, handling nested braces in strings

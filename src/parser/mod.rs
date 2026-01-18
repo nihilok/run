@@ -249,6 +249,7 @@ fn parse_param(pair: pest::iterators::Pair<Rule>) -> Option<crate::ast::Paramete
     
     // Check for rest parameter (...args)
     if first.as_rule() == Rule::rest_param {
+        // rest_param contains param_identifier
         let name = first.into_inner().next()?.as_str().to_string();
         return Some(crate::ast::Parameter {
             name,
@@ -258,13 +259,15 @@ fn parse_param(pair: pest::iterators::Pair<Rule>) -> Option<crate::ast::Paramete
         });
     }
     
-    // Regular parameter (first is identifier from regular_param)
-    let name = first.as_str().to_string();
+    // Regular parameter (first is regular_param)
+    // regular_param contains: param_identifier, optional param_type_annotation, optional param_default
+    let mut param_inner = first.into_inner();
+    let name = param_inner.next()?.as_str().to_string(); // This is param_identifier
     let mut param_type = crate::ast::ArgType::String;  // Default
     let mut default_value = None;
     
     // Check for type annotation and default value
-    for next in inner {
+    for next in param_inner {
         match next.as_rule() {
             Rule::param_type_annotation => {
                 if let Some(type_pair) = next.into_inner().next() {
@@ -529,6 +532,212 @@ shell() docker compose exec $1 bash
             } else {
                 panic!("Expected Arg attribute");
             }
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    // Tests for RFC004 function signature notation
+
+    #[test]
+    fn test_function_with_params() {
+        let input = "deploy(env, version) echo $env $version";
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
+            assert_eq!(name, "deploy");
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0].name, "env");
+            assert_eq!(params[0].param_type, crate::ast::ArgType::String);
+            assert_eq!(params[0].default_value, None);
+            assert!(!params[0].is_rest);
+            assert_eq!(params[1].name, "version");
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_function_with_typed_params() {
+        let input = "scale(service: str, replicas: int) echo $service $replicas";
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
+            assert_eq!(name, "scale");
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0].name, "service");
+            assert_eq!(params[0].param_type, crate::ast::ArgType::String);
+            assert_eq!(params[1].name, "replicas");
+            assert_eq!(params[1].param_type, crate::ast::ArgType::Integer);
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_function_with_default_values() {
+        let input = r#"deploy(env, version = "latest") echo $env $version"#;
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
+            assert_eq!(name, "deploy");
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0].name, "env");
+            assert_eq!(params[0].default_value, None);
+            assert_eq!(params[1].name, "version");
+            assert_eq!(params[1].default_value, Some("latest".to_string()));
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_function_with_rest_param() {
+        let input = "echo_all(...args) echo $args";
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
+            assert_eq!(name, "echo_all");
+            assert_eq!(params.len(), 1);
+            assert_eq!(params[0].name, "args");
+            assert!(params[0].is_rest);
+            assert_eq!(params[0].default_value, None);
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_function_with_mixed_params_and_rest() {
+        let input = "docker_exec(container, ...command) docker exec $container $command";
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
+            assert_eq!(name, "docker_exec");
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0].name, "container");
+            assert!(!params[0].is_rest);
+            assert_eq!(params[1].name, "command");
+            assert!(params[1].is_rest);
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_quoted_default_with_comma() {
+        let input = r#"test(val = "a,b,c") echo $val"#;
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
+            assert_eq!(name, "test");
+            assert_eq!(params.len(), 1);
+            assert_eq!(params[0].name, "val");
+            assert_eq!(params[0].default_value, Some("a,b,c".to_string()));
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_single_quoted_default() {
+        let input = "test(val = 'hello world') echo $val";
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
+            assert_eq!(name, "test");
+            assert_eq!(params[0].default_value, Some("hello world".to_string()));
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_unquoted_default() {
+        let input = "test(port = 8080) echo $port";
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
+            assert_eq!(name, "test");
+            assert_eq!(params[0].default_value, Some("8080".to_string()));
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_empty_parens_still_works() {
+        let input = "greet() echo hello";
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
+            assert_eq!(name, "greet");
+            assert_eq!(params.len(), 0);
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_function_keyword_with_params() {
+        let input = "function deploy(env, version) echo $env $version";
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
+            assert_eq!(name, "deploy");
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0].name, "env");
+            assert_eq!(params[1].name, "version");
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_block_function_with_params() {
+        let input = r#"deploy(env, version) {
+    echo "Deploying to $env"
+    echo "Version: $version"
+}"#;
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::BlockFunctionDef { name, params, .. } = &result.statements[0] {
+            assert_eq!(name, "deploy");
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0].name, "env");
+            assert_eq!(params[1].name, "version");
+        } else {
+            panic!("Expected BlockFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_all_param_types() {
+        let input = "test(s: string, i: integer, b: boolean) echo $s $i $b";
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
+            assert_eq!(name, "test");
+            assert_eq!(params.len(), 3);
+            assert_eq!(params[0].param_type, crate::ast::ArgType::String);
+            assert_eq!(params[1].param_type, crate::ast::ArgType::Integer);
+            assert_eq!(params[2].param_type, crate::ast::ArgType::Boolean);
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_short_type_names() {
+        let input = "test(s: str, i: int, b: bool) echo $s $i $b";
+        let result = parse_script(input).unwrap();
+        
+        if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
+            assert_eq!(name, "test");
+            assert_eq!(params.len(), 3);
+            assert_eq!(params[0].param_type, crate::ast::ArgType::String);
+            assert_eq!(params[1].param_type, crate::ast::ArgType::Integer);
+            assert_eq!(params[2].param_type, crate::ast::ArgType::Boolean);
         } else {
             panic!("Expected SimpleFunctionDef");
         }
