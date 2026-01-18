@@ -11,5 +11,5 @@ run = { path = "../run", version = "0.3.2" }
 [lints]
 workspace = true
 [[bin]]
-name = "runtool"
+name = "run"
 path = "src/main.rs"
