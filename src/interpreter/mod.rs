@@ -261,6 +261,54 @@ impl Interpreter {
         result
     }
 
+    /// Substitute arguments using parameter definitions
+    /// If params are defined, use named substitution; otherwise fall back to positional
+    fn substitute_args_with_params(
+        &self,
+        template: &str,
+        args: &[String],
+        params: &[crate::ast::Parameter],
+    ) -> String {
+        let mut result = template.to_string();
+
+        // If we have params, do named substitution
+        if !params.is_empty() {
+            for (i, param) in params.iter().enumerate() {
+                if param.is_rest {
+                    // Rest parameter: join all remaining args
+                    let rest_args = if i < args.len() {
+                        args[i..].join(" ")
+                    } else {
+                        String::new()
+                    };
+                    result = result.replace(&format!("${}", param.name), &rest_args);
+                    result = result.replace(&format!("${{{}}}", param.name), &rest_args);
+                    // Also support $@ for rest parameters
+                    result = result.replace("$@", &rest_args);
+                } else {
+                    let value = if i < args.len() {
+                        &args[i]
+                    } else if let Some(default) = &param.default_value {
+                        default
+                    } else {
+                        eprintln!("Warning: Missing required argument: {}", param.name);
+                        ""
+                    };
+
+                    // Replace both $name and ${name} and $N (for backward compatibility)
+                    result = result.replace(&format!("${}", param.name), value);
+                    result = result.replace(&format!("${{{}}}", param.name), value);
+                    result = result.replace(&format!("${}", i + 1), value);  // Also support positional
+                }
+            }
+        } else {
+            // Fall back to positional substitution
+            result = self.substitute_args(template, args);
+        }
+
+        result
+    }
+
     fn execute_statement(
         &mut self,
         statement: Statement,
@@ -384,8 +432,14 @@ impl Interpreter {
             rewritten_body,
         );
 
+        // Get params from metadata for substitution
+        let params = self.function_metadata
+            .get(target_name)
+            .map(|m| m.params.as_slice())
+            .unwrap_or(&[]);
+
         // Substitute args and execute
-        let substituted = self.substitute_args(&combined_script, args);
+        let substituted = self.substitute_args_with_params(&combined_script, args, params);
         shell::execute_single_shell_invocation(&substituted, &target_interpreter)
     }
 
@@ -399,6 +453,12 @@ impl Interpreter {
     ) -> Result<(), Box<dyn std::error::Error>> {
         // Determine the target interpreter
         let target_interpreter = self.resolve_function_interpreter(target_name, attributes, shebang);
+
+        // Get params from metadata for substitution
+        let params = self.function_metadata
+            .get(target_name)
+            .map(|m| m.params.as_slice())
+            .unwrap_or(&[]);
 
         // Check if this is a polyglot language (Python, Node, Ruby)
         let is_polyglot = matches!(
@@ -417,7 +477,7 @@ impl Interpreter {
                 full_script
             };
 
-            let substituted = self.substitute_args(&script, args);
+            let substituted = self.substitute_args_with_params(&script, args, params);
             let exec_attributes = execution::prepare_polyglot_attributes(attributes, shebang);
 
             return shell::execute_command_with_args(&substituted, &exec_attributes, args);
@@ -459,7 +519,7 @@ impl Interpreter {
         );
 
         // Substitute args and execute
-        let substituted = self.substitute_args(&combined_script, args);
+        let substituted = self.substitute_args_with_params(&combined_script, args, params);
         shell::execute_single_shell_invocation(&substituted, &target_interpreter)
     }
 }
