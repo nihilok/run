@@ -1,7 +1,19 @@
 # RFC004: Function Signature Notation
 
 **Status**: Draft | **Type**: Feature | **Target**: v0.3.2  
-**Topic**: Grammar: Function Signatures, MCP Integration, Parameter Typing
+**Topic**: Grammar: Function Signatures, MCP Integration, Parameter Typing  
+**Updated**: January 18, 2026 (Post-Refactor Module Paths)
+
+---
+
+> **Refactor Note:** This RFC has been updated to reflect the module organization changes from the quality improvement project (Phases 1-5). File paths now point to the refactored structure:
+> - Parser: `src/parser/mod.rs` (was `src/parser.rs`)
+> - MCP: `src/mcp/tools.rs` (was `src/mcp.rs`)
+> - Interpreter: `src/interpreter/mod.rs` (was `src/interpreter.rs`)
+> 
+> All design decisions and implementations remain valid—only the file paths have been updated.
+
+---
 
 ## Summary
 
@@ -191,7 +203,9 @@ pub enum Statement {
 
 ### Phase 3: Parser Implementation
 
-**Update `src/parser.rs`:**
+**Update `src/parser/mod.rs`:**
+
+> **Note:** Parser was refactored into focused modules. Main parsing logic is in `mod.rs`, with helpers in `attributes.rs`, `block.rs`, `preprocessing.rs`, and `shebang.rs`.
 
 ```rust
 fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> Option<Statement> {
@@ -199,7 +213,7 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
         Rule::function_def => {
             let span = pair.as_span();
             let line_num = original_input[..span.start()].lines().count();
-            let attributes = parse_attributes_from_lines(original_input, line_num);
+            let attributes = attributes::parse_attributes_from_lines(original_input, line_num);
             
             let mut inner = pair.into_inner();
             let name = inner.next()?.as_str().to_string();
@@ -221,7 +235,11 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
             // Parse body (block or command)
             match body_pair.as_rule() {
                 Rule::block => {
-                    // ... existing block parsing logic ...
+                    // Use existing block parsing helper
+                    let full_content = block::parse_block_content(body_pair.as_str());
+                    let commands = block::split_block_commands(&full_content, &attributes);
+                    let shebang = shebang::parse_shebang(full_content.trim());
+                    
                     Some(Statement::BlockFunctionDef {
                         name,
                         params,  // NEW
@@ -323,10 +341,12 @@ fn parse_param(pair: pest::iterators::Pair<Rule>) -> Option<Parameter> {
 
 ### Phase 4: MCP Integration
 
-**Update `src/mcp.rs`:**
+**Update `src/mcp/tools.rs`:**
+
+> **Note:** MCP functionality was refactored into focused modules. Tool schema generation is in `tools.rs`, handlers in `handlers.rs`, and argument mapping in `mapping.rs`.
 
 ```rust
-fn extract_function_metadata(
+pub(super) fn extract_function_metadata(
     name: &str,
     attributes: &[Attribute],
     params: &[Parameter],  // NEW
@@ -414,9 +434,19 @@ fn extract_function_metadata(
 
 ### Phase 5: Executor Integration
 
-**Update `src/interpreter.rs`:**
+**Update `src/interpreter/mod.rs`:**
+
+> **Note:** Interpreter was refactored into focused modules. Core logic is in `mod.rs`, helpers in `execution.rs`, preamble building in `preamble.rs`, and shell execution in `shell.rs`.
 
 ```rust
+// Update FunctionMetadata struct
+#[derive(Clone)]
+pub(crate) struct FunctionMetadata {
+    pub(crate) attributes: Vec<Attribute>,
+    pub(crate) shebang: Option<String>,
+    pub(crate) params: Vec<Parameter>,  // NEW
+}
+
 impl Interpreter {
     fn execute_statement(&mut self, statement: Statement) -> Result<(), Box<dyn std::error::Error>> {
         match statement {
@@ -499,16 +529,7 @@ impl Interpreter {
 }
 ```
 
-### Phase 6: Update FunctionMetadata
-
-```rust
-#[derive(Clone)]
-struct FunctionMetadata {
-    attributes: Vec<Attribute>,
-    shebang: Option<String>,
-    params: Vec<Parameter>,  // NEW
-}
-```
+> **Optional:** For consistency with existing helper patterns, consider extracting `substitute_args_with_params()` to `src/interpreter/execution.rs` alongside `collect_rewritable_siblings()`, `build_combined_script()`, and `prepare_polyglot_attributes()`.
 
 ---
 
@@ -587,7 +608,9 @@ docker:exec(container, ...command) {
 
 ## Test Cases
 
-### Grammar Tests
+> **Note:** Tests are now organized into focused files. Parser tests go in `src/parser/mod.rs`, integration tests in a new `tests/function_signature.rs`, and MCP tests in `tests/rfc003_mcp_test.rs`.
+
+### Grammar Tests (add to `src/parser/mod.rs`)
 
 ```rust
 #[test]
@@ -632,5 +655,15 @@ fn test_empty_parens_still_works() {
     // Should parse as SimpleFunctionDef with empty params
 }
 ```
+
+### Integration Tests (create `tests/function_signature.rs`)
+
+Follow the organized test structure established in the refactor. Use shared helpers from `tests/common/mod.rs`.
+
+### MCP Tests (add to `tests/rfc003_mcp_test.rs`)
+
+Add tests for parameter-aware tool schema generation alongside existing MCP protocol tests.
+
+---
 
 This is way cleaner and maintains the "just write code" philosophy while making MCP integration natural!
