@@ -86,8 +86,7 @@ Configure in your AI client (e.g., Claude Desktop `claude_desktop_config.json`):
   "mcpServers": {
     "my-project": {
       "command": "run",
-      "args": ["--serve-mcp", "--runfile", "/path/to/your/project/Runfile"],
-      "cwd": "/path/to/your/project"
+      "args": ["--serve-mcp", "--runfile", "/path/to/your/project/"]
     }
   }
 }
@@ -276,11 +275,11 @@ When you run `run clean`, only the variant matching your current OS will execute
 
 There are two ways to specify a custom interpreter:
 
-**1. Shebang detection** (recommended):
+**1. Shebang detection**
 
 The first line of your function body can be a shebang, just like standalone scripts:
 
-```python
+```
 analyze() {
     #!/usr/bin/env python
     import sys, json
@@ -290,7 +289,7 @@ analyze() {
 }
 ```
 
-```javascript
+```
 server() {
     #!/usr/bin/env node
     const port = process.argv[1] || 3000;
