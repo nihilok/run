@@ -17,6 +17,7 @@ use std::collections::HashMap;
 pub(crate) struct FunctionMetadata {
     pub(crate) attributes: Vec<Attribute>,
     pub(crate) shebang: Option<String>,
+    pub(crate) params: Vec<crate::ast::Parameter>,
 }
 
 pub struct Interpreter {
@@ -271,6 +272,7 @@ impl Interpreter {
             }
             Statement::SimpleFunctionDef {
                 name,
+                params,
                 command_template,
                 attributes,
             } => {
@@ -282,11 +284,12 @@ impl Interpreter {
                         FunctionMetadata {
                             attributes,
                             shebang: None,
+                            params,
                         },
                     );
                 }
             }
-            Statement::BlockFunctionDef { name, commands, attributes, shebang } => {
+            Statement::BlockFunctionDef { name, params, commands, attributes, shebang } => {
                 // Only store function if it matches the current platform
                 if utils::matches_current_platform(&attributes) {
                     self.block_functions.insert(name.clone(), commands);
@@ -295,6 +298,7 @@ impl Interpreter {
                         FunctionMetadata {
                             attributes,
                             shebang: shebang.clone(),
+                            params,
                         },
                     );
                 }
