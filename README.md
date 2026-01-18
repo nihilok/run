@@ -41,6 +41,10 @@ function analyze(file: str) {
 }
 ```
 
+_The syntax is designed to be similar to bash/sh, while being permissive & flexible, with added features for AI integration._
+
+Humans can run these functions directly from the terminal:
+
 ```bash
 $ run search "TODO"
 $ run deploy staging
