@@ -3,9 +3,9 @@
 [![Crates.io](https://img.shields.io/crates/v/run.svg)](https://crates.io/crates/run)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-**Give your AI agent tools. Write how you feel.**
+**a.k.a. runtool: the bridge between human and AI tooling**
 
-Define functions in a `Runfile`. Your AI agent discovers and executes them via the built-in MCP server. You can run them from the terminal too—it's a fully-featured task runner. Shell, Python, Node—whatever fits the task.
+Define functions in a `Runfile`. Your AI agent discovers and executes them via the built-in MCP server. You run them from the terminal too with instant startup and tab completion. Shell, Python, Node—whatever fits the task.
 
 ```bash
 # Runfile
@@ -154,7 +154,7 @@ scoop install runtool
 Works on all platforms:
 
 ```bash
-cargo install runtool  # or: cargo install run
+cargo install run  # or: cargo install runtool
 ```
 
 ### Tab Completions
