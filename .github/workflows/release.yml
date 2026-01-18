@@ -44,7 +44,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} --bin run
+        run: cargo build --release --target ${{ matrix.target }} --package run --bin run
 
       - name: Create archive (Unix)
         if: matrix.archive == 'tar.gz'
