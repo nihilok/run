@@ -111,9 +111,9 @@ cargo publish
 cd ..
 
 # Wait for crates.io to index the run crate
-echo -e "${YELLOW}Waiting for crates.io to index 'run' crate (5 minutes)...${NC}"
+echo -e "${YELLOW}Waiting for crates.io to index 'run' crate (30 seconds)...${NC}"
 echo -e "${YELLOW}This is necessary because 'runtool' depends on 'run'${NC}"
-sleep 300
+sleep 30
 
 # Publish runtool crate
 echo -e "${BLUE}=== Publishing 'runtool' crate ===${NC}"
