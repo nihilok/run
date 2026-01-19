@@ -350,7 +350,6 @@ name = "run"
 version = "0.3.4"
 dependencies = [
  "clap",
- "once_cell",
  "pest",
  "pest_derive",
  "regex",
