@@ -57,20 +57,3 @@ pub(super) fn build_combined_script(
     }
 }
 
-/// Prepare execution attributes for polyglot languages
-pub(super) fn prepare_polyglot_attributes(
-    attributes: &[Attribute],
-    shebang: Option<&str>,
-) -> Vec<Attribute> {
-    if let Some(attr) = attributes.iter().find(|a| matches!(a, Attribute::Shell(_))) {
-        vec![attr.clone()]
-    } else if let Some(shebang_str) = shebang {
-        if let Some(shell_type) = super::shell::resolve_shebang_interpreter(shebang_str) {
-            vec![Attribute::Shell(shell_type)]
-        } else {
-            Vec::new()
-        }
-    } else {
-        Vec::new()
-    }
-}

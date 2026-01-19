@@ -8,7 +8,7 @@ mod execution;
 mod preamble;
 mod shell;
 
-use crate::ast::{Attribute, Expression, Program, Statement};
+use crate::ast::{Attribute, Expression, Program, Statement, OutputMode, CommandOutput};
 use crate::transpiler::{self, Interpreter as TranspilerInterpreter};
 use crate::utils;
 use std::collections::HashMap;
@@ -26,6 +26,12 @@ pub struct Interpreter {
     simple_functions: HashMap<String, String>,
     block_functions: HashMap<String, Vec<String>>,
     function_metadata: HashMap<String, FunctionMetadata>,
+    /// Output capture mode
+    output_mode: OutputMode,
+    /// Captured outputs when in Capture/Structured mode
+    captured_outputs: Vec<CommandOutput>,
+    /// Last interpreter used (for structured output context)
+    last_interpreter: String,
 }
 
 impl Interpreter {
@@ -36,8 +42,37 @@ impl Interpreter {
             simple_functions: HashMap::new(),
             block_functions: HashMap::new(),
             function_metadata: HashMap::new(),
+            output_mode: OutputMode::default(),
+            captured_outputs: Vec::new(),
+            last_interpreter: "sh".to_string(),
         }
     }
+
+    /// Set the output capture mode
+    pub fn set_output_mode(&mut self, mode: OutputMode) {
+        self.output_mode = mode;
+    }
+
+    /// Get the current output mode
+    pub fn output_mode(&self) -> OutputMode {
+        self.output_mode
+    }
+
+    /// Take captured outputs (clears the internal buffer)
+    pub fn take_captured_outputs(&mut self) -> Vec<CommandOutput> {
+        std::mem::take(&mut self.captured_outputs)
+    }
+
+    /// Get the last interpreter used
+    pub fn last_interpreter(&self) -> &str {
+        &self.last_interpreter
+    }
+
+    /// Add a captured output
+    pub(crate) fn add_captured_output(&mut self, output: CommandOutput) {
+        self.captured_outputs.push(output);
+    }
+
 
     // Helper to get attributes for simple functions (returns a slice reference)
     fn get_simple_function_attributes(&self, name: &str) -> &[Attribute] {
@@ -128,7 +163,8 @@ impl Interpreter {
         // Try direct match - block functions
         if let Some(commands) = self.block_functions.get(function_name).cloned() {
             let (attributes, shebang) = self.get_block_function_metadata(function_name);
-            return self.execute_block_commands(function_name, &commands, args, &attributes, shebang);
+            let shebang_owned = shebang.map(String::from);
+            return self.execute_block_commands(function_name, &commands, args, &attributes, shebang_owned.as_deref());
         }
 
         // If we have args, try treating the first arg as a subcommand
@@ -140,7 +176,8 @@ impl Interpreter {
             }
             if let Some(commands) = self.block_functions.get(&nested_name).cloned() {
                 let (attributes, shebang) = self.get_block_function_metadata(&nested_name);
-                return self.execute_block_commands(&nested_name, &commands, &args[1..], &attributes, shebang);
+                let shebang_owned = shebang.map(String::from);
+                return self.execute_block_commands(&nested_name, &commands, &args[1..], &attributes, shebang_owned.as_deref());
             }
         }
 
@@ -153,7 +190,8 @@ impl Interpreter {
             }
             if let Some(commands) = self.block_functions.get(&with_colons).cloned() {
                 let (attributes, shebang) = self.get_block_function_metadata(&with_colons);
-                return self.execute_block_commands(&with_colons, &commands, args, &attributes, shebang);
+                let shebang_owned = shebang.map(String::from);
+                return self.execute_block_commands(&with_colons, &commands, args, &attributes, shebang_owned.as_deref());
             }
         }
 
@@ -191,7 +229,8 @@ impl Interpreter {
         // Check for block function definitions
         if let Some(commands) = self.block_functions.get(function_name).cloned() {
             let (attributes, shebang) = self.get_block_function_metadata(function_name);
-            return self.execute_block_commands(function_name, &commands, args, &attributes, shebang);
+            let shebang_owned = shebang.map(String::from);
+            return self.execute_block_commands(function_name, &commands, args, &attributes, shebang_owned.as_deref());
         }
 
         // Check for full function definitions
@@ -386,12 +425,13 @@ impl Interpreter {
 
     /// Execute a simple function with preambles for composition
     fn execute_simple_function(
-        &self,
+        &mut self,
         target_name: &str,
         command_template: &str,
         args: &[String],
         attributes: &[Attribute],
     ) -> Result<(), Box<dyn std::error::Error>> {
+
         // Determine the target interpreter
         let target_interpreter = self.resolve_function_interpreter(target_name, attributes, None);
 
@@ -440,17 +480,18 @@ impl Interpreter {
 
         // Substitute args and execute
         let substituted = self.substitute_args_with_params(&combined_script, args, params);
-        shell::execute_single_shell_invocation(&substituted, &target_interpreter)
+        self.execute_with_mode(&substituted, &target_interpreter)
     }
 
     fn execute_block_commands(
-        &self,
+        &mut self,
         target_name: &str,
         commands: &[String],
         args: &[String],
         attributes: &[Attribute],
         shebang: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+
         // Determine the target interpreter
         let target_interpreter = self.resolve_function_interpreter(target_name, attributes, shebang);
 
@@ -478,9 +519,9 @@ impl Interpreter {
             };
 
             let substituted = self.substitute_args_with_params(&script, args, params);
-            let exec_attributes = execution::prepare_polyglot_attributes(attributes, shebang);
 
-            return shell::execute_command_with_args(&substituted, &exec_attributes, args);
+            // Use execute_with_mode_polyglot for proper capture support with args
+            return self.execute_with_mode_polyglot(&substituted, &target_interpreter, args);
         }
 
         // For shell-compatible languages, build preamble and compose
@@ -520,6 +561,119 @@ impl Interpreter {
 
         // Substitute args and execute
         let substituted = self.substitute_args_with_params(&combined_script, args, params);
-        shell::execute_single_shell_invocation(&substituted, &target_interpreter)
+        self.execute_with_mode(&substituted, &target_interpreter)
+    }
+
+    /// Execute a command with the current output mode
+    fn execute_with_mode(
+        &mut self,
+        script: &str,
+        interpreter: &TranspilerInterpreter,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use crate::ast::OutputMode;
+
+        // Track the interpreter for structured output context
+        let (shell_cmd, shell_arg, interpreter_name) = shell::interpreter_to_shell_args(interpreter);
+        self.last_interpreter = interpreter_name.to_string();
+
+        match self.output_mode {
+            OutputMode::Stream => {
+                // Stream mode: execute normally without capture
+                shell::execute_single_shell_invocation(script, interpreter)
+            }
+            OutputMode::Capture | OutputMode::Structured => {
+                // Capture mode: use the shell args we already have
+                self.execute_with_mode_custom(&shell_cmd, shell_arg, script)
+            }
+        }
+    }
+
+    /// Execute a command with custom shell and capture output
+    fn execute_with_mode_custom(
+        &mut self,
+        shell_cmd: &str,
+        shell_arg: &str,
+        script: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let output = shell::execute_with_capture(script, shell_cmd, shell_arg)?;
+
+        // Only print output in Capture mode (not Structured, where we format it later)
+        if matches!(self.output_mode, crate::ast::OutputMode::Capture) {
+            if !output.stdout.is_empty() {
+                print!("{}", output.stdout);
+            }
+            if !output.stderr.is_empty() {
+                eprint!("{}", output.stderr);
+            }
+        }
+
+        // Check for errors
+        if let Some(code) = output.exit_code {
+            if code != 0 {
+                self.add_captured_output(output);
+                return Err(format!("Command failed with exit code: {}", code).into());
+            }
+        }
+
+        // Store the captured output
+        self.add_captured_output(output);
+        Ok(())
+    }
+
+    /// Execute a polyglot command with arguments (for Python, Node, Ruby)
+    /// Arguments are passed as command-line arguments, accessible via sys.argv, process.argv, etc.
+    fn execute_with_mode_polyglot(
+        &mut self,
+        script: &str,
+        interpreter: &TranspilerInterpreter,
+        args: &[String],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use crate::ast::OutputMode;
+
+        // Track the interpreter for structured output context
+        let (shell_cmd, shell_arg, interpreter_name) = shell::interpreter_to_shell_args(interpreter);
+        self.last_interpreter = interpreter_name.to_string();
+
+        match self.output_mode {
+            OutputMode::Stream => {
+                // Stream mode: execute with arguments using the original path
+                let exec_attributes = vec![crate::ast::Attribute::Shell(
+                    match interpreter {
+                        TranspilerInterpreter::Python => crate::ast::ShellType::Python,
+                        TranspilerInterpreter::Python3 => crate::ast::ShellType::Python3,
+                        TranspilerInterpreter::Node => crate::ast::ShellType::Node,
+                        TranspilerInterpreter::Ruby => crate::ast::ShellType::Ruby,
+                        _ => crate::ast::ShellType::Sh,
+                    }
+                )];
+                shell::execute_command_with_args(script, &exec_attributes, args)
+            }
+            OutputMode::Capture | OutputMode::Structured => {
+                // Capture mode: capture output with arguments
+                let output = shell::execute_with_capture_and_args(script, &shell_cmd, shell_arg, args)?;
+
+                // Only print output in Capture mode
+                if matches!(self.output_mode, OutputMode::Capture) {
+                    if !output.stdout.is_empty() {
+                        print!("{}", output.stdout);
+                    }
+                    if !output.stderr.is_empty() {
+                        eprint!("{}", output.stderr);
+                    }
+                }
+
+                // Check for errors
+                if let Some(code) = output.exit_code {
+                    if code != 0 {
+                        self.add_captured_output(output);
+                        return Err(format!("Command failed with exit code: {}", code).into());
+                    }
+                }
+
+                // Store the captured output
+                self.add_captured_output(output);
+                Ok(())
+            }
+        }
     }
 }
