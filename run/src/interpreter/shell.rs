@@ -1,30 +1,83 @@
 //! Shell command execution and interpreter resolution
 
-use crate::ast::{Attribute, ShellType};
+use crate::ast::{Attribute, ShellType, CommandOutput};
 use crate::transpiler::Interpreter as TranspilerInterpreter;
 use std::process::{Command, Stdio};
+use std::time::{SystemTime, Instant, UNIX_EPOCH};
+
+/// Get the Python executable (prefers python3)
+pub(super) fn get_python_executable() -> String {
+    if which::which("python3").is_ok() {
+        "python3".to_string()
+    } else {
+        "python".to_string()
+    }
+}
+
+/// Map a TranspilerInterpreter to shell command and argument
+/// Returns (shell_command, shell_arg, interpreter_name)
+pub(super) fn interpreter_to_shell_args(interpreter: &TranspilerInterpreter) -> (String, &'static str, &'static str) {
+    match interpreter {
+        TranspilerInterpreter::Sh => ("sh".to_string(), "-c", "sh"),
+        TranspilerInterpreter::Bash => ("bash".to_string(), "-c", "bash"),
+        TranspilerInterpreter::Pwsh => ("pwsh".to_string(), "-Command", "pwsh"),
+        TranspilerInterpreter::Python => (get_python_executable(), "-c", "python"),
+        TranspilerInterpreter::Python3 => ("python3".to_string(), "-c", "python3"),
+        TranspilerInterpreter::Node => ("node".to_string(), "-e", "node"),
+        TranspilerInterpreter::Ruby => ("ruby".to_string(), "-e", "ruby"),
+    }
+}
+
+/// Execute a command and capture its output
+pub(super) fn execute_with_capture(
+    command: &str,
+    shell_cmd: &str,
+    shell_arg: &str,
+) -> Result<CommandOutput, Box<dyn std::error::Error>> {
+    execute_with_capture_and_args(command, shell_cmd, shell_arg, &[])
+}
+
+/// Execute a command and capture its output, with additional arguments
+/// Arguments are passed after the script for polyglot languages (Python, Node, Ruby)
+pub(super) fn execute_with_capture_and_args(
+    command: &str,
+    shell_cmd: &str,
+    shell_arg: &str,
+    args: &[String],
+) -> Result<CommandOutput, Box<dyn std::error::Error>> {
+    let started_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)?
+        .as_millis();
+    let start = Instant::now();
+
+    let mut cmd = Command::new(shell_cmd);
+    cmd.arg(shell_arg).arg(command);
+
+    // Pass additional arguments after the script
+    for arg in args {
+        cmd.arg(arg);
+    }
+
+    let output = cmd.output()?;
+
+    Ok(CommandOutput {
+        command: command.to_string(),
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        exit_code: output.status.code(),
+        duration_ms: start.elapsed().as_millis(),
+        started_at,
+    })
+}
 
 /// Execute a script in a single shell invocation
 pub(super) fn execute_single_shell_invocation(
     script: &str,
     interpreter: &TranspilerInterpreter,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Handle Python separately to avoid temporary value issues
-    let python_cmd;
-    let (shell_cmd, shell_arg) = match interpreter {
-        TranspilerInterpreter::Sh => ("sh", "-c"),
-        TranspilerInterpreter::Bash => ("bash", "-c"),
-        TranspilerInterpreter::Pwsh => ("pwsh", "-Command"),
-        TranspilerInterpreter::Python => {
-            python_cmd = get_python_executable();
-            (python_cmd.as_str(), "-c")
-        }
-        TranspilerInterpreter::Python3 => ("python3", "-c"),
-        TranspilerInterpreter::Node => ("node", "-e"),
-        TranspilerInterpreter::Ruby => ("ruby", "-e"),
-    };
+    let (shell_cmd, shell_arg, _) = interpreter_to_shell_args(interpreter);
 
-    let status = Command::new(shell_cmd)
+    let status = Command::new(&shell_cmd)
         .arg(shell_arg)
         .arg(script)
         .stdout(Stdio::inherit())
@@ -113,14 +166,6 @@ pub(super) fn execute_command(
     execute_command_with_args(command, attributes, &[])
 }
 
-/// Get the Python executable (prefers python3)
-fn get_python_executable() -> String {
-    if which::which("python3").is_ok() {
-        "python3".to_string()
-    } else {
-        "python".to_string()
-    }
-}
 
 /// Resolve interpreter from shebang to ShellType
 pub(super) fn resolve_shebang_interpreter(shebang: &str) -> Option<ShellType> {

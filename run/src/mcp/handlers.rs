@@ -95,7 +95,7 @@ pub(super) fn handle_tools_call(
     // Map arguments to positional (use sanitised name for lookup)
     let positional_args = map_arguments_to_positional(tool_name, arguments)?;
 
-    // Execute the function
+    // Execute the function with structured markdown output
     use std::process::Command;
 
     // Get the run binary path (we're already running as run, but we need to call ourselves)
@@ -109,6 +109,8 @@ pub(super) fn handle_tools_call(
         })?;
 
     let mut cmd = Command::new(run_binary);
+    // Use structured markdown output for better LLM readability
+    cmd.arg("--output-format=markdown");
     cmd.arg(&actual_function_name);  // Use the original function name with colons
 
     for arg in positional_args {
@@ -125,7 +127,7 @@ pub(super) fn handle_tools_call(
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     // Return content as per MCP spec
-    // Include both stdout and stderr for better debugging
+    // The stdout now contains structured markdown output
     let mut content = vec![
         serde_json::json!({
             "type": "text",
@@ -133,7 +135,8 @@ pub(super) fn handle_tools_call(
         })
     ];
 
-    if !stderr.is_empty() {
+    // Only include stderr if there was an error (structured output captures stderr in the markdown)
+    if !stderr.is_empty() && !output.status.success() {
         content.push(serde_json::json!({
             "type": "text",
             "text": format!("STDERR:\n{}", stderr)

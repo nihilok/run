@@ -42,9 +42,44 @@ struct Cli {
     #[arg(long)]
     serve_mcp: bool,
 
+    /// Output format for command execution (stream, json, markdown)
+    #[arg(long, value_name = "FORMAT", default_value = "stream")]
+    output_format: OutputFormatArg,
+
     /// Path to Runfile or directory containing Runfile
     #[arg(long, value_name = "PATH")]
     runfile: Option<PathBuf>,
+}
+
+/// Output format for command execution
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum OutputFormatArg {
+    /// Stream output directly to terminal (default)
+    Stream,
+    /// Capture and output as JSON
+    Json,
+    /// Capture and output as Markdown
+    Markdown,
+}
+
+impl OutputFormatArg {
+    /// Get the output mode for this format
+    pub fn mode(self) -> crate::ast::OutputMode {
+        match self {
+            Self::Stream => crate::ast::OutputMode::Stream,
+            Self::Json | Self::Markdown => crate::ast::OutputMode::Structured,
+        }
+    }
+
+    /// Format a structured result according to this format
+    /// Returns None for Stream mode (no structured output)
+    pub fn format_result(self, result: &crate::ast::StructuredResult) -> Option<String> {
+        match self {
+            Self::Stream => None,
+            Self::Json => Some(result.to_json()),
+            Self::Markdown => Some(result.to_mcp_format()),
+        }
+    }
 }
 
 /// Main CLI logic that can be called from external wrappers.
@@ -97,7 +132,7 @@ pub fn run_cli() {
                 executor::execute_file(&path);
             } else {
                 // Function call mode: load config and call function with args
-                executor::run_function_call(&first_arg, &cli.args);
+                executor::run_function_call(&first_arg, &cli.args, cli.output_format);
             }
         }
         None => {

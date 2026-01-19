@@ -1,6 +1,6 @@
 //! Script execution and error formatting.
 
-use crate::{config, interpreter, parser};
+use crate::{cli::OutputFormatArg, config, interpreter, parser};
 use std::fs;
 use std::path::PathBuf;
 
@@ -103,12 +103,18 @@ pub fn execute_file(path: &PathBuf) {
 /// # Arguments
 /// * `function_name` - The function to call (may be nested, e.g. "docker shell").
 /// * `args` - Arguments to pass to the function.
-pub fn run_function_call(function_name: &str, args: &[String]) {
+/// * `output_format` - How to format the output.
+pub fn run_function_call(
+    function_name: &str,
+    args: &[String],
+    output_format: OutputFormatArg,
+) {
     // Load the config file from ~/.runfile or ./Runfile
     let config_content = config::load_config_or_exit();
 
     // Parse the config to load function definitions
     let mut interpreter = interpreter::Interpreter::new();
+    interpreter.set_output_mode(output_format.mode());
 
     match parser::parse_script(&config_content) {
         Ok(program) => {
@@ -130,6 +136,24 @@ pub fn run_function_call(function_name: &str, args: &[String]) {
     if let Err(e) = interpreter.call_function_without_parens(function_name, args) {
         eprintln!("Error: {}", e);
         std::process::exit(1);
+    }
+
+    // If in structured mode, output the captured results
+    if matches!(output_format.mode(), crate::ast::OutputMode::Structured) {
+        let outputs = interpreter.take_captured_outputs();
+        if !outputs.is_empty() {
+            let interpreter_name = interpreter.last_interpreter();
+
+            let result = crate::ast::StructuredResult::from_outputs(
+                function_name,
+                outputs,
+                interpreter_name,
+            );
+
+            if let Some(formatted) = output_format.format_result(&result) {
+                println!("{}", formatted);
+            }
+        }
     }
 }
 
