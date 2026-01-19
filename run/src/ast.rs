@@ -1,8 +1,8 @@
 // Abstract Syntax Tree definitions
 
-use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
@@ -179,10 +179,7 @@ impl StructuredResult {
 }
 
 /// Static regex for SSH context extraction (compiled once)
-static SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"ssh\s+(?:-\S+\s+(?:\S+\s+)?)*(\w+)@([\w.-]+)")
-        .expect("SSH regex pattern is valid")
-});
+static SSH_REGEX: OnceLock<Regex> = OnceLock::new();
 
 impl ExecutionContext {
     /// Parse SSH commands to extract remote execution context
@@ -192,7 +189,11 @@ impl ExecutionContext {
         //   ssh -i key.pem user@host
         //   ssh -T -o LogLevel=QUIET user@host
         // The regex looks for "ssh" followed by optional flags, then user@host
-        let caps = SSH_REGEX.captures(command)?;
+        let regex = SSH_REGEX.get_or_init(|| {
+            Regex::new(r"ssh\s+(?:-\S+\s+(?:\S+\s+)?)*(\w+)@([\w.-]+)")
+                .expect("SSH regex pattern is valid")
+        });
+        let caps = regex.captures(command)?;
 
         Some((
             caps.get(1)?.as_str().to_string(),  // user
