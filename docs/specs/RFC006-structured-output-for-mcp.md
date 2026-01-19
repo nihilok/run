@@ -1,6 +1,6 @@
 # RFC 006: Structured Output for MCP and AI Agents
 
-**Status**: Draft | **Type**: Enhancement | **Target**: v0.4.0  
+**Status**: Implemented ✅ | **Type**: Enhancement | **Target**: v0.4.0  
 **Topic**: MCP Output Formatting, Agent Usability
 
 ## 1. Summary
@@ -410,22 +410,22 @@ Building dependency tree... Done
 
 ## 7. Implementation Phases
 
-### Phase 1: Core Capture Infrastructure
-- [ ] Add `CommandOutput` and `StructuredResult` types to `ast.rs`
-- [ ] Add `OutputMode` enum to interpreter
-- [ ] Implement `execute_with_capture` in shell executor
-- [ ] Add output collection to interpreter state
+### Phase 1: Core Capture Infrastructure ✅ Complete
+- [x] Add `CommandOutput` and `StructuredResult` types to `ast.rs`
+- [x] Add `OutputMode` enum to interpreter
+- [x] Implement `execute_with_capture` in shell executor
+- [x] Add output collection to interpreter state
 
-### Phase 2: MCP Integration
-- [ ] Update MCP handlers to use structured mode
-- [ ] Implement `to_mcp_format()` formatting
-- [ ] Add SSH context extraction
-- [ ] Test with multi-step functions
+### Phase 2: MCP Integration ✅ Complete
+- [x] Update MCP handlers to use structured mode
+- [x] Implement `to_mcp_format()` formatting
+- [x] Add SSH context extraction
+- [x] Test with multi-step functions
 
-### Phase 3: CLI Enhancement
-- [ ] Add `--output-format` flag
-- [ ] Update help text and documentation
-- [ ] Add integration tests for output formats
+### Phase 3: CLI Enhancement ✅ Complete
+- [x] Add `--output-format` flag
+- [x] Update help text and documentation
+- [x] Add integration tests for output formats
 
 ### Phase 4: Advanced Features
 - [ ] Streaming capture (for long-running commands)
