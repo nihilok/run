@@ -1,5 +1,6 @@
 // Abstract Syntax Tree definitions
 
+use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -177,6 +178,12 @@ impl StructuredResult {
     }
 }
 
+/// Static regex for SSH context extraction (compiled once)
+static SSH_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"ssh\s+(?:-\S+\s+(?:\S+\s+)?)*(\w+)@([\w.-]+)")
+        .expect("SSH regex pattern is valid")
+});
+
 impl ExecutionContext {
     /// Parse SSH commands to extract remote execution context
     pub fn extract_ssh_context(command: &str) -> Option<(String, String)> {
@@ -185,8 +192,7 @@ impl ExecutionContext {
         //   ssh -i key.pem user@host
         //   ssh -T -o LogLevel=QUIET user@host
         // The regex looks for "ssh" followed by optional flags, then user@host
-        let re = Regex::new(r"ssh\s+(?:-\S+\s+(?:\S+\s+)?)*(\w+)@([\w.-]+)").ok()?;
-        let caps = re.captures(command)?;
+        let caps = SSH_REGEX.captures(command)?;
 
         Some((
             caps.get(1)?.as_str().to_string(),  // user
