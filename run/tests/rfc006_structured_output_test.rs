@@ -73,11 +73,11 @@ multi_step() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
 
-    // Check markdown structure
+    // Check markdown structure - MCP format hides implementation details
     assert!(stdout.contains("## Execution: `multi_step`"));
     assert!(stdout.contains("**Status:** ✓ Success"));
     assert!(stdout.contains("**Duration:**"));
-    assert!(stdout.contains("### Step 1"));
+    // MCP format combines outputs and doesn't show Step headers (to hide implementation)
     assert!(stdout.contains("**Output:**"));
     assert!(stdout.contains("Step 1"));
     assert!(stdout.contains("Step 2"));

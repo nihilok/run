@@ -33,17 +33,20 @@ pub(super) fn execute_with_capture(
     command: &str,
     shell_cmd: &str,
     shell_arg: &str,
+    display_command: Option<&str>,
 ) -> Result<CommandOutput, Box<dyn std::error::Error>> {
-    execute_with_capture_and_args(command, shell_cmd, shell_arg, &[])
+    execute_with_capture_and_args(command, shell_cmd, shell_arg, &[], display_command)
 }
 
 /// Execute a command and capture its output, with additional arguments
 /// Arguments are passed after the script for polyglot languages (Python, Node, Ruby)
+/// The display_command is used for output/logging instead of the full script (which may include preamble)
 pub(super) fn execute_with_capture_and_args(
     command: &str,
     shell_cmd: &str,
     shell_arg: &str,
     args: &[String],
+    display_command: Option<&str>,
 ) -> Result<CommandOutput, Box<dyn std::error::Error>> {
     let started_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)?
@@ -61,7 +64,8 @@ pub(super) fn execute_with_capture_and_args(
     let output = cmd.output()?;
 
     Ok(CommandOutput {
-        command: command.to_string(),
+        // Use display_command if provided, otherwise fall back to the full command
+        command: display_command.unwrap_or(command).to_string(),
         stdout: String::from_utf8_lossy(&output.stdout).to_string(),
         stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         exit_code: output.status.code(),
