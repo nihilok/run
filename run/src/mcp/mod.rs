@@ -7,12 +7,9 @@
 
 mod handlers;
 mod mapping;
-mod tools;
+pub mod tools;
 
-// Re-export public API
-pub use tools::{inspect, print_inspect, InspectOutput, Tool};
-
-use handlers::{handle_initialize, handle_tools_call, handle_tools_list, JsonRpcError};
+use crate::mcp::handlers::{handle_initialize, handle_tools_call, handle_tools_list, JsonRpcError};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 
@@ -106,6 +103,10 @@ fn process_request(request: JsonRpcRequest) -> Option<JsonRpcResponse> {
 /// - I/O errors are logged to stderr and the server continues processing
 /// - Invalid requests receive JSON-RPC error responses per the MCP specification
 pub fn serve_mcp() {
+    // Initialize MCP output dir based on Runfile location (or temp as fallback)
+    let effective_dir = crate::config::ensure_mcp_output_dir();
+    crate::config::set_mcp_output_dir(Some(effective_dir));
+
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
     let reader = BufReader::new(stdin);
@@ -226,7 +227,7 @@ mod tests {
         use crate::ast::Parameter;
 
         let attributes = vec![Attribute::Desc("Deploy application".to_string())];
-        
+
         let params = vec![
             Parameter {
                 name: "env".to_string(),
@@ -254,7 +255,7 @@ mod tests {
 
         let version_param = tool.input_schema.properties.get("version").unwrap();
         assert_eq!(version_param.param_type, "string");
-        
+
         // version should not be required since it has a default
         assert!(tool.input_schema.required.contains(&"env".to_string()));
         assert!(!tool.input_schema.required.contains(&"version".to_string()));
@@ -265,15 +266,13 @@ mod tests {
         use crate::ast::Parameter;
 
         let attributes = vec![Attribute::Desc("Echo all arguments".to_string())];
-        
-        let params = vec![
-            Parameter {
-                name: "args".to_string(),
-                param_type: ArgType::String,
-                default_value: None,
-                is_rest: true,
-            },
-        ];
+
+        let params = vec![Parameter {
+            name: "args".to_string(),
+            param_type: ArgType::String,
+            default_value: None,
+            is_rest: true,
+        }];
 
         let tool = extract_function_metadata("echo_all", &attributes, &params).unwrap();
 
@@ -305,7 +304,7 @@ mod tests {
                 description: "Version to deploy".to_string(),
             }),
         ];
-        
+
         let params = vec![
             Parameter {
                 name: "env".to_string(),
@@ -330,7 +329,7 @@ mod tests {
 
         let version_param = tool.input_schema.properties.get("version").unwrap();
         assert_eq!(version_param.description, "Version to deploy");
-        
+
         // Only env should be required (version has default)
         assert_eq!(tool.input_schema.required.len(), 1);
         assert!(tool.input_schema.required.contains(&"env".to_string()));

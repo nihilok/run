@@ -229,7 +229,7 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> String {
 
 fn parse_param_list(pair: pest::iterators::Pair<Rule>) -> Option<Vec<crate::ast::Parameter>> {
     let mut params = Vec::new();
-    
+
     for inner in pair.into_inner() {
         if inner.as_rule() == Rule::params {
             for param_pair in inner.into_inner() {
@@ -239,14 +239,14 @@ fn parse_param_list(pair: pest::iterators::Pair<Rule>) -> Option<Vec<crate::ast:
             }
         }
     }
-    
+
     Some(params)
 }
 
 fn parse_param(pair: pest::iterators::Pair<Rule>) -> Option<crate::ast::Parameter> {
     let mut inner = pair.into_inner();
     let first = inner.next()?;
-    
+
     // Check for rest parameter (...args)
     if first.as_rule() == Rule::rest_param {
         // rest_param contains param_identifier
@@ -258,14 +258,14 @@ fn parse_param(pair: pest::iterators::Pair<Rule>) -> Option<crate::ast::Paramete
             is_rest: true,
         });
     }
-    
+
     // Regular parameter (first is regular_param)
     // regular_param contains: param_identifier, optional param_type_annotation, optional param_default
     let mut param_inner = first.into_inner();
     let name = param_inner.next()?.as_str().to_string(); // This is param_identifier
-    let mut param_type = crate::ast::ArgType::String;  // Default
+    let mut param_type = crate::ast::ArgType::String; // Default
     let mut default_value = None;
-    
+
     // Check for type annotation and default value
     for next in param_inner {
         match next.as_rule() {
@@ -283,9 +283,10 @@ fn parse_param(pair: pest::iterators::Pair<Rule>) -> Option<crate::ast::Paramete
                 if let Some(default_pair) = next.into_inner().next() {
                     let val = default_pair.as_str().trim();
                     // Strip surrounding quotes if present
-                    let val = if (val.starts_with('"') && val.ends_with('"')) 
-                              || (val.starts_with('\'') && val.ends_with('\'')) {
-                        &val[1..val.len()-1]
+                    let val = if (val.starts_with('"') && val.ends_with('"'))
+                        || (val.starts_with('\'') && val.ends_with('\''))
+                    {
+                        &val[1..val.len() - 1]
                     } else {
                         val
                     };
@@ -295,7 +296,7 @@ fn parse_param(pair: pest::iterators::Pair<Rule>) -> Option<crate::ast::Paramete
             _ => {}
         }
     }
-    
+
     Some(crate::ast::Parameter {
         name,
         param_type,
@@ -315,9 +316,18 @@ mod tests {
         let input = "server() echo port=${1:-8080}";
         let result = parse_script(input).unwrap();
 
-        if let Statement::SimpleFunctionDef { name, command_template, attributes, .. } = &result.statements[0] {
+        if let Statement::SimpleFunctionDef {
+            name,
+            command_template,
+            attributes,
+            ..
+        } = &result.statements[0]
+        {
             assert_eq!(name, "server");
-            assert_eq!(command_template, "echo port=${1:-8080}", "Command template has unexpected spacing");
+            assert_eq!(
+                command_template, "echo port=${1:-8080}",
+                "Command template has unexpected spacing"
+            );
             assert_eq!(attributes.len(), 0);
         } else {
             panic!("Expected SimpleFunctionDef");
@@ -332,7 +342,10 @@ restart() docker compose restart
 ";
         let result = parse_script(input).unwrap();
 
-        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+        if let Statement::SimpleFunctionDef {
+            name, attributes, ..
+        } = &result.statements[0]
+        {
             assert_eq!(name, "restart");
             assert_eq!(attributes.len(), 1);
 
@@ -354,7 +367,10 @@ scale() docker compose scale $1
 ";
         let result = parse_script(input).unwrap();
 
-        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+        if let Statement::SimpleFunctionDef {
+            name, attributes, ..
+        } = &result.statements[0]
+        {
             assert_eq!(name, "scale");
             assert_eq!(attributes.len(), 1);
 
@@ -379,7 +395,10 @@ scale() docker compose scale $1=$2
 ";
         let result = parse_script(input).unwrap();
 
-        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+        if let Statement::SimpleFunctionDef {
+            name, attributes, ..
+        } = &result.statements[0]
+        {
             assert_eq!(name, "scale");
             assert_eq!(attributes.len(), 1);
 
@@ -404,7 +423,10 @@ test() echo "Verbose: $1"
 "#;
         let result = parse_script(input).unwrap();
 
-        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+        if let Statement::SimpleFunctionDef {
+            name, attributes, ..
+        } = &result.statements[0]
+        {
             assert_eq!(name, "test");
             assert_eq!(attributes.len(), 1);
 
@@ -431,7 +453,10 @@ scale() docker compose scale $1=$2
 ";
         let result = parse_script(input).unwrap();
 
-        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+        if let Statement::SimpleFunctionDef {
+            name, attributes, ..
+        } = &result.statements[0]
+        {
             assert_eq!(name, "scale");
             assert_eq!(attributes.len(), 3);
 
@@ -472,7 +497,10 @@ greet() echo "Hello, $1"
 "#;
         let result = parse_script(input).unwrap();
 
-        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+        if let Statement::SimpleFunctionDef {
+            name, attributes, ..
+        } = &result.statements[0]
+        {
             assert_eq!(name, "greet");
             assert_eq!(attributes.len(), 1);
 
@@ -498,7 +526,10 @@ docker_shell() docker compose exec bash
 "#;
         let result = parse_script(input).unwrap();
 
-        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+        if let Statement::SimpleFunctionDef {
+            name, attributes, ..
+        } = &result.statements[0]
+        {
             assert_eq!(name, "docker_shell");
             assert_eq!(attributes.len(), 1);
 
@@ -520,7 +551,10 @@ shell() docker compose exec $1 bash
 "#;
         let result = parse_script(input).unwrap();
 
-        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+        if let Statement::SimpleFunctionDef {
+            name, attributes, ..
+        } = &result.statements[0]
+        {
             assert_eq!(name, "shell");
             assert_eq!(attributes.len(), 1);
 
@@ -546,7 +580,10 @@ scale(service, replicas) docker compose scale $service=$replicas
 "#;
         let result = parse_script(input).unwrap();
 
-        if let Statement::SimpleFunctionDef { name, attributes, .. } = &result.statements[0] {
+        if let Statement::SimpleFunctionDef {
+            name, attributes, ..
+        } = &result.statements[0]
+        {
             assert_eq!(name, "scale");
             assert_eq!(attributes.len(), 2);
 
@@ -575,7 +612,7 @@ scale(service, replicas) docker compose scale $service=$replicas
     fn test_function_with_params() {
         let input = "deploy(env, version) echo $env $version";
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
             assert_eq!(name, "deploy");
             assert_eq!(params.len(), 2);
@@ -593,7 +630,7 @@ scale(service, replicas) docker compose scale $service=$replicas
     fn test_function_with_typed_params() {
         let input = "scale(service: str, replicas: int) echo $service $replicas";
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
             assert_eq!(name, "scale");
             assert_eq!(params.len(), 2);
@@ -610,7 +647,7 @@ scale(service, replicas) docker compose scale $service=$replicas
     fn test_function_with_default_values() {
         let input = r#"deploy(env, version = "latest") echo $env $version"#;
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
             assert_eq!(name, "deploy");
             assert_eq!(params.len(), 2);
@@ -627,7 +664,7 @@ scale(service, replicas) docker compose scale $service=$replicas
     fn test_function_with_rest_param() {
         let input = "echo_all(...args) echo $args";
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
             assert_eq!(name, "echo_all");
             assert_eq!(params.len(), 1);
@@ -643,7 +680,7 @@ scale(service, replicas) docker compose scale $service=$replicas
     fn test_function_with_mixed_params_and_rest() {
         let input = "docker_exec(container, ...command) docker exec $container $command";
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
             assert_eq!(name, "docker_exec");
             assert_eq!(params.len(), 2);
@@ -660,7 +697,7 @@ scale(service, replicas) docker compose scale $service=$replicas
     fn test_quoted_default_with_comma() {
         let input = r#"test(val = "a,b,c") echo $val"#;
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
             assert_eq!(name, "test");
             assert_eq!(params.len(), 1);
@@ -675,7 +712,7 @@ scale(service, replicas) docker compose scale $service=$replicas
     fn test_single_quoted_default() {
         let input = "test(val = 'hello world') echo $val";
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
             assert_eq!(name, "test");
             assert_eq!(params[0].default_value, Some("hello world".to_string()));
@@ -688,7 +725,7 @@ scale(service, replicas) docker compose scale $service=$replicas
     fn test_unquoted_default() {
         let input = "test(port = 8080) echo $port";
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
             assert_eq!(name, "test");
             assert_eq!(params[0].default_value, Some("8080".to_string()));
@@ -701,7 +738,7 @@ scale(service, replicas) docker compose scale $service=$replicas
     fn test_empty_parens_still_works() {
         let input = "greet() echo hello";
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
             assert_eq!(name, "greet");
             assert_eq!(params.len(), 0);
@@ -714,7 +751,7 @@ scale(service, replicas) docker compose scale $service=$replicas
     fn test_function_keyword_with_params() {
         let input = "function deploy(env, version) echo $env $version";
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
             assert_eq!(name, "deploy");
             assert_eq!(params.len(), 2);
@@ -732,7 +769,7 @@ scale(service, replicas) docker compose scale $service=$replicas
     echo "Version: $version"
 }"#;
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::BlockFunctionDef { name, params, .. } = &result.statements[0] {
             assert_eq!(name, "deploy");
             assert_eq!(params.len(), 2);
@@ -747,7 +784,7 @@ scale(service, replicas) docker compose scale $service=$replicas
     fn test_all_param_types() {
         let input = "test(s: string, i: integer, b: boolean) echo $s $i $b";
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
             assert_eq!(name, "test");
             assert_eq!(params.len(), 3);
@@ -763,7 +800,7 @@ scale(service, replicas) docker compose scale $service=$replicas
     fn test_short_type_names() {
         let input = "test(s: str, i: int, b: bool) echo $s $i $b";
         let result = parse_script(input).unwrap();
-        
+
         if let Statement::SimpleFunctionDef { name, params, .. } = &result.statements[0] {
             assert_eq!(name, "test");
             assert_eq!(params.len(), 3);

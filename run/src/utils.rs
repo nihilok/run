@@ -12,7 +12,7 @@ pub fn arg_type_to_json_type(arg_type: &ArgType) -> &'static str {
 }
 
 /// Check if function attributes match the current platform
-/// 
+///
 /// Returns `true` if:
 /// - No OS attributes are present (available on all platforms)
 /// - At least one OS attribute matches the current platform
@@ -25,13 +25,15 @@ pub fn matches_current_platform(attributes: &[Attribute]) -> bool {
             _ => None,
         })
         .collect();
-    
+
     if os_attrs.is_empty() {
         return true;
     }
-    
+
     // Check if any of the OS attributes match the current platform
-    os_attrs.iter().any(|platform| platform_matches_current(platform))
+    os_attrs
+        .iter()
+        .any(|platform| platform_matches_current(platform))
 }
 
 /// Check if a specific platform matches the current OS
@@ -65,7 +67,7 @@ mod tests {
     #[test]
     fn test_matches_current_platform_unix() {
         let attributes = vec![Attribute::Os(OsPlatform::Unix)];
-        
+
         if cfg!(unix) {
             assert!(matches_current_platform(&attributes));
         } else {
@@ -76,7 +78,7 @@ mod tests {
     #[test]
     fn test_matches_current_platform_windows() {
         let attributes = vec![Attribute::Os(OsPlatform::Windows)];
-        
+
         if cfg!(windows) {
             assert!(matches_current_platform(&attributes));
         } else {
@@ -91,7 +93,7 @@ mod tests {
             Attribute::Os(OsPlatform::Linux),
             Attribute::Os(OsPlatform::MacOS),
         ];
-        
+
         if cfg!(target_os = "linux") || cfg!(target_os = "macos") {
             assert!(matches_current_platform(&attributes));
         } else {

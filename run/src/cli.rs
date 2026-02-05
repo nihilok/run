@@ -46,9 +46,9 @@ struct Cli {
     #[arg(long, value_name = "FORMAT", default_value = "stream")]
     output_format: OutputFormatArg,
 
-    /// Path to Runfile or directory containing Runfile
-    #[arg(long, value_name = "PATH")]
-    runfile: Option<PathBuf>,
+    /// Working directory containing the Runfile (alias: --runfile)
+    #[arg(long = "working-dir", alias = "runfile", value_name = "PATH")]
+    working_dir: Option<PathBuf>,
 }
 
 /// Output format for command execution
@@ -88,8 +88,8 @@ impl OutputFormatArg {
 pub fn run_cli() {
     let cli = Cli::parse();
 
-    // Set custom runfile path if provided
-    if let Some(ref runfile_path) = cli.runfile {
+    // Set custom working directory (Runfile location) if provided
+    if let Some(ref runfile_path) = cli.working_dir {
         config::set_custom_runfile_path(Some(runfile_path.clone()));
     }
 
@@ -113,7 +113,7 @@ pub fn run_cli() {
 
     // Handle --inspect flag
     if cli.inspect {
-        mcp::print_inspect();
+        mcp::tools::print_inspect();
         return;
     }
 

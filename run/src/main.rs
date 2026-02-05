@@ -16,4 +16,3 @@
 fn main() {
     run::cli::run_cli();
 }
-

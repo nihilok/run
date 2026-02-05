@@ -55,14 +55,14 @@ impl Interpreter {
 }
 
 /// Transpile a function to shell syntax (sh/bash)
-/// 
+///
 /// # Arguments
 /// * `name` - Function name (may contain colons)
 /// * `body` - Function body (command template or block)
 /// * `is_block` - Whether this is a block function
 pub fn transpile_to_shell(name: &str, body: &str, is_block: bool) -> String {
     let sanitised = sanitise_name(name);
-    
+
     if is_block {
         // Block function - body already contains multiple lines
         let indented = indent(body, "    ");
@@ -76,7 +76,7 @@ pub fn transpile_to_shell(name: &str, body: &str, is_block: bool) -> String {
 /// Transpile a function to PowerShell syntax
 pub fn transpile_to_pwsh(name: &str, body: &str, is_block: bool) -> String {
     let sanitised = sanitise_name(name);
-    
+
     if is_block {
         let indented = indent(body, "    ");
         format!("function {} {{\n{}\n}}", sanitised, indented)
@@ -105,38 +105,38 @@ fn indent(text: &str, prefix: &str) -> String {
 }
 
 /// Rewrite call sites in function body to use sanitised names
-/// 
+///
 /// This replaces function names containing colons with their sanitised versions
 /// (colons replaced with double underscores). Only replaces whole-word matches.
 pub fn rewrite_call_sites(body: &str, sibling_names: &[&str]) -> String {
     let mut result = body.to_string();
-    
+
     for sibling in sibling_names {
         if sibling.contains(':') {
             let sanitised = sanitise_name(sibling);
             result = replace_word(&result, sibling, &sanitised);
         }
     }
-    
+
     result
 }
 
 /// Replace whole-word occurrences of a pattern in text
-/// 
+///
 /// This ensures we only replace actual function calls, not partial matches
 /// within other words.
 fn replace_word(text: &str, pattern: &str, replacement: &str) -> String {
     let mut result = String::new();
     let mut chars = text.chars().peekable();
     let pattern_chars: Vec<char> = pattern.chars().collect();
-    
+
     'outer: while let Some(ch) = chars.next() {
         // Try to match pattern
         if ch == pattern_chars[0] {
             // Look ahead to match the rest of the pattern
             let mut matched = vec![ch];
             let mut peek_ahead: Vec<char> = Vec::new();
-            
+
             for &pattern_ch in &pattern_chars[1..] {
                 if let Some(&next_ch) = chars.peek() {
                     peek_ahead.push(next_ch);
@@ -156,13 +156,17 @@ fn replace_word(text: &str, pattern: &str, replacement: &str) -> String {
                     continue 'outer;
                 }
             }
-            
+
             // We matched the pattern, now check word boundaries
             // Check if there's a non-word character (or start/end) before and after
-            let before_ok = result.is_empty() || 
-                            result.chars().last().map(|c| !is_word_char(c)).unwrap_or(true);
+            let before_ok = result.is_empty()
+                || result
+                    .chars()
+                    .last()
+                    .map(|c| !is_word_char(c))
+                    .unwrap_or(true);
             let after_ok = chars.peek().map(|&c| !is_word_char(c)).unwrap_or(true);
-            
+
             if before_ok && after_ok {
                 // Valid word boundary, replace
                 result.push_str(replacement);
@@ -174,7 +178,7 @@ fn replace_word(text: &str, pattern: &str, replacement: &str) -> String {
             result.push(ch);
         }
     }
-    
+
     result
 }
 
@@ -198,7 +202,10 @@ mod tests {
     fn test_transpile_block_shell_function() {
         let body = "cargo build --release\ncargo test";
         let result = transpile_to_shell("ci", body, true);
-        assert_eq!(result, "ci() {\n    cargo build --release\n    cargo test\n}");
+        assert_eq!(
+            result,
+            "ci() {\n    cargo build --release\n    cargo test\n}"
+        );
     }
 
     #[test]
@@ -265,7 +272,7 @@ mod tests {
     fn test_interpreter_compatibility_sh_bash() {
         let sh = Interpreter::Sh;
         let bash = Interpreter::Bash;
-        
+
         assert!(sh.is_compatible_with(&bash));
         assert!(bash.is_compatible_with(&sh));
         assert!(sh.is_compatible_with(&sh));
@@ -276,7 +283,7 @@ mod tests {
     fn test_interpreter_compatibility_pwsh() {
         let pwsh = Interpreter::Pwsh;
         let sh = Interpreter::Sh;
-        
+
         assert!(pwsh.is_compatible_with(&pwsh));
         assert!(!pwsh.is_compatible_with(&sh));
         assert!(!sh.is_compatible_with(&pwsh));
@@ -289,11 +296,11 @@ mod tests {
         let node = Interpreter::Node;
         let ruby = Interpreter::Ruby;
         let sh = Interpreter::Sh;
-        
+
         // Python and Python3 can compose with each other
         assert!(python.is_compatible_with(&python3));
         assert!(python3.is_compatible_with(&python));
-        
+
         // But not with other polyglot languages
         assert!(!python.is_compatible_with(&node));
         assert!(!python.is_compatible_with(&ruby));
@@ -301,7 +308,7 @@ mod tests {
         assert!(!node.is_compatible_with(&ruby));
         assert!(!node.is_compatible_with(&sh));
         assert!(!ruby.is_compatible_with(&sh));
-        
+
         // But they can compose with themselves
         assert!(python.is_compatible_with(&python));
         assert!(python3.is_compatible_with(&python3));
@@ -326,9 +333,18 @@ mod tests {
     #[test]
     fn test_replace_word_boundaries() {
         // Test that we only replace whole words
-        assert_eq!(replace_word("docker:build", "docker:build", "docker__build"), "docker__build");
-        assert_eq!(replace_word("call docker:build here", "docker:build", "docker__build"), "call docker__build here");
-        assert_eq!(replace_word("docker:build\ndocker:push", "docker:build", "docker__build"), "docker__build\ndocker:push");
+        assert_eq!(
+            replace_word("docker:build", "docker:build", "docker__build"),
+            "docker__build"
+        );
+        assert_eq!(
+            replace_word("call docker:build here", "docker:build", "docker__build"),
+            "call docker__build here"
+        );
+        assert_eq!(
+            replace_word("docker:build\ndocker:push", "docker:build", "docker__build"),
+            "docker__build\ndocker:push"
+        );
     }
 
     #[test]

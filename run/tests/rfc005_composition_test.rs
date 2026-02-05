@@ -71,7 +71,11 @@ ci() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(stdout.contains("building"), "Expected 'building' in output");
     assert!(stdout.contains("testing"), "Expected 'testing' in output");
 }
@@ -108,12 +112,31 @@ ci() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
-    assert!(stdout.contains("building step 1"), "Expected 'building step 1' in output");
-    assert!(stdout.contains("building step 2"), "Expected 'building step 2' in output");
-    assert!(stdout.contains("testing step 1"), "Expected 'testing step 1' in output");
-    assert!(stdout.contains("testing step 2"), "Expected 'testing step 2' in output");
-    assert!(stdout.contains("ci complete"), "Expected 'ci complete' in output");
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("building step 1"),
+        "Expected 'building step 1' in output"
+    );
+    assert!(
+        stdout.contains("building step 2"),
+        "Expected 'building step 2' in output"
+    );
+    assert!(
+        stdout.contains("testing step 1"),
+        "Expected 'testing step 1' in output"
+    );
+    assert!(
+        stdout.contains("testing step 2"),
+        "Expected 'testing step 2' in output"
+    );
+    assert!(
+        stdout.contains("ci complete"),
+        "Expected 'ci complete' in output"
+    );
 }
 
 #[test]
@@ -141,10 +164,23 @@ deploy() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
-    assert!(stdout.contains("docker build"), "Expected 'docker build' in output");
-    assert!(stdout.contains("docker push"), "Expected 'docker push' in output");
-    assert!(stdout.contains("deploy complete"), "Expected 'deploy complete' in output");
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("docker build"),
+        "Expected 'docker build' in output"
+    );
+    assert!(
+        stdout.contains("docker push"),
+        "Expected 'docker push' in output"
+    );
+    assert!(
+        stdout.contains("deploy complete"),
+        "Expected 'deploy complete' in output"
+    );
 }
 
 #[test]
@@ -174,10 +210,23 @@ info() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
-    assert!(stdout.contains("Building myapp v1.0.0"), "Expected variable substitution in build");
-    assert!(stdout.contains("Project: myapp"), "Expected PROJECT variable");
-    assert!(stdout.contains("Version: 1.0.0"), "Expected VERSION variable");
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("Building myapp v1.0.0"),
+        "Expected variable substitution in build"
+    );
+    assert!(
+        stdout.contains("Project: myapp"),
+        "Expected PROJECT variable"
+    );
+    assert!(
+        stdout.contains("Version: 1.0.0"),
+        "Expected VERSION variable"
+    );
 }
 
 #[test]
@@ -204,9 +253,19 @@ welcome() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
-    assert!(stdout.contains("Hello, Alice!"), "Expected argument passed to composed function");
-    assert!(stdout.contains("Welcome to the system"), "Expected welcome message");
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("Hello, Alice!"),
+        "Expected argument passed to composed function"
+    );
+    assert!(
+        stdout.contains("Welcome to the system"),
+        "Expected welcome message"
+    );
 }
 
 #[test]
@@ -238,10 +297,23 @@ mixed() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
-    assert!(stdout.contains("simple function"), "Expected simple function output");
-    assert!(stdout.contains("block function line 1"), "Expected block function output");
-    assert!(stdout.contains("block function line 2"), "Expected block function output");
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("simple function"),
+        "Expected simple function output"
+    );
+    assert!(
+        stdout.contains("block function line 1"),
+        "Expected block function output"
+    );
+    assert!(
+        stdout.contains("block function line 2"),
+        "Expected block function output"
+    );
     assert!(stdout.contains("mixed complete"), "Expected mixed complete");
 }
 
@@ -273,7 +345,11 @@ level3() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(stdout.contains("level 1"), "Expected level 1 output");
     assert!(stdout.contains("level 2"), "Expected level 2 output");
     assert!(stdout.contains("level 3"), "Expected level 3 output");
@@ -303,9 +379,15 @@ catch() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Should succeed because we catch the error
-    assert!(output.status.success(), "Command should succeed with error handling");
+    assert!(
+        output.status.success(),
+        "Command should succeed with error handling"
+    );
     assert!(stdout.contains("caught error"), "Expected error handling");
-    assert!(stdout.contains("continue after error"), "Expected continuation");
+    assert!(
+        stdout.contains("continue after error"),
+        "Expected continuation"
+    );
 }
 
 #[test]
@@ -331,8 +413,15 @@ start() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
-    assert!(stdout.contains("Starting server on port 8080"), "Expected default port 8080");
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("Starting server on port 8080"),
+        "Expected default port 8080"
+    );
 }
 
 #[test]
@@ -361,7 +450,11 @@ app:ci() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(stdout.contains("app build"), "Expected app build");
     assert!(stdout.contains("app test"), "Expected app test");
     assert!(stdout.contains("app deploy"), "Expected app deploy");
@@ -390,7 +483,11 @@ standalone() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(stdout.contains("line 1"), "Expected line 1");
     assert!(stdout.contains("line 2"), "Expected line 2");
     assert!(stdout.contains("line 3"), "Expected line 3");
@@ -424,10 +521,23 @@ deploy:production() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
-    assert!(stdout.contains("docker build -t myapp:v1.0.0"), "Expected TAG variable in build");
-    assert!(stdout.contains("docker tag myapp:v1.0.0 myapp:latest"), "Expected TAG variable in tag");
-    assert!(stdout.contains("Deploying to production"), "Expected ENV variable");
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("docker build -t myapp:v1.0.0"),
+        "Expected TAG variable in build"
+    );
+    assert!(
+        stdout.contains("docker tag myapp:v1.0.0 myapp:latest"),
+        "Expected TAG variable in tag"
+    );
+    assert!(
+        stdout.contains("Deploying to production"),
+        "Expected ENV variable"
+    );
 }
 
 #[test]
@@ -459,10 +569,23 @@ wrapper() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
-    assert!(stdout.contains("Before node call"), "Expected 'Before node call' in output");
-    assert!(stdout.contains("Hello from Node.js!"), "Expected Node.js output");
-    assert!(stdout.contains("After node call"), "Expected 'After node call' in output");
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("Before node call"),
+        "Expected 'Before node call' in output"
+    );
+    assert!(
+        stdout.contains("Hello from Node.js!"),
+        "Expected Node.js output"
+    );
+    assert!(
+        stdout.contains("After node call"),
+        "Expected 'After node call' in output"
+    );
 }
 
 #[test]
@@ -494,12 +617,22 @@ wrapper() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
-    assert!(stdout.contains("Before python call"), "Expected 'Before python call' in output");
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("Before python call"),
+        "Expected 'Before python call' in output"
+    );
     assert!(stdout.contains("Count: 0"), "Expected Python count output");
     assert!(stdout.contains("Count: 1"), "Expected Python count output");
     assert!(stdout.contains("Count: 2"), "Expected Python count output");
-    assert!(stdout.contains("After python call"), "Expected 'After python call' in output");
+    assert!(
+        stdout.contains("After python call"),
+        "Expected 'After python call' in output"
+    );
 }
 
 #[test]
@@ -536,11 +669,27 @@ multi_call() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
-    assert!(stdout.contains("Starting multi-language calls"), "Expected start message");
-    assert!(stdout.contains("Hello from Node!"), "Expected Node.js output");
-    assert!(stdout.contains("Hello from Python!"), "Expected Python output");
-    assert!(stdout.contains("All calls complete"), "Expected completion message");
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("Starting multi-language calls"),
+        "Expected start message"
+    );
+    assert!(
+        stdout.contains("Hello from Node!"),
+        "Expected Node.js output"
+    );
+    assert!(
+        stdout.contains("Hello from Python!"),
+        "Expected Python output"
+    );
+    assert!(
+        stdout.contains("All calls complete"),
+        "Expected completion message"
+    );
 }
 
 #[test]
@@ -576,10 +725,20 @@ ci() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(stdout.contains("building..."), "Expected build output");
-    assert!(stdout.contains("Validating with Node.js..."), "Expected Node.js validation output");
-    assert!(stdout.contains("CI complete"), "Expected CI complete message");
+    assert!(
+        stdout.contains("Validating with Node.js..."),
+        "Expected Node.js validation output"
+    );
+    assert!(
+        stdout.contains("CI complete"),
+        "Expected CI complete message"
+    );
 }
 
 #[test]
@@ -615,7 +774,11 @@ safe_caller() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(stdout.contains("shell works"), "Expected shell_func output");
     assert!(stdout.contains("done"), "Expected done message");
 }
@@ -654,9 +817,15 @@ deploy:full() {
         .expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "Command failed: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert!(stdout.contains("app starting"), "Expected app:start output");
-    assert!(stdout.contains("Healthcheck: OK"), "Expected node:healthcheck output");
+    assert!(
+        stdout.contains("Healthcheck: OK"),
+        "Expected node:healthcheck output"
+    );
     assert!(stdout.contains("app stopping"), "Expected app:stop output");
 }
-

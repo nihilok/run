@@ -31,24 +31,29 @@ deploy(env, version = "latest") {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     // Parse as JSON
     let json: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
-    
+
     // Verify structure
     let tools = json["tools"].as_array().expect("tools should be array");
     assert_eq!(tools.len(), 1, "Should have one tool");
-    
+
     let deploy_tool = &tools[0];
     assert_eq!(deploy_tool["name"], "deploy");
-    assert_eq!(deploy_tool["description"], "Deploy application to environment");
-    
+    assert_eq!(
+        deploy_tool["description"],
+        "Deploy application to environment"
+    );
+
     let properties = &deploy_tool["inputSchema"]["properties"];
     assert!(properties["env"].is_object());
     assert!(properties["version"].is_object());
-    
+
     // env should be required, version should not (has default)
-    let required = deploy_tool["inputSchema"]["required"].as_array().expect("required should be array");
+    let required = deploy_tool["inputSchema"]["required"]
+        .as_array()
+        .expect("required should be array");
     assert_eq!(required.len(), 1);
     assert_eq!(required[0], "env");
 }
@@ -76,17 +81,19 @@ docker_exec(container, ...command) {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     let json: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
     let tools = json["tools"].as_array().expect("tools should be array");
     let tool = &tools[0];
-    
+
     let properties = &tool["inputSchema"]["properties"];
     assert_eq!(properties["container"]["type"], "string");
     assert_eq!(properties["command"]["type"], "array");
-    
+
     // Only container should be required
-    let required = tool["inputSchema"]["required"].as_array().expect("required should be array");
+    let required = tool["inputSchema"]["required"]
+        .as_array()
+        .expect("required should be array");
     assert_eq!(required.len(), 1);
     assert_eq!(required[0], "container");
 }
@@ -116,22 +123,24 @@ scale(service, replicas: int = 1) {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     let json: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
     let tools = json["tools"].as_array().expect("tools should be array");
     let tool = &tools[0];
-    
+
     // Check that types come from params
     let properties = &tool["inputSchema"]["properties"];
     assert_eq!(properties["service"]["type"], "string");
     assert_eq!(properties["replicas"]["type"], "integer");
-    
+
     // Check that descriptions come from @arg
     assert_eq!(properties["service"]["description"], "The service to scale");
     assert_eq!(properties["replicas"]["description"], "Number of instances");
-    
+
     // Only service should be required (replicas has default)
-    let required = tool["inputSchema"]["required"].as_array().expect("required should be array");
+    let required = tool["inputSchema"]["required"]
+        .as_array()
+        .expect("required should be array");
     assert_eq!(required.len(), 1);
     assert_eq!(required[0], "service");
 }
@@ -160,17 +169,19 @@ restart() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     let json: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
     let tools = json["tools"].as_array().expect("tools should be array");
     let tool = &tools[0];
-    
+
     // Old @arg style should still work
     let properties = &tool["inputSchema"]["properties"];
     assert_eq!(properties["service"]["type"], "string");
     assert_eq!(properties["service"]["description"], "The service name");
-    
-    let required = tool["inputSchema"]["required"].as_array().expect("required should be array");
+
+    let required = tool["inputSchema"]["required"]
+        .as_array()
+        .expect("required should be array");
     assert_eq!(required.len(), 1);
     assert_eq!(required[0], "service");
 }
@@ -208,17 +219,15 @@ build() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     let json: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
     let tools = json["tools"].as_array().expect("tools should be array");
-    
+
     // Should have 2 tools (deploy and scale, not build)
     assert_eq!(tools.len(), 2);
-    
-    let names: Vec<&str> = tools.iter()
-        .map(|t| t["name"].as_str().unwrap())
-        .collect();
-    
+
+    let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+
     assert!(names.contains(&"deploy"));
     assert!(names.contains(&"scale"));
 }

@@ -2,11 +2,16 @@
 
 use std::cell::RefCell;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 thread_local! {
-    static CUSTOM_RUNFILE_PATH: RefCell<Option<PathBuf>> = RefCell::new(None);
+    static CUSTOM_RUNFILE_PATH: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+    static MCP_OUTPUT_DIR: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
 }
+
+static MCP_OUTPUT_ENV: OnceLock<Option<PathBuf>> = OnceLock::new();
+const MCP_OUTPUT_ENV_VAR: &str = "RUN_MCP_OUTPUT_DIR";
 
 /// Set a custom runfile path for the current thread
 pub fn set_custom_runfile_path(path: Option<PathBuf>) {
@@ -18,6 +23,69 @@ pub fn set_custom_runfile_path(path: Option<PathBuf>) {
 /// Get the custom runfile path if set
 fn get_custom_runfile_path() -> Option<PathBuf> {
     CUSTOM_RUNFILE_PATH.with(|p| p.borrow().clone())
+}
+
+/// Set the MCP output directory for the current thread
+pub fn set_mcp_output_dir(path: Option<PathBuf>) {
+    MCP_OUTPUT_DIR.with(|p| {
+        *p.borrow_mut() = path;
+    });
+}
+
+fn mcp_output_dir_from_env() -> Option<PathBuf> {
+    MCP_OUTPUT_ENV
+        .get_or_init(|| std::env::var_os(MCP_OUTPUT_ENV_VAR).map(PathBuf::from))
+        .clone()
+}
+
+fn resolve_runfile_dir() -> Option<PathBuf> {
+    // Prefer explicit custom path if set
+    if let Some(custom_path) = get_custom_runfile_path() {
+        return Some(if custom_path.is_dir() {
+            custom_path
+        } else {
+            custom_path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .to_path_buf()
+        });
+    }
+
+    find_runfile_path().and_then(|path| path.parent().map(Path::to_path_buf))
+}
+
+/// Compute (and memoize) the MCP output directory. Prefers env override, then Runfile dir, then temp.
+#[must_use]
+pub fn ensure_mcp_output_dir() -> PathBuf {
+    MCP_OUTPUT_DIR.with(|p| {
+        if p.borrow().is_none() {
+            let base_dir = mcp_output_dir_from_env()
+                .or_else(resolve_runfile_dir)
+                .unwrap_or_else(std::env::temp_dir);
+            let dir = if base_dir
+                .file_name()
+                .map_or(false, |name| name == ".run-output")
+            {
+                base_dir
+            } else {
+                base_dir.join(".run-output")
+            };
+            *p.borrow_mut() = Some(dir);
+        }
+        p.borrow().clone().unwrap()
+    })
+}
+
+/// Check if MCP output directory is configured or derivable (env or Runfile)
+#[must_use]
+pub fn is_mcp_output_configured() -> bool {
+    MCP_OUTPUT_DIR.with(|p| p.borrow().is_some()) || mcp_output_dir_from_env().is_some()
+}
+
+/// Get the MCP output directory if set, otherwise derives it and memoizes
+#[must_use]
+pub fn get_mcp_output_dir() -> PathBuf {
+    ensure_mcp_output_dir()
 }
 
 /// Get the user's home directory in a cross-platform way.
@@ -47,13 +115,13 @@ pub fn get_home_dir() -> Option<PathBuf> {
 /// Load a Runfile from a specific path (file or directory)
 /// If path is a directory, looks for Runfile inside it
 /// Returns Some(content) if found, None otherwise
-pub fn load_from_path(path: &PathBuf) -> Option<String> {
+pub fn load_from_path(path: &Path) -> Option<String> {
     let runfile_path = if path.is_dir() {
         path.join("Runfile")
     } else {
-        path.clone()
+        path.to_path_buf()
     };
-    
+
     if runfile_path.exists() {
         fs::read_to_string(&runfile_path).ok()
     } else {
@@ -68,7 +136,7 @@ pub fn load_config() -> Option<String> {
     if let Some(custom_path) = get_custom_runfile_path() {
         return load_from_path(&custom_path);
     }
-    
+
     // Start from the current directory and search upwards
     let mut current_dir = match std::env::current_dir() {
         Ok(dir) => dir,
@@ -208,4 +276,3 @@ fn find_home_runfile_path() -> Option<PathBuf> {
     }
     None
 }
-

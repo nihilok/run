@@ -8,25 +8,27 @@ use std::collections::HashMap;
 /// Resolve a sanitised tool name back to the original function name
 /// This is needed because MCP requires [a-zA-Z0-9_-] but we support colons in function names
 pub(super) fn resolve_tool_name(sanitised_name: &str) -> Result<String, JsonRpcError> {
-    let config_content = config::load_config()
-        .ok_or_else(|| JsonRpcError {
-            code: -32603,
-            message: "No Runfile found".to_string(),
-            data: None,
-        })?;
+    let config_content = config::load_config().ok_or_else(|| JsonRpcError {
+        code: -32603,
+        message: "No Runfile found".to_string(),
+        data: None,
+    })?;
 
-    let program = parser::parse_script(&config_content)
-        .map_err(|e| JsonRpcError {
-            code: -32603,
-            message: format!("Parse error: {}", e),
-            data: None,
-        })?;
+    let program = parser::parse_script(&config_content).map_err(|e| JsonRpcError {
+        code: -32603,
+        message: format!("Parse error: {}", e),
+        data: None,
+    })?;
 
     // Look for a function whose sanitised name matches
     for statement in program.statements {
         let (name, attributes) = match statement {
-            Statement::SimpleFunctionDef { name, attributes, .. } => (name, attributes),
-            Statement::BlockFunctionDef { name, attributes, .. } => (name, attributes),
+            Statement::SimpleFunctionDef {
+                name, attributes, ..
+            } => (name, attributes),
+            Statement::BlockFunctionDef {
+                name, attributes, ..
+            } => (name, attributes),
             _ => continue,
         };
 
@@ -81,8 +83,18 @@ pub(super) fn map_arguments_to_positional(
 
     for statement in program.statements {
         let (name, attributes, params) = match statement {
-            Statement::SimpleFunctionDef { name, attributes, params, .. } => (name, attributes, params),
-            Statement::BlockFunctionDef { name, attributes, params, .. } => (name, attributes, params),
+            Statement::SimpleFunctionDef {
+                name,
+                attributes,
+                params,
+                ..
+            } => (name, attributes, params),
+            Statement::BlockFunctionDef {
+                name,
+                attributes,
+                params,
+                ..
+            } => (name, attributes, params),
             _ => continue,
         };
 
@@ -110,14 +122,14 @@ pub(super) fn map_arguments_to_positional(
             if param.is_rest {
                 continue;
             }
-            
+
             let position = idx + 1;
-            
+
             // Check if we already have this position from explicit @arg (legacy mode)
             if arg_mapping.contains_key(&position) {
                 continue;
             }
-            
+
             // Check if there's an @arg with matching name (new mode)
             if arg_metadata_by_name.contains_key(&param.name) {
                 arg_mapping.insert(position, param.name.clone());

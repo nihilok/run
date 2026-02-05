@@ -40,7 +40,12 @@ test_func() {
     assert_eq!(json["outputs"].as_array().unwrap().len(), 1);
 
     let first_output = &json["outputs"][0];
-    assert!(first_output["stdout"].as_str().unwrap().contains("Hello World"));
+    assert!(
+        first_output["stdout"]
+            .as_str()
+            .unwrap()
+            .contains("Hello World")
+    );
     assert_eq!(first_output["stderr"], "");
     assert_eq!(first_output["exit_code"], 0);
     assert!(first_output["duration_ms"].as_u64().is_some());
@@ -111,8 +116,18 @@ error_test() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
 
     let first_output = &json["outputs"][0];
-    assert!(first_output["stdout"].as_str().unwrap().contains("stdout message"));
-    assert!(first_output["stderr"].as_str().unwrap().contains("stderr message"));
+    assert!(
+        first_output["stdout"]
+            .as_str()
+            .unwrap()
+            .contains("stdout message")
+    );
+    assert!(
+        first_output["stderr"]
+            .as_str()
+            .unwrap()
+            .contains("stderr message")
+    );
 }
 
 #[test]
@@ -181,4 +196,3 @@ ssh_test() {
 }
 
 // Note: Unit tests for extract_ssh_context are in run/src/ast.rs
-

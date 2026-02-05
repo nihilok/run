@@ -104,11 +104,7 @@ pub fn execute_file(path: &PathBuf) {
 /// * `function_name` - The function to call (may be nested, e.g. "docker shell").
 /// * `args` - Arguments to pass to the function.
 /// * `output_format` - How to format the output.
-pub fn run_function_call(
-    function_name: &str,
-    args: &[String],
-    output_format: OutputFormatArg,
-) {
+pub fn run_function_call(function_name: &str, args: &[String], output_format: OutputFormatArg) {
     // Load the config file from ~/.runfile or ./Runfile
     let config_content = config::load_config_or_exit();
 
@@ -166,13 +162,13 @@ pub fn list_functions() {
         Ok(program) => {
             // Use interpreter to handle platform filtering
             let mut interpreter = interpreter::Interpreter::new();
-            
+
             // Execute to load function definitions (this applies platform filtering)
             if let Err(e) = interpreter.execute(program) {
                 eprintln!("Error loading functions: {}", e);
                 std::process::exit(1);
             }
-            
+
             // Get the list of available functions
             let functions = interpreter.list_available_functions();
 
@@ -193,4 +189,3 @@ pub fn list_functions() {
         }
     }
 }
-

@@ -1,9 +1,9 @@
 //! Shell command execution and interpreter resolution
 
-use crate::ast::{Attribute, ShellType, CommandOutput};
+use crate::ast::{Attribute, CommandOutput, ShellType};
 use crate::transpiler::Interpreter as TranspilerInterpreter;
 use std::process::{Command, Stdio};
-use std::time::{SystemTime, Instant, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 /// Get the Python executable (prefers python3)
 pub(super) fn get_python_executable() -> String {
@@ -16,7 +16,9 @@ pub(super) fn get_python_executable() -> String {
 
 /// Map a TranspilerInterpreter to shell command and argument
 /// Returns (shell_command, shell_arg, interpreter_name)
-pub(super) fn interpreter_to_shell_args(interpreter: &TranspilerInterpreter) -> (String, &'static str, &'static str) {
+pub(super) fn interpreter_to_shell_args(
+    interpreter: &TranspilerInterpreter,
+) -> (String, &'static str, &'static str) {
     match interpreter {
         TranspilerInterpreter::Sh => ("sh".to_string(), "-c", "sh"),
         TranspilerInterpreter::Bash => ("bash".to_string(), "-c", "bash"),
@@ -48,9 +50,7 @@ pub(super) fn execute_with_capture_and_args(
     args: &[String],
     display_command: Option<&str>,
 ) -> Result<CommandOutput, Box<dyn std::error::Error>> {
-    let started_at = SystemTime::now()
-        .duration_since(UNIX_EPOCH)?
-        .as_millis();
+    let started_at = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
     let start = Instant::now();
 
     let mut cmd = Command::new(shell_cmd);
@@ -63,11 +63,26 @@ pub(super) fn execute_with_capture_and_args(
 
     let output = cmd.output()?;
 
+    let mut stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let mut stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    // Process output for MCP mode if configured
+    if crate::output_file::is_mcp_output_enabled() {
+        match crate::output_file::process_output_for_mcp(&stdout, "stdout") {
+            Ok(processed) => stdout = processed.display_output,
+            Err(e) => eprintln!("Warning: Failed to process stdout for MCP: {}", e),
+        }
+        match crate::output_file::process_output_for_mcp(&stderr, "stderr") {
+            Ok(processed) => stderr = processed.display_output,
+            Err(e) => eprintln!("Warning: Failed to process stderr for MCP: {}", e),
+        }
+    }
+
     Ok(CommandOutput {
         // Use display_command if provided, otherwise fall back to the full command
         command: display_command.unwrap_or(command).to_string(),
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        stdout,
+        stderr,
         exit_code: output.status.code(),
         duration_ms: start.elapsed().as_millis(),
         started_at,
@@ -102,12 +117,10 @@ pub(super) fn execute_command_with_args(
     args: &[String],
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Check if there's a custom shell attribute
-    let shell_attr: Option<&ShellType> = attributes
-        .iter()
-        .find_map(|attr| match attr {
-            Attribute::Shell(shell) => Some(shell),
-            _ => None,
-        });
+    let shell_attr: Option<&ShellType> = attributes.iter().find_map(|attr| match attr {
+        Attribute::Shell(shell) => Some(shell),
+        _ => None,
+    });
 
     let (shell_cmd, shell_arg) = if let Some(shell_type) = shell_attr {
         // Use the specified shell from attributes
@@ -170,7 +183,6 @@ pub(super) fn execute_command(
     execute_command_with_args(command, attributes, &[])
 }
 
-
 /// Resolve interpreter from shebang to ShellType
 pub(super) fn resolve_shebang_interpreter(shebang: &str) -> Option<ShellType> {
     // Extract the binary name from the shebang
@@ -198,7 +210,7 @@ pub(super) fn resolve_shebang_interpreter(shebang: &str) -> Option<ShellType> {
         "pwsh" | "powershell" => Some(ShellType::Pwsh),
         "bash" => Some(ShellType::Bash),
         "sh" => Some(ShellType::Sh),
-        _ => None,  // Unknown interpreter
+        _ => None, // Unknown interpreter
     }
 }
 
@@ -212,7 +224,11 @@ pub(super) fn strip_shebang(body: &str) -> String {
     for line in lines {
         let trimmed = line.trim();
         // Skip comments before shebang
-        if !found_shebang && !trimmed.is_empty() && trimmed.starts_with('#') && !trimmed.starts_with("#!") {
+        if !found_shebang
+            && !trimmed.is_empty()
+            && trimmed.starts_with('#')
+            && !trimmed.starts_with("#!")
+        {
             result_lines.push(line);
             continue;
         }
@@ -231,18 +247,18 @@ pub(super) fn strip_shebang(body: &str) -> String {
 pub(super) fn escape_shell_value(value: &str) -> String {
     // Escape special shell characters
     value
-        .replace('\\', "\\\\")  // Backslash must be first
-        .replace('"', "\\\"")   // Double quotes
-        .replace('$', "\\$")    // Dollar signs
-        .replace('`', "\\`")    // Backticks
-        .replace('!', "\\!")    // History expansion
+        .replace('\\', "\\\\") // Backslash must be first
+        .replace('"', "\\\"") // Double quotes
+        .replace('$', "\\$") // Dollar signs
+        .replace('`', "\\`") // Backticks
+        .replace('!', "\\!") // History expansion
 }
 
 /// Escape a string value for safe use in PowerShell variable assignment
 pub(super) fn escape_pwsh_value(value: &str) -> String {
     // PowerShell uses backtick for escaping
     value
-        .replace('`', "``")     // Backtick must be first
-        .replace('"', "`\"")    // Double quotes
-        .replace('$', "`$")     // Dollar signs
+        .replace('`', "``") // Backtick must be first
+        .replace('"', "`\"") // Double quotes
+        .replace('$', "`$") // Dollar signs
 }

@@ -63,7 +63,10 @@ pub fn generate_completion_script(shell: Shell) {
 }
 
 /// Install shell completion interactively, detecting the shell and updating config files.
-pub fn install_completion_interactive(shell_opt: Option<Shell>, get_home_dir: impl Fn() -> Option<PathBuf>) {
+pub fn install_completion_interactive(
+    shell_opt: Option<Shell>,
+    get_home_dir: impl Fn() -> Option<PathBuf>,
+) {
     // Detect the shell if not provided
     let shell = shell_opt.or_else(Shell::detect).unwrap_or_else(|| {
         crate::fatal_error("Could not detect shell. Please specify: --install-completion <SHELL>\nSupported shells: bash, zsh, fish, powershell")
@@ -209,10 +212,9 @@ fn install_powershell_completion(home: &PathBuf) {
     // Check if already sourced
     let already_sourced = if profile_path.exists() {
         match std::fs::read_to_string(&profile_path) {
-            Ok(content) => content.lines().any(|line| {
-                line.trim() == source_line.trim() ||
-                line.contains("run.ps1")
-            }),
+            Ok(content) => content
+                .lines()
+                .any(|line| line.trim() == source_line.trim() || line.contains("run.ps1")),
             Err(_) => false,
         }
     } else {

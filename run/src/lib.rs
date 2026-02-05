@@ -9,6 +9,7 @@ pub mod config;
 pub mod executor;
 pub mod interpreter;
 pub mod mcp;
+pub mod output_file;
 pub mod parser;
 pub mod repl;
 pub mod transpiler;
@@ -23,3 +24,6 @@ pub fn fatal_error(message: &str) -> ! {
     eprintln!("{}", message);
     std::process::exit(1);
 }
+
+pub use cli::run_cli;
+pub use config::{ensure_mcp_output_dir, get_home_dir, load_config_or_exit};

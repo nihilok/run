@@ -112,3 +112,13 @@ nested() {
 new_signature_notation(some_arg: int) {
     echo "Argument received: $1"
 }
+
+
+# @desc Function with very long output to test truncation in help
+# @arg count "Number of lines to print"
+long_output(count) {
+    for i in $(seq 1 $count); do
+        echo "Line $i: This is a long output example to test truncation in help."
+    done
+}
+

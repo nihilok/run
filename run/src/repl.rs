@@ -1,6 +1,6 @@
 //! Interactive REPL (Read-Eval-Print Loop) for the run scripting language.
 
-use crate::{config, parser, interpreter};
+use crate::{config, interpreter, parser};
 use std::env;
 use std::io::{self, Write};
 
@@ -91,4 +91,3 @@ pub fn run_repl() {
         }
     }
 }
-

@@ -15,23 +15,32 @@ pub(super) fn parse_block_content(block_str: &str) -> String {
     let all_lines: Vec<&str> = content_str.lines().collect();
 
     // Skip leading and trailing empty/whitespace-only lines
-    let start = all_lines.iter().position(|l| !l.trim().is_empty()).unwrap_or(0);
-    let end = all_lines.iter().rposition(|l| !l.trim().is_empty()).map(|i| i + 1).unwrap_or(all_lines.len());
-    let lines: Vec<&str> = if start < end { 
-        all_lines[start..end].to_vec() 
-    } else { 
-        vec![] 
+    let start = all_lines
+        .iter()
+        .position(|l| !l.trim().is_empty())
+        .unwrap_or(0);
+    let end = all_lines
+        .iter()
+        .rposition(|l| !l.trim().is_empty())
+        .map(|i| i + 1)
+        .unwrap_or(all_lines.len());
+    let lines: Vec<&str> = if start < end {
+        all_lines[start..end].to_vec()
+    } else {
+        vec![]
     };
 
     // Find the minimum indentation (excluding empty lines)
-    let min_indent = lines.iter()
+    let min_indent = lines
+        .iter()
         .filter(|line| !line.trim().is_empty())
         .map(|line| line.len() - line.trim_start().len())
         .min()
         .unwrap_or(0);
 
     // Build dedented lines
-    let dedented_lines: Vec<String> = lines.iter()
+    let dedented_lines: Vec<String> = lines
+        .iter()
         .map(|line| {
             if line.trim().is_empty() {
                 String::new()
@@ -47,10 +56,7 @@ pub(super) fn parse_block_content(block_str: &str) -> String {
 }
 
 /// Split block content into commands based on shell type
-pub(super) fn split_block_commands(
-    content: &str,
-    attributes: &[Attribute],
-) -> Vec<String> {
+pub(super) fn split_block_commands(content: &str, attributes: &[Attribute]) -> Vec<String> {
     let trimmed_content = content.trim();
 
     // Check if this function has a custom shell attribute

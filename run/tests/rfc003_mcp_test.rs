@@ -16,13 +16,13 @@ fn get_binary_path() -> PathBuf {
         path.pop();
     }
     path.push("run");
-    
+
     if !path.exists() {
         let build_output = Command::new("cargo")
             .args(&["build", "--bin", "run"])
             .output()
             .expect("Failed to build binary");
-        
+
         if !build_output.status.success() {
             panic!(
                 "Failed to build run binary: {}",
@@ -30,7 +30,7 @@ fn get_binary_path() -> PathBuf {
             );
         }
     }
-    
+
     path
 }
 
@@ -51,7 +51,7 @@ fn create_runfile(dir: &std::path::Path, content: &str) {
 fn test_parse_desc_attribute() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
-    
+
     create_runfile(
         temp_dir.path(),
         r#"
@@ -59,14 +59,14 @@ fn test_parse_desc_attribute() {
 restart() docker compose restart
 "#,
     );
-    
+
     // List functions to ensure it still works with @desc
     let output = Command::new(&binary)
         .arg("--list")
         .current_dir(temp_dir.path())
         .output()
         .expect("Failed to execute command");
-    
+
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("restart"));
@@ -76,7 +76,7 @@ restart() docker compose restart
 fn test_parse_arg_attribute() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
-    
+
     create_runfile(
         temp_dir.path(),
         r#"
@@ -86,14 +86,14 @@ fn test_parse_arg_attribute() {
 scale() docker compose scale $1=$2
 "#,
     );
-    
+
     // List functions to ensure it still works with @arg
     let output = Command::new(&binary)
         .arg("--list")
         .current_dir(temp_dir.path())
         .output()
         .expect("Failed to execute command");
-    
+
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("scale"));
@@ -103,7 +103,7 @@ scale() docker compose scale $1=$2
 fn test_function_with_desc_and_args_still_executable() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
-    
+
     create_runfile(
         temp_dir.path(),
         r#"
@@ -112,14 +112,14 @@ fn test_function_with_desc_and_args_still_executable() {
 greet() echo "Hello, $1!"
 "#,
     );
-    
+
     let output = Command::new(&binary)
         .arg("greet")
         .arg("World")
         .current_dir(temp_dir.path())
         .output()
         .expect("Failed to execute command");
-    
+
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Hello, World!"));
@@ -131,7 +131,7 @@ greet() echo "Hello, $1!"
 fn test_inspect_flag_exists() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
-    
+
     create_runfile(
         temp_dir.path(),
         r#"
@@ -139,24 +139,26 @@ fn test_inspect_flag_exists() {
 test() echo "test"
 "#,
     );
-    
+
     let output = Command::new(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
         .expect("Failed to execute command");
-    
+
     // Should not fail with "unknown flag" error
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(!stderr.to_lowercase().contains("unrecognized") && 
-            !stderr.to_lowercase().contains("unexpected"));
+    assert!(
+        !stderr.to_lowercase().contains("unrecognized")
+            && !stderr.to_lowercase().contains("unexpected")
+    );
 }
 
 #[test]
 fn test_inspect_output_json_structure() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
-    
+
     create_runfile(
         temp_dir.path(),
         r#"
@@ -166,38 +168,41 @@ fn test_inspect_output_json_structure() {
 scale() docker compose scale $1=$2
 "#,
     );
-    
+
     let output = Command::new(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
         .expect("Failed to execute command");
-    
+
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     // Parse as JSON
-    let json: serde_json::Value = serde_json::from_str(&stdout)
-        .expect("Output should be valid JSON");
-    
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Output should be valid JSON");
+
     // Check structure
     assert!(json.get("tools").is_some(), "Should have 'tools' field");
     let tools = json["tools"].as_array().expect("tools should be array");
     assert_eq!(tools.len(), 1, "Should have one tool");
-    
+
     let tool = &tools[0];
     assert_eq!(tool["name"].as_str().unwrap(), "scale");
-    assert_eq!(tool["description"].as_str().unwrap(), "Scale a specific service");
-    
+    assert_eq!(
+        tool["description"].as_str().unwrap(),
+        "Scale a specific service"
+    );
+
     let schema = &tool["inputSchema"];
     assert_eq!(schema["type"].as_str().unwrap(), "object");
-    
+
     let properties = &schema["properties"];
     assert!(properties["service"].is_object());
     assert_eq!(properties["service"]["type"].as_str().unwrap(), "string");
     assert!(properties["replicas"].is_object());
     assert_eq!(properties["replicas"]["type"].as_str().unwrap(), "integer");
-    
+
     let required = schema["required"].as_array().unwrap();
     assert_eq!(required.len(), 2);
     assert!(required.contains(&serde_json::json!("service")));
@@ -208,26 +213,26 @@ scale() docker compose scale $1=$2
 fn test_inspect_function_without_metadata() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
-    
+
     create_runfile(
         temp_dir.path(),
         r#"
 build() echo "Building..."
 "#,
     );
-    
+
     let output = Command::new(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
         .expect("Failed to execute command");
-    
+
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
-    let json: serde_json::Value = serde_json::from_str(&stdout)
-        .expect("Output should be valid JSON");
-    
+
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Output should be valid JSON");
+
     let tools = json["tools"].as_array().unwrap();
     // Functions without @desc should not be included in MCP tool list
     assert_eq!(tools.len(), 0);
@@ -237,7 +242,7 @@ build() echo "Building..."
 fn test_inspect_multiple_functions() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
-    
+
     create_runfile(
         temp_dir.path(),
         r#"
@@ -249,25 +254,23 @@ build() echo "Building..."
 deploy() echo "Deploying to $1"
 "#,
     );
-    
+
     let output = Command::new(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
         .expect("Failed to execute command");
-    
+
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
-    let json: serde_json::Value = serde_json::from_str(&stdout)
-        .expect("Output should be valid JSON");
-    
+
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Output should be valid JSON");
+
     let tools = json["tools"].as_array().unwrap();
     assert_eq!(tools.len(), 2);
-    
-    let names: Vec<&str> = tools.iter()
-        .map(|t| t["name"].as_str().unwrap())
-        .collect();
+
+    let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"build"));
     assert!(names.contains(&"deploy"));
 }
@@ -276,7 +279,7 @@ deploy() echo "Deploying to $1"
 fn test_inspect_arg_with_boolean_type() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
-    
+
     create_runfile(
         temp_dir.path(),
         r#"
@@ -285,16 +288,16 @@ fn test_inspect_arg_with_boolean_type() {
 test() echo "Verbose: $1"
 "#,
     );
-    
+
     let output = Command::new(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
         .expect("Failed to execute command");
-    
+
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     let tool = &json["tools"][0];
     let properties = &tool["inputSchema"]["properties"];
@@ -306,7 +309,7 @@ test() echo "Verbose: $1"
 fn test_inspect_with_os_filtered_functions() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
-    
+
     create_runfile(
         temp_dir.path(),
         r#"
@@ -319,19 +322,19 @@ unix_func() echo "Unix"
 win_func() echo "Windows"
 "#,
     );
-    
+
     let output = Command::new(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
         .expect("Failed to execute command");
-    
+
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     let tools = json["tools"].as_array().unwrap();
-    
+
     // On Unix, should only have unix_func
     if cfg!(unix) {
         assert_eq!(tools.len(), 1);
@@ -344,7 +347,7 @@ win_func() echo "Windows"
 #[test]
 fn test_serve_mcp_flag_exists() {
     let binary = get_binary_path();
-    
+
     // Just check that the flag is recognized (we'll kill it quickly)
     let mut child = Command::new(&binary)
         .arg("--serve-mcp")
@@ -353,14 +356,14 @@ fn test_serve_mcp_flag_exists() {
         .stderr(std::process::Stdio::piped())
         .spawn()
         .expect("Failed to spawn process");
-    
+
     // Give it a moment to start
     std::thread::sleep(std::time::Duration::from_millis(100));
-    
+
     // Kill it
     child.kill().expect("Failed to kill process");
     let output = child.wait_with_output().unwrap();
-    
+
     // Should not have "unrecognized" error
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!stderr.to_lowercase().contains("unrecognized"));
@@ -374,10 +377,10 @@ fn test_serve_mcp_flag_exists() {
 #[test]
 fn test_mcp_initialize_request() {
     use std::io::Write;
-    
+
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
-    
+
     create_runfile(
         temp_dir.path(),
         r#"
@@ -385,7 +388,7 @@ fn test_mcp_initialize_request() {
 test() echo "test"
 "#,
     );
-    
+
     let mut child = Command::new(&binary)
         .arg("--serve-mcp")
         .current_dir(temp_dir.path())
@@ -394,7 +397,7 @@ test() echo "test"
         .stderr(std::process::Stdio::piped())
         .spawn()
         .expect("Failed to spawn process");
-    
+
     // Send initialize request
     let init_request = serde_json::json!({
         "jsonrpc": "2.0",
@@ -409,32 +412,35 @@ test() echo "test"
             }
         }
     });
-    
+
     let stdin = child.stdin.as_mut().unwrap();
     writeln!(stdin, "{}", serde_json::to_string(&init_request).unwrap()).unwrap();
     stdin.flush().unwrap();
-    
+
     // Give it time to respond
     std::thread::sleep(std::time::Duration::from_millis(500));
-    
+
     // Kill and check output
     child.kill().expect("Failed to kill process");
     let output = child.wait_with_output().unwrap();
-    
+
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     // Should contain a JSON-RPC response
-    assert!(stdout.contains("\"jsonrpc\":\"2.0\"") || stdout.contains("\"jsonrpc\": \"2.0\""),
-            "Expected JSON-RPC response, got: {}", stdout);
+    assert!(
+        stdout.contains("\"jsonrpc\":\"2.0\"") || stdout.contains("\"jsonrpc\": \"2.0\""),
+        "Expected JSON-RPC response, got: {}",
+        stdout
+    );
 }
 
 #[test]
 fn test_mcp_tools_list_request() {
     use std::io::Write;
-    
+
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
-    
+
     create_runfile(
         temp_dir.path(),
         r#"
@@ -443,7 +449,7 @@ fn test_mcp_tools_list_request() {
 scale() echo "Scaling $1"
 "#,
     );
-    
+
     let mut child = Command::new(&binary)
         .arg("--serve-mcp")
         .current_dir(temp_dir.path())
@@ -452,9 +458,9 @@ scale() echo "Scaling $1"
         .stderr(std::process::Stdio::piped())
         .spawn()
         .expect("Failed to spawn process");
-    
+
     let stdin = child.stdin.as_mut().unwrap();
-    
+
     // Send initialize first
     let init_request = serde_json::json!({
         "jsonrpc": "2.0",
@@ -467,7 +473,7 @@ scale() echo "Scaling $1"
         }
     });
     writeln!(stdin, "{}", serde_json::to_string(&init_request).unwrap()).unwrap();
-    
+
     // Send tools/list request
     let list_request = serde_json::json!({
         "jsonrpc": "2.0",
@@ -477,16 +483,18 @@ scale() echo "Scaling $1"
     });
     writeln!(stdin, "{}", serde_json::to_string(&list_request).unwrap()).unwrap();
     stdin.flush().unwrap();
-    
+
     std::thread::sleep(std::time::Duration::from_millis(500));
-    
+
     child.kill().expect("Failed to kill process");
     let output = child.wait_with_output().unwrap();
-    
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    
-    // Should contain tools list with our "scale" function
-    assert!(stdout.contains("scale") || stdout.contains("\"name\""),
-            "Expected tools list, got: {}", stdout);
-}
 
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Should contain tools list with our "scale" function
+    assert!(
+        stdout.contains("scale") || stdout.contains("\"name\""),
+        "Expected tools list, got: {}",
+        stdout
+    );
+}

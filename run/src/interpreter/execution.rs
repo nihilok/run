@@ -1,9 +1,9 @@
 //! Helper functions for function execution
 
-use crate::ast::Attribute;
-use crate::transpiler::Interpreter as TranspilerInterpreter;
 use super::FunctionMetadata;
 use super::preamble;
+use crate::ast::Attribute;
+use crate::transpiler::Interpreter as TranspilerInterpreter;
 use std::collections::HashMap;
 
 /// Collect all rewritable sibling names (compatible + incompatible colon siblings)
@@ -56,4 +56,3 @@ pub(super) fn build_combined_script(
         parts.join("\n")
     }
 }
-

@@ -53,10 +53,11 @@ pub(super) fn parse_attributes_from_lines(input: &str, line_num: usize) -> Vec<A
 /// Strip surrounding quotes from a string
 fn strip_quotes(s: &str) -> String {
     let trimmed = s.trim();
-    if (trimmed.starts_with('"') && trimmed.ends_with('"')) ||
-       (trimmed.starts_with('\'') && trimmed.ends_with('\'')) {
+    if (trimmed.starts_with('"') && trimmed.ends_with('"'))
+        || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+    {
         if trimmed.len() >= 2 {
-            return trimmed[1..trimmed.len()-1].to_string();
+            return trimmed[1..trimmed.len() - 1].to_string();
         }
     }
     trimmed.to_string()
@@ -68,7 +69,9 @@ fn parse_attribute_line(line: &str) -> Option<Attribute> {
     let line = line.trim();
 
     // Remove "# " or "#" prefix and "@" symbol
-    let without_hash = line.strip_prefix("# @").or_else(|| line.strip_prefix("#@"))?;
+    let without_hash = line
+        .strip_prefix("# @")
+        .or_else(|| line.strip_prefix("#@"))?;
 
     // Handle @desc - everything after "@desc " is the description
     if let Some(desc_text) = without_hash.strip_prefix("desc ") {
@@ -116,7 +119,7 @@ fn parse_attribute_line(line: &str) -> Option<Attribute> {
 
 /// Parse an @arg attribute specification
 fn parse_arg_attribute(arg_text: &str) -> Option<Attribute> {
-    // Format: 
+    // Format:
     // - "1:name type description" (old style with position)
     // - "name description" (new hybrid style without position)
     let arg_text = arg_text.trim();
@@ -179,7 +182,7 @@ fn parse_arg_attribute(arg_text: &str) -> Option<Attribute> {
         }
 
         let name = parts[0].to_string();
-        
+
         // Rest is description
         let description = if parts.len() > 1 {
             strip_quotes(&parts[1..].join(" "))

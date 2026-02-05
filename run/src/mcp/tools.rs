@@ -150,8 +150,8 @@ pub fn inspect() -> Result<InspectOutput, String> {
         None => return Ok(InspectOutput { tools: Vec::new() }), // No Runfile = no tools
     };
 
-    let program = parser::parse_script(&config_content)
-        .map_err(|e| format!("Parse error: {}", e))?;
+    let program =
+        parser::parse_script(&config_content).map_err(|e| format!("Parse error: {}", e))?;
 
     let mut tools = Vec::new();
 
@@ -191,15 +191,13 @@ pub fn inspect() -> Result<InspectOutput, String> {
 /// Print inspection output as JSON
 pub fn print_inspect() {
     match inspect() {
-        Ok(output) => {
-            match serde_json::to_string_pretty(&output) {
-                Ok(json) => println!("{}", json),
-                Err(e) => {
-                    eprintln!("Error serialising output: {}", e);
-                    std::process::exit(1);
-                }
+        Ok(output) => match serde_json::to_string_pretty(&output) {
+            Ok(json) => println!("{}", json),
+            Err(e) => {
+                eprintln!("Error serialising output: {}", e);
+                std::process::exit(1);
             }
-        }
+        },
         Err(e) => {
             eprintln!("Error: {}", e);
             std::process::exit(1);

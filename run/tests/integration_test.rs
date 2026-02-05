@@ -255,7 +255,11 @@ server() echo "port=${1:-8080}"
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("port=8080"), "Expected 'port=8080' but got: {}", stdout);
+    assert!(
+        stdout.contains("port=8080"),
+        "Expected 'port=8080' but got: {}",
+        stdout
+    );
 
     // Test with provided value
     let output2 = Command::new(&binary)
@@ -267,7 +271,11 @@ server() echo "port=${1:-8080}"
 
     assert!(output2.status.success());
     let stdout2 = String::from_utf8_lossy(&output2.stdout);
-    assert!(stdout2.contains("port=3000"), "Expected 'port=3000' but got: {}", stdout2);
+    assert!(
+        stdout2.contains("port=3000"),
+        "Expected 'port=3000' but got: {}",
+        stdout2
+    );
 }
 
 #[test]
@@ -292,7 +300,11 @@ server() echo port=${1:-8080}
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("port=8080"), "Expected 'port=8080' but got: {}", stdout);
+    assert!(
+        stdout.contains("port=8080"),
+        "Expected 'port=8080' but got: {}",
+        stdout
+    );
 
     // Test with provided value
     let output2 = Command::new(&binary)
@@ -304,7 +316,11 @@ server() echo port=${1:-8080}
 
     assert!(output2.status.success());
     let stdout2 = String::from_utf8_lossy(&output2.stdout);
-    assert!(stdout2.contains("port=3000"), "Expected 'port=3000' but got: {}", stdout2);
+    assert!(
+        stdout2.contains("port=3000"),
+        "Expected 'port=3000' but got: {}",
+        stdout2
+    );
 }
 
 #[test]
@@ -895,7 +911,9 @@ fn test_install_completion_bash() {
     assert!(stdout.contains("Installation complete"));
 
     // Verify the completion file was created
-    let comp_file = temp_dir.path().join(".local/share/bash-completion/completions/run");
+    let comp_file = temp_dir
+        .path()
+        .join(".local/share/bash-completion/completions/run");
     assert!(comp_file.exists(), "Bash completion file should be created");
 
     let content = fs::read_to_string(&comp_file).unwrap();
@@ -961,11 +979,15 @@ fn test_install_completion_detects_existing_zshrc_config() {
 
     // Create a .zshrc file with the necessary config already present
     let zshrc_path = temp_dir.path().join(".zshrc");
-    fs::write(&zshrc_path, r#"
+    fs::write(
+        &zshrc_path,
+        r#"
 # My zshrc
 fpath=(~/.zsh/completion $fpath)
 autoload -Uz compinit && compinit
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
     let output = Command::new(&binary)
         .arg("--install-completion")
@@ -978,13 +1000,16 @@ autoload -Uz compinit && compinit
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Should NOT suggest adding config since it's already there
-    let lines_with_echo: Vec<&str> = stdout.lines()
+    let lines_with_echo: Vec<&str> = stdout
+        .lines()
         .filter(|line| line.contains("echo 'fpath=") || line.contains("echo 'autoload"))
         .collect();
 
-    assert!(lines_with_echo.is_empty(),
+    assert!(
+        lines_with_echo.is_empty(),
         "Should not suggest adding config that already exists, but found: {:?}",
-        lines_with_echo);
+        lines_with_echo
+    );
 }
 
 #[test]
@@ -994,10 +1019,14 @@ fn test_install_completion_detects_partial_zshrc_config() {
 
     // Create a .zshrc file with only fpath, missing compinit
     let zshrc_path = temp_dir.path().join(".zshrc");
-    fs::write(&zshrc_path, r#"
+    fs::write(
+        &zshrc_path,
+        r#"
 # My zshrc
 fpath=(~/.zsh/completion $fpath)
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
     let output = Command::new(&binary)
         .arg("--install-completion")
@@ -1010,12 +1039,16 @@ fpath=(~/.zsh/completion $fpath)
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Should NOT suggest fpath (already present)
-    assert!(!stdout.contains("echo 'fpath=(~/.zsh/completion $fpath)'"),
-        "Should not suggest fpath since it already exists");
+    assert!(
+        !stdout.contains("echo 'fpath=(~/.zsh/completion $fpath)'"),
+        "Should not suggest fpath since it already exists"
+    );
 
     // But SHOULD suggest compinit (missing)
-    assert!(stdout.contains("autoload -Uz compinit"),
-        "Should suggest compinit since it's missing");
+    assert!(
+        stdout.contains("autoload -Uz compinit"),
+        "Should suggest compinit since it's missing"
+    );
 }
 
 #[test]
@@ -1027,7 +1060,7 @@ fn test_install_completion_auto_detect_fails_with_unknown_shell() {
     let output = Command::new(&binary)
         .arg("--install-completion")
         .env("HOME", temp_dir.path())
-        .env("SHELL", "/bin/ksh")  // Unsupported shell
+        .env("SHELL", "/bin/ksh") // Unsupported shell
         .output()
         .expect("Failed to execute command");
 
@@ -1463,10 +1496,10 @@ no_attr_func() echo "No attribute"
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     // Should always show the function without attributes
     assert!(stdout.contains("no_attr_func"));
-    
+
     // On Unix, should show unix_func but not windows_func
     if cfg!(unix) {
         assert!(stdout.contains("unix_func"));
@@ -1717,7 +1750,7 @@ build() echo "Regular build"
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
+
     // Both functions should be listed (build always, clean on unix)
     assert!(stdout.contains("build"));
     if cfg!(unix) {
@@ -2340,7 +2373,8 @@ test_function() {
     echo "Hello from custom Runfile"
 }
 "#,
-    ).unwrap();
+    )
+    .unwrap();
 
     // Run with --runfile pointing to the file
     let output = Command::new(&binary)
@@ -2442,7 +2476,8 @@ fn test_runfile_flag_with_list() {
 build() echo "building"
 test() echo "testing"
 "#,
-    ).unwrap();
+    )
+    .unwrap();
 
     let output = Command::new(&binary)
         .arg("--runfile")
@@ -2495,7 +2530,8 @@ relative_test() {
     echo "Loaded via relative path"
 }
 "#,
-    ).unwrap();
+    )
+    .unwrap();
 
     // Run with a relative path
     let output = Command::new(&binary)
@@ -2526,7 +2562,8 @@ greet() {
     echo "Hello, $1"
 }
 "#,
-    ).unwrap();
+    )
+    .unwrap();
 
     let output = Command::new(&binary)
         .arg("--runfile")
@@ -2540,14 +2577,17 @@ greet() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Parse JSON to verify structure
-    let json: serde_json::Value = serde_json::from_str(&stdout)
-        .expect("Output should be valid JSON");
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Output should be valid JSON");
 
     assert!(json["tools"].is_array());
     let tools = json["tools"].as_array().unwrap();
     assert_eq!(tools.len(), 1);
     assert_eq!(tools[0]["name"].as_str().unwrap(), "greet");
-    assert_eq!(tools[0]["description"].as_str().unwrap(), "Test function for inspection");
+    assert_eq!(
+        tools[0]["description"].as_str().unwrap(),
+        "Test function for inspection"
+    );
 }
 
 #[test]
@@ -2567,7 +2607,8 @@ docker:down() {
     echo "Stopping containers"
 }
 "#,
-    ).unwrap();
+    )
+    .unwrap();
 
     // Test first nested function
     let output1 = Command::new(&binary)
@@ -2609,7 +2650,8 @@ absolute_test() {
     echo "Using absolute path"
 }
 "#,
-    ).unwrap();
+    )
+    .unwrap();
 
     // Use the absolute path
     let absolute_path = custom_runfile.canonicalize().unwrap();
@@ -2626,4 +2668,3 @@ absolute_test() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Using absolute path"));
 }
-

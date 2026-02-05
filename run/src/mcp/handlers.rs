@@ -1,7 +1,7 @@
 //! JSON-RPC request handlers for MCP protocol
 
-use super::mapping::resolve_tool_name;
 use super::mapping::map_arguments_to_positional;
+use super::mapping::resolve_tool_name;
 use super::tools::inspect;
 use serde::Serialize;
 
@@ -88,16 +88,14 @@ pub(super) fn handle_tools_call(
     let actual_function_name = resolve_tool_name(tool_name)?;
 
     let default_args = serde_json::json!({});
-    let arguments = params_obj
-        .get("arguments")
-        .unwrap_or(&default_args);
+    let arguments = params_obj.get("arguments").unwrap_or(&default_args);
 
     // Map arguments to positional (use resolved original function name)
     let positional_args = map_arguments_to_positional(&actual_function_name, arguments)?;
 
     // Execute the function with structured markdown output
-    use std::process::Command;
     use crate::config;
+    use std::process::Command;
 
     // Get the run binary path (we're already running as run, but we need to call ourselves)
     // Security: We validate that the binary path is a canonical path to ensure it hasn't been manipulated
@@ -111,12 +109,11 @@ pub(super) fn handle_tools_call(
 
     // Get the Runfile path so the subprocess can find the functions
     // This is necessary because the subprocess may run in a different working directory
-    let runfile_path = config::find_runfile_path()
-        .ok_or_else(|| JsonRpcError {
-            code: -32603,
-            message: "No Runfile found".to_string(),
-            data: None,
-        })?;
+    let runfile_path = config::find_runfile_path().ok_or_else(|| JsonRpcError {
+        code: -32603,
+        message: "No Runfile found".to_string(),
+        data: None,
+    })?;
 
     let mut cmd = Command::new(run_binary);
     // Pass the Runfile path explicitly so the subprocess can find the functions
@@ -124,7 +121,12 @@ pub(super) fn handle_tools_call(
     cmd.arg(&runfile_path);
     // Use structured markdown output for better LLM readability
     cmd.arg("--output-format=markdown");
-    cmd.arg(&actual_function_name);  // Use the original function name with colons
+
+    // Pass MCP output directory to the subprocess via env so it writes to project .run-output
+    let mcp_output_dir = config::ensure_mcp_output_dir();
+    cmd.env("RUN_MCP_OUTPUT_DIR", &mcp_output_dir);
+
+    cmd.arg(&actual_function_name); // Use the original function name with colons
 
     for arg in positional_args {
         cmd.arg(arg);
@@ -141,12 +143,10 @@ pub(super) fn handle_tools_call(
 
     // Return content as per MCP spec
     // The stdout now contains structured markdown output
-    let mut content = vec![
-        serde_json::json!({
-            "type": "text",
-            "text": stdout
-        })
-    ];
+    let mut content = vec![serde_json::json!({
+        "type": "text",
+        "text": stdout
+    })];
 
     // Only include stderr if there was an error (structured output captures stderr in the markdown)
     if !stderr.is_empty() && !output.status.success() {

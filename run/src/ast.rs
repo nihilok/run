@@ -87,12 +87,20 @@ pub struct StructuredResult {
 
 impl StructuredResult {
     /// Create from a collection of command outputs
-    pub fn from_outputs(function_name: &str, outputs: Vec<CommandOutput>, interpreter: &str) -> Self {
+    pub fn from_outputs(
+        function_name: &str,
+        outputs: Vec<CommandOutput>,
+        interpreter: &str,
+    ) -> Self {
         let success = outputs.iter().all(|o| o.exit_code == Some(0));
         let total_duration_ms = outputs.iter().map(|o| o.duration_ms).sum();
 
         let summary = if success {
-            format!("Successfully executed {} with {} command(s)", function_name, outputs.len())
+            format!(
+                "Successfully executed {} with {} command(s)",
+                function_name,
+                outputs.len()
+            )
         } else {
             format!("Execution of {} failed", function_name)
         };
@@ -131,17 +139,26 @@ impl StructuredResult {
         let mut md = String::new();
 
         // Header with context
-        md.push_str(&format!("## Execution: `{}`\n\n", self.context.function_name));
+        md.push_str(&format!(
+            "## Execution: `{}`\n\n",
+            self.context.function_name
+        ));
 
         if let Some(host) = &self.context.remote_host {
-            md.push_str(&format!("**Host:** {}@{}\n",
+            md.push_str(&format!(
+                "**Host:** {}@{}\n",
                 self.context.remote_user.as_deref().unwrap_or("?"),
                 host
             ));
         }
 
-        md.push_str(&format!("**Status:** {}\n",
-            if self.success { "✓ Success" } else { "✗ Failed" }
+        md.push_str(&format!(
+            "**Status:** {}\n",
+            if self.success {
+                "✓ Success"
+            } else {
+                "✗ Failed"
+            }
         ));
         md.push_str(&format!("**Duration:** {}ms\n\n", self.total_duration_ms));
 
@@ -179,29 +196,42 @@ impl StructuredResult {
         let mut md = String::new();
 
         // Header with context
-        md.push_str(&format!("## Execution: `{}`\n\n", self.context.function_name));
+        md.push_str(&format!(
+            "## Execution: `{}`\n\n",
+            self.context.function_name
+        ));
 
         if let Some(host) = &self.context.remote_host {
-            md.push_str(&format!("**Host:** {}@{}\n",
+            md.push_str(&format!(
+                "**Host:** {}@{}\n",
                 self.context.remote_user.as_deref().unwrap_or("?"),
                 host
             ));
         }
 
-        md.push_str(&format!("**Status:** {}\n",
-            if self.success { "✓ Success" } else { "✗ Failed" }
+        md.push_str(&format!(
+            "**Status:** {}\n",
+            if self.success {
+                "✓ Success"
+            } else {
+                "✗ Failed"
+            }
         ));
         md.push_str(&format!("**Duration:** {}ms\n\n", self.total_duration_ms));
 
         // For MCP, we only show output, not implementation
         // Combine all outputs into a single section
-        let all_stdout: String = self.outputs.iter()
+        let all_stdout: String = self
+            .outputs
+            .iter()
             .filter(|o| !o.stdout.is_empty())
             .map(|o| o.stdout.as_str())
             .collect::<Vec<_>>()
             .join("");
 
-        let all_stderr: String = self.outputs.iter()
+        let all_stderr: String = self
+            .outputs
+            .iter()
             .filter(|o| !o.stderr.is_empty())
             .map(|o| o.stderr.as_str())
             .collect::<Vec<_>>()
@@ -258,8 +288,8 @@ impl ExecutionContext {
         let caps = regex.captures(command)?;
 
         Some((
-            caps.get(1)?.as_str().to_string(),  // user
-            caps.get(2)?.as_str().to_string(),  // host
+            caps.get(1)?.as_str().to_string(), // user
+            caps.get(2)?.as_str().to_string(), // host
         ))
     }
 }
@@ -334,7 +364,7 @@ pub enum OsPlatform {
     Windows,
     Linux,
     MacOS,
-    Unix,  // Matches both Linux and MacOS
+    Unix, // Matches both Linux and MacOS
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -363,7 +393,8 @@ mod tests {
 
     #[test]
     fn test_extract_ssh_context_with_key() {
-        let result = ExecutionContext::extract_ssh_context("ssh -i ~/.ssh/key.pem ubuntu@192.168.1.1");
+        let result =
+            ExecutionContext::extract_ssh_context("ssh -i ~/.ssh/key.pem ubuntu@192.168.1.1");
         assert!(result.is_some(), "Failed to match SSH with -i flag");
         let (user, host) = result.unwrap();
         assert_eq!(user, "ubuntu");
@@ -372,8 +403,12 @@ mod tests {
 
     #[test]
     fn test_extract_ssh_context_multiple_options() {
-        let result = ExecutionContext::extract_ssh_context("ssh -T -o LogLevel=QUIET root@server.local");
-        assert!(result.is_some(), "Failed to match SSH with multiple options");
+        let result =
+            ExecutionContext::extract_ssh_context("ssh -T -o LogLevel=QUIET root@server.local");
+        assert!(
+            result.is_some(),
+            "Failed to match SSH with multiple options"
+        );
         let (user, host) = result.unwrap();
         assert_eq!(user, "root");
         assert_eq!(host, "server.local");
@@ -385,4 +420,3 @@ mod tests {
         assert!(result.is_none());
     }
 }
-

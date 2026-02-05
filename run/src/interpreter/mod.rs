@@ -8,7 +8,7 @@ mod execution;
 mod preamble;
 mod shell;
 
-use crate::ast::{Attribute, Expression, Program, Statement, OutputMode, CommandOutput};
+use crate::ast::{Attribute, CommandOutput, Expression, OutputMode, Program, Statement};
 use crate::transpiler::{self, Interpreter as TranspilerInterpreter};
 use crate::utils;
 use std::collections::HashMap;
@@ -73,7 +73,6 @@ impl Interpreter {
         self.captured_outputs.push(output);
     }
 
-
     // Helper to get attributes for simple functions (returns a slice reference)
     fn get_simple_function_attributes(&self, name: &str) -> &[Attribute] {
         self.function_metadata
@@ -86,7 +85,7 @@ impl Interpreter {
     fn get_block_function_metadata(&self, name: &str) -> (Vec<Attribute>, Option<&str>) {
         self.function_metadata.get(name).map_or_else(
             || (Vec::new(), None),
-            |m| (m.attributes.clone(), m.shebang.as_deref())
+            |m| (m.attributes.clone(), m.shebang.as_deref()),
         )
     }
 
@@ -157,14 +156,25 @@ impl Interpreter {
         // Try direct match first - simple functions
         if let Some(command_template) = self.simple_functions.get(function_name).cloned() {
             let attributes = self.get_simple_function_attributes(function_name).to_vec();
-            return self.execute_simple_function(function_name, &command_template, args, &attributes);
+            return self.execute_simple_function(
+                function_name,
+                &command_template,
+                args,
+                &attributes,
+            );
         }
 
         // Try direct match - block functions
         if let Some(commands) = self.block_functions.get(function_name).cloned() {
             let (attributes, shebang) = self.get_block_function_metadata(function_name);
             let shebang_owned = shebang.map(String::from);
-            return self.execute_block_commands(function_name, &commands, args, &attributes, shebang_owned.as_deref());
+            return self.execute_block_commands(
+                function_name,
+                &commands,
+                args,
+                &attributes,
+                shebang_owned.as_deref(),
+            );
         }
 
         // If we have args, try treating the first arg as a subcommand
@@ -172,12 +182,23 @@ impl Interpreter {
             let nested_name = format!("{}:{}", function_name, args[0]);
             if let Some(command_template) = self.simple_functions.get(&nested_name).cloned() {
                 let attributes = self.get_simple_function_attributes(&nested_name).to_vec();
-                return self.execute_simple_function(&nested_name, &command_template, &args[1..], &attributes);
+                return self.execute_simple_function(
+                    &nested_name,
+                    &command_template,
+                    &args[1..],
+                    &attributes,
+                );
             }
             if let Some(commands) = self.block_functions.get(&nested_name).cloned() {
                 let (attributes, shebang) = self.get_block_function_metadata(&nested_name);
                 let shebang_owned = shebang.map(String::from);
-                return self.execute_block_commands(&nested_name, &commands, &args[1..], &attributes, shebang_owned.as_deref());
+                return self.execute_block_commands(
+                    &nested_name,
+                    &commands,
+                    &args[1..],
+                    &attributes,
+                    shebang_owned.as_deref(),
+                );
             }
         }
 
@@ -186,12 +207,23 @@ impl Interpreter {
         if with_colons != function_name {
             if let Some(command_template) = self.simple_functions.get(&with_colons).cloned() {
                 let attributes = self.get_simple_function_attributes(&with_colons).to_vec();
-                return self.execute_simple_function(&with_colons, &command_template, args, &attributes);
+                return self.execute_simple_function(
+                    &with_colons,
+                    &command_template,
+                    args,
+                    &attributes,
+                );
             }
             if let Some(commands) = self.block_functions.get(&with_colons).cloned() {
                 let (attributes, shebang) = self.get_block_function_metadata(&with_colons);
                 let shebang_owned = shebang.map(String::from);
-                return self.execute_block_commands(&with_colons, &commands, args, &attributes, shebang_owned.as_deref());
+                return self.execute_block_commands(
+                    &with_colons,
+                    &commands,
+                    args,
+                    &attributes,
+                    shebang_owned.as_deref(),
+                );
             }
         }
 
@@ -223,14 +255,25 @@ impl Interpreter {
 
         if let Some(command_template) = self.simple_functions.get(function_name).cloned() {
             let attributes = self.get_simple_function_attributes(function_name).to_vec();
-            return self.execute_simple_function(function_name, &command_template, args, &attributes);
+            return self.execute_simple_function(
+                function_name,
+                &command_template,
+                args,
+                &attributes,
+            );
         }
 
         // Check for block function definitions
         if let Some(commands) = self.block_functions.get(function_name).cloned() {
             let (attributes, shebang) = self.get_block_function_metadata(function_name);
             let shebang_owned = shebang.map(String::from);
-            return self.execute_block_commands(function_name, &commands, args, &attributes, shebang_owned.as_deref());
+            return self.execute_block_commands(
+                function_name,
+                &commands,
+                args,
+                &attributes,
+                shebang_owned.as_deref(),
+            );
         }
 
         // Check for full function definitions
@@ -270,7 +313,7 @@ impl Interpreter {
             }
 
             // Handle ${N} without default - same as $N
-            let pattern_braced = format!("${{{}}}",  i + 1);
+            let pattern_braced = format!("${{{}}}", i + 1);
             if let Some(arg) = args.get(i) {
                 result = result.replace(&pattern_braced, arg);
             } else {
@@ -337,7 +380,7 @@ impl Interpreter {
                     // Replace both $name and ${name} and $N (for backward compatibility)
                     result = result.replace(&format!("${}", param.name), value);
                     result = result.replace(&format!("${{{}}}", param.name), value);
-                    result = result.replace(&format!("${}", i + 1), value);  // Also support positional
+                    result = result.replace(&format!("${}", i + 1), value); // Also support positional
                 }
             }
         } else {
@@ -376,7 +419,13 @@ impl Interpreter {
                     );
                 }
             }
-            Statement::BlockFunctionDef { name, params, commands, attributes, shebang } => {
+            Statement::BlockFunctionDef {
+                name,
+                params,
+                commands,
+                attributes,
+                shebang,
+            } => {
                 // Only store function if it matches the current platform
                 if utils::matches_current_platform(&attributes) {
                     self.block_functions.insert(name.clone(), commands);
@@ -404,7 +453,12 @@ impl Interpreter {
     }
 
     /// Resolve the interpreter for a given function
-    fn resolve_function_interpreter(&self, _name: &str, attributes: &[Attribute], shebang: Option<&str>) -> TranspilerInterpreter {
+    fn resolve_function_interpreter(
+        &self,
+        _name: &str,
+        attributes: &[Attribute],
+        shebang: Option<&str>,
+    ) -> TranspilerInterpreter {
         // Check for @shell attribute
         for attr in attributes {
             if let Attribute::Shell(shell_type) = attr {
@@ -431,7 +485,6 @@ impl Interpreter {
         args: &[String],
         attributes: &[Attribute],
     ) -> Result<(), Box<dyn std::error::Error>> {
-
         // Determine the target interpreter
         let target_interpreter = self.resolve_function_interpreter(target_name, attributes, None);
 
@@ -466,14 +519,12 @@ impl Interpreter {
         );
 
         // Combine preambles and body
-        let combined_script = execution::build_combined_script(
-            var_preamble,
-            func_preamble,
-            rewritten_body,
-        );
+        let combined_script =
+            execution::build_combined_script(var_preamble, func_preamble, rewritten_body);
 
         // Get params from metadata for substitution
-        let params = self.function_metadata
+        let params = self
+            .function_metadata
             .get(target_name)
             .map(|m| m.params.as_slice())
             .unwrap_or(&[]);
@@ -492,12 +543,13 @@ impl Interpreter {
         attributes: &[Attribute],
         shebang: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-
         // Determine the target interpreter
-        let target_interpreter = self.resolve_function_interpreter(target_name, attributes, shebang);
+        let target_interpreter =
+            self.resolve_function_interpreter(target_name, attributes, shebang);
 
         // Get params from metadata for substitution
-        let params = self.function_metadata
+        let params = self
+            .function_metadata
             .get(target_name)
             .map(|m| m.params.as_slice())
             .unwrap_or(&[]);
@@ -505,8 +557,10 @@ impl Interpreter {
         // Check if this is a polyglot language (Python, Node, Ruby)
         let is_polyglot = matches!(
             target_interpreter,
-            TranspilerInterpreter::Python | TranspilerInterpreter::Python3 |
-            TranspilerInterpreter::Node | TranspilerInterpreter::Ruby
+            TranspilerInterpreter::Python
+                | TranspilerInterpreter::Python3
+                | TranspilerInterpreter::Node
+                | TranspilerInterpreter::Ruby
         );
 
         let full_script = commands.join("\n");
@@ -554,11 +608,8 @@ impl Interpreter {
         );
 
         // Combine preambles and body
-        let combined_script = execution::build_combined_script(
-            var_preamble,
-            func_preamble,
-            rewritten_body,
-        );
+        let combined_script =
+            execution::build_combined_script(var_preamble, func_preamble, rewritten_body);
 
         // Substitute args in both the combined script (for execution) and the original body (for display)
         let substituted = self.substitute_args_with_params(&combined_script, args, params);
@@ -577,7 +628,8 @@ impl Interpreter {
         use crate::ast::OutputMode;
 
         // Track the interpreter for structured output context
-        let (shell_cmd, shell_arg, interpreter_name) = shell::interpreter_to_shell_args(interpreter);
+        let (shell_cmd, shell_arg, interpreter_name) =
+            shell::interpreter_to_shell_args(interpreter);
         self.last_interpreter = interpreter_name.to_string();
 
         match self.output_mode {
@@ -636,27 +688,28 @@ impl Interpreter {
         use crate::ast::OutputMode;
 
         // Track the interpreter for structured output context
-        let (shell_cmd, shell_arg, interpreter_name) = shell::interpreter_to_shell_args(interpreter);
+        let (shell_cmd, shell_arg, interpreter_name) =
+            shell::interpreter_to_shell_args(interpreter);
         self.last_interpreter = interpreter_name.to_string();
 
         match self.output_mode {
             OutputMode::Stream => {
                 // Stream mode: execute with arguments using the original path
-                let exec_attributes = vec![crate::ast::Attribute::Shell(
-                    match interpreter {
-                        TranspilerInterpreter::Python => crate::ast::ShellType::Python,
-                        TranspilerInterpreter::Python3 => crate::ast::ShellType::Python3,
-                        TranspilerInterpreter::Node => crate::ast::ShellType::Node,
-                        TranspilerInterpreter::Ruby => crate::ast::ShellType::Ruby,
-                        _ => crate::ast::ShellType::Sh,
-                    }
-                )];
+                let exec_attributes = vec![crate::ast::Attribute::Shell(match interpreter {
+                    TranspilerInterpreter::Python => crate::ast::ShellType::Python,
+                    TranspilerInterpreter::Python3 => crate::ast::ShellType::Python3,
+                    TranspilerInterpreter::Node => crate::ast::ShellType::Node,
+                    TranspilerInterpreter::Ruby => crate::ast::ShellType::Ruby,
+                    _ => crate::ast::ShellType::Sh,
+                })];
                 shell::execute_command_with_args(script, &exec_attributes, args)
             }
             OutputMode::Capture | OutputMode::Structured => {
                 // Capture mode: capture output with arguments
                 // For polyglot, the script IS the user command (no preamble), so pass None
-                let output = shell::execute_with_capture_and_args(script, &shell_cmd, shell_arg, args, None)?;
+                let output = shell::execute_with_capture_and_args(
+                    script, &shell_cmd, shell_arg, args, None,
+                )?;
 
                 // Only print output in Capture mode
                 if matches!(self.output_mode, OutputMode::Capture) {

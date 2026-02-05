@@ -3,9 +3,9 @@
 //! This module handles building preambles that inject sibling functions
 //! and variables into function execution contexts for composition support.
 
+use super::shell::{escape_pwsh_value, escape_shell_value};
 use crate::ast::Attribute;
 use crate::transpiler::{self, Interpreter as TranspilerInterpreter};
-use super::shell::{escape_shell_value, escape_pwsh_value};
 use std::collections::HashMap;
 
 /// Collect compatible sibling function names for call site rewriting
@@ -41,7 +41,7 @@ pub(super) fn collect_compatible_siblings(
         let metadata = function_metadata.get(name);
         let (attributes, shebang) = metadata.map_or_else(
             || (Vec::new(), None),
-            |m| (m.attributes.clone(), m.shebang.as_deref())
+            |m| (m.attributes.clone(), m.shebang.as_deref()),
         );
         let func_interpreter = resolve_interpreter(name, &attributes, shebang);
 
@@ -88,7 +88,7 @@ pub(super) fn collect_incompatible_colon_siblings(
         let metadata = function_metadata.get(name);
         let (attributes, shebang) = metadata.map_or_else(
             || (Vec::new(), None),
-            |m| (m.attributes.clone(), m.shebang.as_deref())
+            |m| (m.attributes.clone(), m.shebang.as_deref()),
         );
         let func_interpreter = resolve_interpreter(name, &attributes, shebang);
 
@@ -178,9 +178,7 @@ pub(super) fn build_function_preamble(
             TranspilerInterpreter::Pwsh => {
                 transpiler::transpile_to_pwsh(name, &rewritten_body, false)
             }
-            _ => {
-                transpiler::transpile_to_shell(name, &rewritten_body, false)
-            }
+            _ => transpiler::transpile_to_shell(name, &rewritten_body, false),
         };
 
         preamble.push_str(&transpiled);
@@ -196,7 +194,7 @@ pub(super) fn build_function_preamble(
         let metadata = function_metadata.get(name);
         let (attributes, shebang) = metadata.map_or_else(
             || (Vec::new(), None),
-            |m| (m.attributes.clone(), m.shebang.as_deref())
+            |m| (m.attributes.clone(), m.shebang.as_deref()),
         );
         let func_interpreter = resolve_interpreter(name, &attributes, shebang);
 
@@ -212,9 +210,7 @@ pub(super) fn build_function_preamble(
             TranspilerInterpreter::Pwsh => {
                 transpiler::transpile_to_pwsh(name, &rewritten_body, true)
             }
-            _ => {
-                transpiler::transpile_to_shell(name, &rewritten_body, true)
-            }
+            _ => transpiler::transpile_to_shell(name, &rewritten_body, true),
         };
 
         preamble.push_str(&transpiled);
