@@ -38,17 +38,17 @@ docker:deploy() {
 
 # @desc Increment patch version and deploy
 deploy:patch() {
-    ./scripts/deploy.sh patch
+    ./scripts/deploy.sh patch --yes
 }
 
 # @desc Increment minor version and deploy
 deploy:minor() {
-    ./scripts/deploy.sh minor
+    ./scripts/deploy.sh minor --yes
 }
 
 # @desc Increment major version and deploy
 deploy:major() {
-    ./scripts/deploy.sh major
+    ./scripts/deploy.sh major --yes
 }
 
 # Windows specific command (will not be listed on non-Windows systems)

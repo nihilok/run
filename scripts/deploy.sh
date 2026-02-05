@@ -54,12 +54,15 @@ case "$1" in
 esac
 
 echo -e "${GREEN}New version: $NEW_VERSION${NC}"
-echo -e "${YELLOW}Proceed with release? (y/n)${NC}"
-read -r confirm
 
-if [ "$confirm" != "y" ]; then
-    echo -e "${RED}Aborted${NC}"
-    exit 1
+# Check for --yes flag to skip confirmation
+if [[ "$*" != *"--yes"* ]] && [[ "$*" != *"-y"* ]]; then
+    echo -e "${YELLOW}Proceed with release? (y/n)${NC}"
+    read -r confirm
+    if [ "$confirm" != "y" ]; then
+        echo -e "${RED}Aborted${NC}"
+        exit 1
+    fi
 fi
 
 # Refuse to proceed if the tag already exists
