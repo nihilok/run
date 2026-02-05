@@ -347,7 +347,7 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 
 [[package]]
 name = "run"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "clap",
  "pest",
@@ -361,7 +361,7 @@ dependencies = [
 
 [[package]]
 name = "runtool"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "run",
 ]
