@@ -478,9 +478,10 @@ impl Interpreter {
             .map(|m| m.params.as_slice())
             .unwrap_or(&[]);
 
-        // Substitute args and execute
+        // Substitute args in both the combined script (for execution) and the original command (for display)
         let substituted = self.substitute_args_with_params(&combined_script, args, params);
-        self.execute_with_mode(&substituted, &target_interpreter)
+        let display_cmd = self.substitute_args_with_params(command_template, args, params);
+        self.execute_with_mode(&substituted, &target_interpreter, Some(&display_cmd))
     }
 
     fn execute_block_commands(
@@ -559,16 +560,19 @@ impl Interpreter {
             rewritten_body,
         );
 
-        // Substitute args and execute
+        // Substitute args in both the combined script (for execution) and the original body (for display)
         let substituted = self.substitute_args_with_params(&combined_script, args, params);
-        self.execute_with_mode(&substituted, &target_interpreter)
+        let display_cmd = self.substitute_args_with_params(&full_script, args, params);
+        self.execute_with_mode(&substituted, &target_interpreter, Some(&display_cmd))
     }
 
     /// Execute a command with the current output mode
+    /// The display_command is shown in structured output instead of the full script (which may include preamble)
     fn execute_with_mode(
         &mut self,
         script: &str,
         interpreter: &TranspilerInterpreter,
+        display_command: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         use crate::ast::OutputMode;
 
@@ -583,7 +587,7 @@ impl Interpreter {
             }
             OutputMode::Capture | OutputMode::Structured => {
                 // Capture mode: use the shell args we already have
-                self.execute_with_mode_custom(&shell_cmd, shell_arg, script)
+                self.execute_with_mode_custom(&shell_cmd, shell_arg, script, display_command)
             }
         }
     }
@@ -594,8 +598,9 @@ impl Interpreter {
         shell_cmd: &str,
         shell_arg: &str,
         script: &str,
+        display_command: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let output = shell::execute_with_capture(script, shell_cmd, shell_arg)?;
+        let output = shell::execute_with_capture(script, shell_cmd, shell_arg, display_command)?;
 
         // Only print output in Capture mode (not Structured, where we format it later)
         if matches!(self.output_mode, crate::ast::OutputMode::Capture) {
@@ -650,7 +655,8 @@ impl Interpreter {
             }
             OutputMode::Capture | OutputMode::Structured => {
                 // Capture mode: capture output with arguments
-                let output = shell::execute_with_capture_and_args(script, &shell_cmd, shell_arg, args)?;
+                // For polyglot, the script IS the user command (no preamble), so pass None
+                let output = shell::execute_with_capture_and_args(script, &shell_cmd, shell_arg, args, None)?;
 
                 // Only print output in Capture mode
                 if matches!(self.output_mode, OutputMode::Capture) {

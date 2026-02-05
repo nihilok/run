@@ -172,9 +172,71 @@ impl StructuredResult {
         md
     }
 
-    /// Format optimized for MCP tool response (clean markdown, no JSON)
+    /// Format optimized for MCP tool response (clean markdown, no implementation details)
+    /// This intentionally hides the command source code to protect sensitive information
+    /// like database connection strings, API keys, etc.
     pub fn to_mcp_format(&self) -> String {
-        self.to_markdown()
+        let mut md = String::new();
+
+        // Header with context
+        md.push_str(&format!("## Execution: `{}`\n\n", self.context.function_name));
+
+        if let Some(host) = &self.context.remote_host {
+            md.push_str(&format!("**Host:** {}@{}\n",
+                self.context.remote_user.as_deref().unwrap_or("?"),
+                host
+            ));
+        }
+
+        md.push_str(&format!("**Status:** {}\n",
+            if self.success { "✓ Success" } else { "✗ Failed" }
+        ));
+        md.push_str(&format!("**Duration:** {}ms\n\n", self.total_duration_ms));
+
+        // For MCP, we only show output, not implementation
+        // Combine all outputs into a single section
+        let all_stdout: String = self.outputs.iter()
+            .filter(|o| !o.stdout.is_empty())
+            .map(|o| o.stdout.as_str())
+            .collect::<Vec<_>>()
+            .join("");
+
+        let all_stderr: String = self.outputs.iter()
+            .filter(|o| !o.stderr.is_empty())
+            .map(|o| o.stderr.as_str())
+            .collect::<Vec<_>>()
+            .join("");
+
+        if !all_stdout.is_empty() {
+            md.push_str("**Output:**\n```\n");
+            md.push_str(&all_stdout);
+            if !all_stdout.ends_with('\n') {
+                md.push('\n');
+            }
+            md.push_str("```\n\n");
+        }
+
+        if !all_stderr.is_empty() {
+            md.push_str("**Errors:**\n```\n");
+            md.push_str(&all_stderr);
+            if !all_stderr.ends_with('\n') {
+                md.push('\n');
+            }
+            md.push_str("```\n\n");
+        }
+
+        // Show exit code if failed
+        if !self.success {
+            if let Some(output) = self.outputs.last() {
+                if let Some(code) = output.exit_code {
+                    if code != 0 {
+                        md.push_str(&format!("**Exit Code:** {}\n", code));
+                    }
+                }
+            }
+        }
+
+        md
     }
 }
 

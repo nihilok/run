@@ -92,11 +92,12 @@ pub(super) fn handle_tools_call(
         .get("arguments")
         .unwrap_or(&default_args);
 
-    // Map arguments to positional (use sanitised name for lookup)
-    let positional_args = map_arguments_to_positional(tool_name, arguments)?;
+    // Map arguments to positional (use resolved original function name)
+    let positional_args = map_arguments_to_positional(&actual_function_name, arguments)?;
 
     // Execute the function with structured markdown output
     use std::process::Command;
+    use crate::config;
 
     // Get the run binary path (we're already running as run, but we need to call ourselves)
     // Security: We validate that the binary path is a canonical path to ensure it hasn't been manipulated
@@ -108,7 +109,19 @@ pub(super) fn handle_tools_call(
             data: None,
         })?;
 
+    // Get the Runfile path so the subprocess can find the functions
+    // This is necessary because the subprocess may run in a different working directory
+    let runfile_path = config::find_runfile_path()
+        .ok_or_else(|| JsonRpcError {
+            code: -32603,
+            message: "No Runfile found".to_string(),
+            data: None,
+        })?;
+
     let mut cmd = Command::new(run_binary);
+    // Pass the Runfile path explicitly so the subprocess can find the functions
+    cmd.arg("--runfile");
+    cmd.arg(&runfile_path);
     // Use structured markdown output for better LLM readability
     cmd.arg("--output-format=markdown");
     cmd.arg(&actual_function_name);  // Use the original function name with colons
