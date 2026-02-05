@@ -1,0 +1,6 @@
+[submodule "scoop-bucket"]
+	path = scoop-bucket
+	url = git@github.com:nihilok/scoop-bucket.git
+[submodule "homebrew-tap"]
+	path = homebrew-tap
+	url = git@github.com:nihilok/homebrew-tap.git
