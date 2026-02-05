@@ -31,10 +31,74 @@ pub struct Tool {
     pub input_schema: InputSchema,
 }
 
+pub const TOOL_SET_CWD: &str = "set_cwd";
+pub const TOOL_GET_CWD: &str = "get_cwd";
+
 /// Root structure for inspect output
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InspectOutput {
     pub tools: Vec<Tool>,
+}
+
+/// Returns the built-in tools provided by the MCP server itself
+pub fn get_builtin_tools() -> Vec<Tool> {
+    let mut tools = Vec::new();
+
+    // set_cwd
+    let mut set_cwd_props = HashMap::new();
+    set_cwd_props.insert(
+        "path".to_string(),
+        ParameterSchema {
+            param_type: "string".to_string(),
+            description: "The path to switch to (relative or absolute)".to_string(),
+        },
+    );
+    tools.push(Tool {
+        name: TOOL_SET_CWD.to_string(),
+        description: "Set the current working directory. Call this before other tools to change their execution context.".to_string(),
+        input_schema: InputSchema {
+            schema_type: "object".to_string(),
+            properties: set_cwd_props,
+            required: vec!["path".to_string()],
+        },
+    });
+
+    // get_cwd
+    tools.push(Tool {
+        name: TOOL_GET_CWD.to_string(),
+        description: "Get the current working directory.".to_string(),
+        input_schema: InputSchema {
+            schema_type: "object".to_string(),
+            properties: HashMap::new(),
+            required: Vec::new(),
+        },
+    });
+
+    tools
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_builtin_tools() {
+        let tools = get_builtin_tools();
+        assert_eq!(tools.len(), 2);
+
+        let set_cwd = tools.iter().find(|t| t.name == TOOL_SET_CWD).unwrap();
+        assert_eq!(set_cwd.description, "Set the current working directory. Call this before other tools to change their execution context.");
+        assert_eq!(set_cwd.input_schema.schema_type, "object");
+        assert!(set_cwd.input_schema.properties.contains_key("path"));
+        assert_eq!(set_cwd.input_schema.properties["path"].param_type, "string");
+        assert_eq!(set_cwd.input_schema.required, vec!["path".to_string()]);
+
+        let get_cwd = tools.iter().find(|t| t.name == TOOL_GET_CWD).unwrap();
+        assert_eq!(get_cwd.description, "Get the current working directory.");
+        assert_eq!(get_cwd.input_schema.schema_type, "object");
+        assert!(get_cwd.input_schema.properties.is_empty());
+        assert!(get_cwd.input_schema.required.is_empty());
+    }
 }
 
 /// Extract metadata from function attributes and parameters
