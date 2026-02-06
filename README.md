@@ -7,6 +7,8 @@
 
 Define functions in a `Runfile`. Your AI agent discovers and executes them via the built-in MCP server. You run them from the terminal too with instant startup and tab completion. Shell, Python, Node—whatever fits the task.
 
+This project is a specialized fork of `sporto/run-rust`, optimized specifically for Model Context Protocol (MCP) integration, enabling automatic tool discovery for AI agents.
+
 ```bash
 # Runfile
 
@@ -63,9 +65,11 @@ Point your AI agent at the Runfile, and it can discover and execute these tools 
   - [Basic Functions](#basic-functions)
   - [Block Syntax](#block-syntax)
   - [Function Signatures](#function-signatures)
+  - [Syntax Guide](#syntax-guide)
   - [Attributes & Polyglot Scripts](#attributes--polyglot-scripts)
   - [Nested Namespaces](#nested-namespaces)
   - [Function Composition](#function-composition)
+- [Recipes](#recipes)
 - [Configuration](#configuration)
 - [License](#license)
 
@@ -77,7 +81,9 @@ Point your AI agent at the Runfile, and it can discover and execute these tools 
 
 ### MCP Server Mode
 
-Configure in your AI client (e.g., Claude Desktop `claude_desktop_config.json`):
+Configure in your AI client. For **Claude Desktop**, add this configuration to:
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
 {
@@ -278,6 +284,38 @@ deploy(env: str, version = "latest") {
 
 When both signature params and `@arg` exist, the signature defines names/types/defaults, and `@arg` provides descriptions for MCP.
 
+### Syntax Guide
+
+`run` allows you to embed Python, Node.js, or other interpreted languages directly inside shell functions using **shebang detection**. When `run` encounters a shebang line (e.g., `#!/usr/bin/env python`) as the first line of a function body, it automatically:
+
+1. **Detects the interpreter** from the shebang path
+2. **Extracts the function body** (excluding the shebang line itself)
+3. **Executes the content** using that interpreter
+
+**Key behaviors:**
+
+- **Argument passing**: Shell arguments (like `$1`, `$2`) are passed to the script as command-line arguments. In Python, access them via `sys.argv[1]`, `sys.argv[2]`, etc. In Node.js, use `process.argv[2]`, `process.argv[3]`, etc.
+- **Function signature integration**: If your function declares typed parameters (e.g., `analyze(file: str)`), these are still accessed positionally in the embedded script.
+- **Shebang precedence**: If both a shebang and `@shell` attribute are present, `@shell` takes precedence.
+
+**Example:**
+
+```bash
+# @desc Analyze a JSON file
+analyze(file: str) {
+    #!/usr/bin/env python3
+    import sys, json
+    # $file becomes sys.argv[1]
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+        print(f"Found {len(data)} records")
+}
+```
+
+When you run `run analyze data.json`, `run` detects the Python shebang and executes the function body as a Python script with `data.json` passed as `sys.argv[1]`.
+
+This polyglot approach lets you mix shell orchestration with specialized scripting languages in a single `Runfile` without needing separate script files.
+
 ### Attributes & Polyglot Scripts
 
 You can use comment attributes (`# @key value`) or shebang lines to modify function behaviour and select interpreters.
@@ -295,6 +333,19 @@ clean() rm -rf dist
 ```
 
 When you run `run clean`, only the variant matching your current OS will execute.
+
+You can also use inline platform guards within a single function to define OS-aware implementations:
+
+```bash
+# @desc Run the build process (OS-aware)
+build() {
+  @linux { ./scripts/build_linux.sh }
+  @macos { ./scripts/build_macos.sh }
+  @windows { .\scripts\build_win.ps1 }
+}
+```
+
+`run` evaluates these guards at runtime and executes only the block matching your current platform.
 
 #### Interpreter Selection
 
@@ -391,6 +442,77 @@ When you run `run ci`, all compatible functions are automatically injected into 
 - Exit codes are properly propagated (use `|| exit 1` to stop on failure)
 - Works across different shells when interpreters are compatible
 - Top-level variables are also available to all functions
+
+---
+
+## Recipes
+
+Here are practical examples demonstrating real-world DevOps workflows.
+
+### Testing, Deployment & Secure Database Access
+
+This example shows how to structure a `Runfile` for a typical application lifecycle. An important security feature: **AI agents only see function descriptions and parameters via MCP, never the implementation details**—so secrets in your function bodies remain hidden.
+
+```bash
+# @desc Run all unit tests
+test_unit() {
+  pytest tests/unit
+}
+
+# @desc Safely run a read-only query against a database
+# @arg query The SQL query to execute
+# @arg env The target environment (local|prod)
+db_query(query: str, env: str) {
+  #!/usr/bin/env python3
+  import sys, os, psycopg2
+
+  query = sys.argv[1]
+  target_env = sys.argv[2]
+
+  # The AI can't see this implementation.
+  # Connection strings can be hardcoded here or loaded from environment.
+  db_url = os.getenv(f"DB_CONNECTION_{target_env.upper()}")
+  # Or: db_url = "postgresql://user:pass@localhost/mydb"
+
+  if not db_url:
+      print(f"Error: Connection not configured for {target_env}.")
+      sys.exit(1)
+
+  # Connect and execute (simplified example)
+  print(f"Executing query on {target_env}...")
+  conn = psycopg2.connect(db_url)
+  cur = conn.cursor()
+  cur.execute(query)
+  for row in cur.fetchall():
+      print(row)
+  cur.close()
+  conn.close()
+}
+
+# @desc Deploy to production or staging
+# @arg env The target environment (staging|prod)
+deploy(env: str) {
+  echo "Deploying to $env..."
+  # Implementation details hidden from AI
+  ./scripts/deploy.sh $env
+}
+```
+
+**Security Benefit**: When you run `run --inspect`, the AI sees:
+```json
+{
+  "name": "db_query",
+  "description": "Safely run a read-only query against a database",
+  "inputSchema": {
+    "properties": {
+      "query": {"type": "string"},
+      "env": {"type": "string"}
+    }
+  }
+}
+```
+
+The function body—including any credentials, API keys, or implementation logic—is never exposed to the AI agent. This allows you to safely hardcode secrets or reference them from your environment without risk of leakage.
 
 ---
 
