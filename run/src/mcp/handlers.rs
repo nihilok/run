@@ -218,11 +218,15 @@ pub(super) fn handle_tools_call(
 mod tests {
     use super::*;
     use serde_json::json;
+    use serial_test::serial;
     use std::env;
     use tempfile::tempdir;
 
     #[test]
+    #[serial]
     fn test_handle_get_cwd() {
+        let original_cwd = env::current_dir().unwrap();
+        
         let params = json!({
             "name": "get_cwd",
             "arguments": {}
@@ -234,9 +238,13 @@ mod tests {
 
         let cwd = env::current_dir().unwrap();
         assert_eq!(text, cwd.display().to_string());
+        
+        // Restore original CWD in case other tests changed it
+        env::set_current_dir(original_cwd).unwrap();
     }
 
     #[test]
+    #[serial]
     fn test_handle_set_cwd() {
         let temp = tempdir().unwrap();
         let temp_path = temp.path().canonicalize().unwrap();
