@@ -81,6 +81,22 @@ if [ -n "$(git status --porcelain)" ]; then
     exit 1
 fi
 
+# Store commit hash before version bump for potential rollback
+COMMIT_BEFORE_BUMP=$(git rev-parse HEAD)
+VERSION_BUMP_COMMITTED=false
+
+# Rollback function to undo version bump if deployment fails
+rollback_version_bump() {
+    if [ "$VERSION_BUMP_COMMITTED" = true ]; then
+        echo -e "${RED}Deployment failed! Rolling back version bump...${NC}"
+        git reset --hard "$COMMIT_BEFORE_BUMP"
+        echo -e "${YELLOW}Version bump commit has been rolled back${NC}"
+    fi
+}
+
+# Set trap to rollback on error
+trap rollback_version_bump ERR EXIT
+
 # Update workspace Cargo.toml
 echo -e "${YELLOW}Updating workspace Cargo.toml...${NC}"
 sed -i.bak "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml && rm Cargo.toml.bak
@@ -102,6 +118,7 @@ cargo build --release
 echo -e "${YELLOW}Committing version bump...${NC}"
 git add Cargo.toml Cargo.lock runtool/Cargo.toml
 git commit -m "Bump version to $NEW_VERSION"
+VERSION_BUMP_COMMITTED=true
 
 # Run tests
 echo -e "${YELLOW}Running tests...${NC}"
@@ -136,6 +153,9 @@ git push
 echo -e "${YELLOW}Creating and pushing tag v$NEW_VERSION...${NC}"
 git tag "v$NEW_VERSION"
 git push origin "v$NEW_VERSION"
+
+# Disable trap since we succeeded
+trap - ERR EXIT
 
 echo -e "${GREEN}✓ Successfully released version $NEW_VERSION!${NC}"
 echo -e "${GREEN}✓ Published 'run' v$NEW_VERSION to crates.io${NC}"
