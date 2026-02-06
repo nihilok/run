@@ -140,6 +140,22 @@ run --inspect
 
 This outputs the tool definitions that AI agents will see—useful for debugging and validation.
 
+### Built-in MCP Tools
+
+In addition to your Runfile functions, `run` provides built-in tools for managing execution context:
+
+- **`set_cwd`** - Change the current working directory. Useful for multi-project workflows where the agent needs to switch between different project contexts.
+  ```
+  set_cwd(path: string)
+  ```
+
+- **`get_cwd`** - Get the current working directory. Helps agents understand their current execution context.
+  ```
+  get_cwd()
+  ```
+
+These tools allow AI agents to navigate your filesystem and work with multiple projects in a single MCP session.
+
 ---
 
 ## Installation
