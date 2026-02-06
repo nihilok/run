@@ -51,6 +51,48 @@ deploy:major() {
     ./scripts/deploy.sh major --yes
 }
 
+# @desc Update Homebrew formula with latest release
+# @arg version Optional version (defaults to latest git tag)
+deploy:homebrew(version = "") {
+    echo "Updating Homebrew formula..."
+    if [ -z "$version" ]; then
+        ./scripts/update_homebrew.sh
+    else
+        ./scripts/update_homebrew.sh "$version"
+    fi
+    
+    echo ""
+    echo "Committing and pushing changes..."
+    cd homebrew-tap
+    git add Formula/runtool.rb
+    git commit -m "Update to v${version:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
+    git push
+    cd ..
+    
+    echo "✓ Homebrew formula updated and pushed"
+}
+
+# @desc Update Scoop manifest with latest release
+# @arg version Optional version (defaults to latest git tag)
+deploy:scoop(version = "") {
+    echo "Updating Scoop manifest..."
+    if [ -z "$version" ]; then
+        ./scripts/update_scoop.sh
+    else
+        ./scripts/update_scoop.sh "$version"
+    fi
+    
+    echo ""
+    echo "Committing and pushing changes..."
+    cd scoop-bucket
+    git add bucket/runtool.json
+    git commit -m "Update to v${version:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
+    git push
+    cd ..
+    
+    echo "✓ Scoop manifest updated and pushed"
+}
+
 # Windows specific command (will not be listed on non-Windows systems)
 # @os windows
 deploy:example() {
