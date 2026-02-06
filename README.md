@@ -84,13 +84,16 @@ Configure in your AI client (e.g., Claude Desktop `claude_desktop_config.json`):
   "mcpServers": {
     "my-project": {
       "command": "run",
-      "args": ["--serve-mcp", "--working-dir", "/path/to/your/project/"]
+      "args": ["--serve-mcp"],
+      "env": {
+        "PWD": "/path/to/your/project/"
+      }
     }
   }
 }
 ```
 
-`--working-dir` is the preferred flag (alias: `--runfile`) and also drives where MCP output files are written (`.run-output` beside your Runfile). To override the output location explicitly, set `RUN_MCP_OUTPUT_DIR` in the environment before launching the server.
+`run` automatically discovers your `Runfile` by searching up from the current working directory. You can optionally use `--runfile` (alias: `--working-dir`) to specify an explicit path. MCP output files (`.run-output`) are written next to your Runfile. To override the output location explicitly, set `RUN_MCP_OUTPUT_DIR` in the environment.
 
 Now your AI agent can discover and call your tools automatically.
 
