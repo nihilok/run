@@ -9,51 +9,30 @@ Define functions in a `Runfile`. Your AI agent discovers and executes them via t
 
 This project is a specialized fork of `sporto/run-rust`, optimized specifically for Model Context Protocol (MCP) integration, enabling automatic tool discovery for AI agents.
 
+### Quick Start
+
+Here's a simple example:
+
 ```bash
 # Runfile
 
-# @desc Search the codebase for a pattern
-# @shell python
-# @arg pattern The regex pattern to search for
-search(pattern: str) {
-    import sys, os, re
-    for root, _, files in os.walk('.'):
-        for f in files:
-            path = os.path.join(root, f)
-            try:
-                for i, line in enumerate(open(path), 1):
-                    if re.search(sys.argv[1], line):
-                        print(f"{path}:{i}: {line.rstrip()}")
-            except: pass
-}
-
 # @desc Deploy to an environment
+# @arg env Target environment (staging|prod)
+# @arg version Version to deploy (defaults to "latest")
 deploy(env: str, version = "latest") {
     echo "Deploying $version to $env..."
     ./scripts/deploy.sh $env $version
 }
-
-# @desc Analyze a JSON file
-function analyze(file: str) {
-    #!/usr/bin/env python3
-    import sys, json
-    with open(sys.argv[1]) as f:
-        data = json.load(f)
-        print(f"Found {len(data)} records")
-}
 ```
 
-_The syntax is designed to be similar to bash/sh, while being permissive & flexible, with added features for AI integration._
-
-Humans can run these functions directly from the terminal:
+Run it from your terminal:
 
 ```bash
-$ run search "TODO"
 $ run deploy staging
-$ run analyze data.json
+$ run deploy prod v2.1.0
 ```
 
-Point your AI agent at the Runfile, and it can discover and execute these tools automatically.
+Or point your AI agent at the Runfile, and it can discover and execute this tool automatically.
 
 ---
 
@@ -69,8 +48,11 @@ Point your AI agent at the Runfile, and it can discover and execute these tools 
   - [Attributes & Polyglot Scripts](#attributes--polyglot-scripts)
   - [Nested Namespaces](#nested-namespaces)
   - [Function Composition](#function-composition)
-- [Recipes](#recipes)
 - [Configuration](#configuration)
+  - [Environment Variables](#environment-variables)
+  - [Global Runfile](#global-runfile)
+  - [MCP Output Files](#mcp-output-files)
+- [Real-World Examples](#real-world-examples)
 - [License](#license)
 
 ---
@@ -99,7 +81,7 @@ Configure in your AI client. For **Claude Desktop**, add this configuration to:
 }
 ```
 
-`run` automatically discovers your `Runfile` by searching up from the current working directory. You can optionally use `--runfile` (alias: `--working-dir`) to specify an explicit path. MCP output files (`.run-output`) are written next to your Runfile. To override the output location explicitly, set `RUN_MCP_OUTPUT_DIR` in the environment.
+`run` automatically discovers your `Runfile` by searching up from the current working directory. MCP output files (`.run-output`) are written next to your Runfile. To override the output location explicitly, set `RUN_MCP_OUTPUT_DIR` in the environment.
 
 Now your AI agent can discover and call your tools automatically.
 
@@ -445,98 +427,62 @@ When you run `run ci`, all compatible functions are automatically injected into 
 
 ---
 
-## Recipes
+## Configuration
 
-Here are practical examples demonstrating real-world DevOps workflows.
+### Environment Variables
 
-### Testing, Deployment & Secure Database Access
+`run` supports the following environment variables to customize its behavior:
 
-This example shows how to structure a `Runfile` for a typical application lifecycle. An important security feature: **AI agents only see function descriptions and parameters via MCP, never the implementation details**—so secrets in your function bodies remain hidden.
+#### `RUN_SHELL`
 
+Override the default shell interpreter for executing functions.
+
+**Default behavior:**
+- **Unix/Linux/macOS**: `sh`
+- **Windows**: `pwsh` (if available), otherwise `powershell`
+
+**Usage:**
 ```bash
-# @desc Run all unit tests
-test_unit() {
-  pytest tests/unit
-}
+# One-time override
+RUN_SHELL=zsh run build
 
-# @desc Safely run a read-only query against a database
-# @arg query The SQL query to execute
-# @arg env The target environment (local|prod)
-db_query(query: str, env: str) {
-  #!/usr/bin/env python3
-  import sys, os, psycopg2
-
-  query = sys.argv[1]
-  target_env = sys.argv[2]
-
-  # The AI can't see this implementation.
-  # Connection strings can be hardcoded here or loaded from environment.
-  db_url = os.getenv(f"DB_CONNECTION_{target_env.upper()}")
-  # Or: db_url = "postgresql://user:pass@localhost/mydb"
-
-  if not db_url:
-      print(f"Error: Connection not configured for {target_env}.")
-      sys.exit(1)
-
-  # Connect and execute (simplified example)
-  print(f"Executing query on {target_env}...")
-  conn = psycopg2.connect(db_url)
-  cur = conn.cursor()
-  cur.execute(query)
-  for row in cur.fetchall():
-      print(row)
-  cur.close()
-  conn.close()
-}
-
-# @desc Deploy to production or staging
-# @arg env The target environment (staging|prod)
-deploy(env: str) {
-  echo "Deploying to $env..."
-  # Implementation details hidden from AI
-  ./scripts/deploy.sh $env
-}
+# Set for your session
+export RUN_SHELL=bash
 ```
 
-**Security Benefit**: When you run `run --inspect`, the AI sees:
-```json
+**Note:** Commands in your Runfile must be compatible with the configured shell, unless an explicit interpreter (e.g., `# @shell python`) is defined for that function.
+
+#### `RUN_MCP_OUTPUT_DIR`
+
+Specify where to write output files when running in MCP mode.
+
+**Default behavior:**
+- Outputs are written to `.run-output/` directory next to your Runfile
+- If the Runfile location cannot be determined, falls back to system temp directory
+
+**Usage:**
+```bash
+# Set output directory
+RUN_MCP_OUTPUT_DIR=/tmp/run-output run --serve-mcp
+
+# Or configure in Claude Desktop MCP settings
 {
-  "name": "db_query",
-  "description": "Safely run a read-only query against a database",
-  "inputSchema": {
-    "properties": {
-      "query": {"type": "string"},
-      "env": {"type": "string"}
+  "mcpServers": {
+    "my-project": {
+      "command": "run",
+      "args": ["--serve-mcp"],
+      "env": {
+        "PWD": "/path/to/your/project/",
+        "RUN_MCP_OUTPUT_DIR": "/path/to/output"
+      }
     }
   }
 }
 ```
 
-The function body—including any credentials, API keys, or implementation logic—is never exposed to the AI agent. This allows you to safely hardcode secrets or reference them from your environment without risk of leakage.
+**Why this matters:** When running in MCP mode, outputs longer than 32 lines are automatically truncated in the response to the AI agent, with the full output saved to a file. This prevents overwhelming the AI with massive outputs while still preserving access to the complete data.
 
 ---
-
-
-## Configuration
-
-### Shell Selection
-
-By default, `run` uses:
-
-- **Windows**: PowerShell (`pwsh` if available, else `powershell`)
-- **Unix**: `sh`
-
-You can override this default by setting the `RUN_SHELL` environment variable.
-
-```bash
-# Force Zsh for this command
-RUN_SHELL=zsh run build
-
-# Make it permanent for your session
-export RUN_SHELL=bash
-```
-
-**Note**: The commands in your Runfile must be compatible with the configured shell, unless an explicit interpreter (e.g., `# @shell python`) is defined for that function.
 
 ### Global Runfile
 
@@ -563,10 +509,279 @@ If a local `./Runfile` exists, `run` looks there first. If the command isn't fou
 
 ### MCP Output Files
 
-When running in MCP mode, outputs longer than 50 lines are truncated and the full text is saved under a `.run-output` directory next to your Runfile. The directory is created automatically. To override the location (e.g., for sandboxing), set `RUN_MCP_OUTPUT_DIR` before starting the server:
+When running in MCP mode, outputs longer than 32 lines are truncated and the full text is saved under a `.run-output` directory next to your Runfile. The directory is created automatically. To override the location (e.g., for sandboxing), set `RUN_MCP_OUTPUT_DIR` before starting the server:
 
 ```bash
 RUN_MCP_OUTPUT_DIR=/tmp/run-output run --serve-mcp
+```
+
+---
+
+## Real-World Examples
+
+Here are practical examples demonstrating how to use `run` for real-world workflows.
+
+### Docker Management
+
+Organize Docker commands with nested namespaces:
+
+```bash
+# @desc Build the Docker image
+docker:build() {
+    docker build -t myapp:latest .
+}
+
+# @desc Start all services in detached mode
+docker:up() {
+    docker compose up -d
+}
+
+# @desc View logs for a service
+# @arg service The service name (defaults to "app")
+docker:logs(service = "app") {
+    docker compose logs -f $service
+}
+
+# @desc Open a shell in a container
+# @arg service The service name (defaults to "app")
+docker:shell(service = "app") {
+    docker compose exec $service bash
+}
+```
+
+Run them like this:
+```bash
+$ run docker build
+$ run docker up
+$ run docker logs postgres
+$ run docker shell
+```
+
+### CI/CD Pipeline with Function Composition
+
+Build reusable tasks that compose together:
+
+```bash
+# @desc Run linting checks
+lint() {
+    cargo clippy -- -D warnings
+}
+
+# @desc Run all tests
+test() {
+    cargo test
+}
+
+# @desc Build release binary
+build() {
+    cargo build --release
+}
+
+# @desc Run the complete CI pipeline
+ci() {
+    echo "Running CI pipeline..."
+    lint || exit 1
+    test || exit 1
+    build
+    echo "✓ CI passed!"
+}
+
+# @desc Deploy to an environment
+# @arg env Target environment (staging|prod)
+deploy(env: str) {
+    # Ensure build succeeds first
+    build || exit 1
+    echo "Deploying to $env..."
+    scp target/release/myapp server-$env:/usr/local/bin/
+}
+```
+
+### Polyglot Scripts - Python Data Analysis
+
+Embed Python directly in your Runfile for data processing:
+
+```bash
+# @desc Analyze a JSON file and print statistics
+# @arg file Path to the JSON file
+analyze(file: str) {
+    #!/usr/bin/env python3
+    import sys, json
+    from collections import Counter
+
+    with open(sys.argv[1]) as f:
+        data = json.load(f)
+
+    print(f"Total records: {len(data)}")
+
+    if isinstance(data, list) and len(data) > 0:
+        keys = data[0].keys() if isinstance(data[0], dict) else []
+        print(f"Fields: {', '.join(keys)}")
+}
+
+# @desc Convert CSV to JSON
+# @arg input Input CSV file
+# @arg output Output JSON file
+csv_to_json(input: str, output: str) {
+    #!/usr/bin/env python3
+    import sys, csv, json
+
+    with open(sys.argv[1]) as f:
+        reader = csv.DictReader(f)
+        data = list(reader)
+
+    with open(sys.argv[2], 'w') as f:
+        json.dump(data, f, indent=2)
+
+    print(f"✓ Converted {len(data)} rows to {sys.argv[2]}")
+}
+```
+
+### Secure Database Access for AI Agents
+
+**Important security feature:** AI agents only see function descriptions and parameters via MCP—never the implementation details. This means secrets in your function bodies remain hidden.
+
+```bash
+# @desc Run a read-only query against the database
+# @arg query The SQL query to execute
+# @arg env The target environment (local|staging|prod)
+db:query(query: str, env: str) {
+    #!/usr/bin/env python3
+    import sys, os, psycopg2
+
+    query = sys.argv[1]
+    target_env = sys.argv[2]
+
+    # AI agents can't see this implementation!
+    # Connection strings can be hardcoded or loaded from environment
+    db_url = os.getenv(f"DB_CONNECTION_{target_env.upper()}")
+    # Or: db_url = "postgresql://user:pass@localhost/mydb"
+
+    if not db_url:
+        print(f"Error: Connection not configured for {target_env}.")
+        sys.exit(1)
+
+    print(f"Executing query on {target_env}...")
+    conn = psycopg2.connect(db_url)
+    cur = conn.cursor()
+    cur.execute(query)
+
+    for row in cur.fetchall():
+        print(row)
+
+    cur.close()
+    conn.close()
+}
+
+# @desc Get table schema information
+# @arg table Table name to inspect
+# @arg env Target environment
+db:schema(table: str, env: str) {
+    #!/usr/bin/env python3
+    import sys, os, psycopg2
+
+    table = sys.argv[1]
+    target_env = sys.argv[2]
+
+    db_url = os.getenv(f"DB_CONNECTION_{target_env.upper()}")
+    conn = psycopg2.connect(db_url)
+    cur = conn.cursor()
+
+    # Query information_schema for column info
+    cur.execute("""
+        SELECT column_name, data_type, is_nullable
+        FROM information_schema.columns
+        WHERE table_name = %s
+        ORDER BY ordinal_position
+    """, (table,))
+
+    print(f"\nSchema for table '{table}':")
+    for col_name, data_type, nullable in cur.fetchall():
+        null_str = "NULL" if nullable == "YES" else "NOT NULL"
+        print(f"  {col_name}: {data_type} {null_str}")
+
+    cur.close()
+    conn.close()
+}
+```
+
+**Security Benefit:** When you run `run --inspect`, the AI sees:
+```json
+{
+  "name": "db:query",
+  "description": "Run a read-only query against the database",
+  "inputSchema": {
+    "properties": {
+      "query": {"type": "string", "description": "The SQL query to execute"},
+      "env": {"type": "string", "description": "The target environment (local|staging|prod)"}
+    }
+  }
+}
+```
+
+The function body—including any credentials, API keys, or implementation logic—is never exposed to the AI agent. This allows you to safely hardcode secrets or reference them from your environment without risk of leakage.
+
+### Platform-Specific Commands
+
+Define different implementations for different operating systems:
+
+```bash
+# @desc Clean build artifacts
+# @os windows
+clean() {
+    del /Q /S target\*
+    echo "Cleaned!"
+}
+
+# @desc Clean build artifacts
+# @os unix
+clean() {
+    rm -rf target/
+    echo "Cleaned!"
+}
+
+# Or use inline platform guards:
+# @desc Open the project in the default editor
+open() {
+    @macos { open . }
+    @linux { xdg-open . }
+    @windows { start . }
+}
+```
+
+### Node.js Web Server
+
+Embed a Node.js server directly in your Runfile:
+
+```bash
+# @desc Start a development web server
+# @arg port Port number to listen on
+dev:server(port = "3000") {
+    #!/usr/bin/env node
+    const http = require('http');
+    const fs = require('fs');
+    const path = require('path');
+
+    const port = process.argv[2] || 3000;
+
+    http.createServer((req, res) => {
+        console.log(`${req.method} ${req.url}`);
+
+        let filePath = '.' + req.url;
+        if (filePath === './') filePath = './index.html';
+
+        fs.readFile(filePath, (err, data) => {
+            if (err) {
+                res.writeHead(404);
+                res.end('Not found');
+                return;
+            }
+            res.writeHead(200);
+            res.end(data);
+        });
+    }).listen(port);
+
+    console.log(`Server running at http://localhost:${port}/`);
+}
 ```
 
 ---
