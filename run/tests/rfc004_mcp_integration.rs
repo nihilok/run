@@ -23,7 +23,7 @@ deploy(env, version = "latest") {
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
@@ -73,7 +73,7 @@ docker_exec(container, ...command) {
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
@@ -115,7 +115,7 @@ scale(service, replicas: int = 1) {
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
@@ -161,7 +161,7 @@ restart() {
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
@@ -211,7 +211,7 @@ build() {
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()

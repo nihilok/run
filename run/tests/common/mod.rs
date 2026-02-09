@@ -73,3 +73,11 @@ pub fn is_ruby_available() -> bool {
 /// Package version for testing --version flag
 #[allow(dead_code)]
 pub const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Helper to create a Command with test environment
+/// Sets RUN_NO_GLOBAL_MERGE to isolate tests from user's ~/.runfile
+pub fn test_command(binary: &PathBuf) -> Command {
+    let mut cmd = Command::new(binary);
+    cmd.env("RUN_NO_GLOBAL_MERGE", "1");
+    cmd
+}

@@ -200,8 +200,9 @@ pub(super) fn extract_function_metadata(
 
 /// Generate inspection output from Runfile
 ///
-/// Scans the Runfile for functions with `@desc` attributes and generates
-/// MCP tool definitions from their metadata.
+/// Scans both global (~/.runfile) and project (./Runfile) for functions with
+/// `@desc` attributes and generates MCP tool definitions from their metadata.
+/// Project functions take precedence over global functions with the same name.
 ///
 /// # Errors
 ///
@@ -209,8 +210,8 @@ pub(super) fn extract_function_metadata(
 /// - The Runfile cannot be parsed (syntax errors)
 /// - The parser encounters an unexpected error
 pub fn inspect() -> Result<InspectOutput, String> {
-    let config_content = match config::load_config() {
-        Some(content) => content,
+    let config_content = match config::load_merged_config() {
+        Some((content, _metadata)) => content,
         None => return Ok(InspectOutput { tools: Vec::new() }), // No Runfile = no tools
     };
 
@@ -218,8 +219,11 @@ pub fn inspect() -> Result<InspectOutput, String> {
         parser::parse_script(&config_content).map_err(|e| format!("Parse error: {}", e))?;
 
     let mut tools = Vec::new();
+    let mut seen_names = std::collections::HashSet::new();
 
-    for statement in program.statements {
+    // Process statements in reverse order to give precedence to later definitions (project)
+    // Since we concatenated global first, then project, project definitions appear later
+    for statement in program.statements.iter().rev() {
         match statement {
             Statement::SimpleFunctionDef {
                 name,
@@ -227,9 +231,10 @@ pub fn inspect() -> Result<InspectOutput, String> {
                 attributes,
                 ..
             } => {
-                if utils::matches_current_platform(&attributes) {
-                    if let Some(tool) = extract_function_metadata(&name, &attributes, &params) {
+                if utils::matches_current_platform(attributes) && !seen_names.contains(name) {
+                    if let Some(tool) = extract_function_metadata(name, attributes, params) {
                         tools.push(tool);
+                        seen_names.insert(name.clone());
                     }
                 }
             }
@@ -239,15 +244,19 @@ pub fn inspect() -> Result<InspectOutput, String> {
                 attributes,
                 ..
             } => {
-                if utils::matches_current_platform(&attributes) {
-                    if let Some(tool) = extract_function_metadata(&name, &attributes, &params) {
+                if utils::matches_current_platform(attributes) && !seen_names.contains(name) {
+                    if let Some(tool) = extract_function_metadata(name, attributes, params) {
                         tools.push(tool);
+                        seen_names.insert(name.clone());
                     }
                 }
             }
             _ => {}
         }
     }
+
+    // Reverse to restore original order (since we processed in reverse)
+    tools.reverse();
 
     Ok(InspectOutput { tools })
 }

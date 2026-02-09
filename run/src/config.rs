@@ -185,7 +185,7 @@ pub fn load_config() -> Option<String> {
 
 /// Load ~/.runfile from the user's home directory.
 /// Returns Some(content) if found, or None otherwise.
-fn load_home_runfile() -> Option<String> {
+pub fn load_home_runfile() -> Option<String> {
     if let Some(home) = get_home_dir() {
         let runfile_path = home.join(".runfile");
         if runfile_path.exists()
@@ -275,4 +275,138 @@ fn find_home_runfile_path() -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// Find the project Runfile path (searching upward from cwd).
+/// Returns None if no project Runfile is found (will not return ~/.runfile).
+pub fn find_project_runfile_path() -> Option<PathBuf> {
+    // First, check if a custom runfile path is set
+    if let Some(custom_path) = get_custom_runfile_path() {
+        if custom_path.is_dir() {
+            let runfile_path = custom_path.join("Runfile");
+            if runfile_path.exists() {
+                return Some(runfile_path);
+            }
+        } else if custom_path.exists() {
+            return Some(custom_path);
+        }
+        return None;
+    }
+
+    // Start from the current directory and search upwards
+    let mut current_dir = match std::env::current_dir() {
+        Ok(dir) => dir,
+        Err(_) => return None,
+    };
+
+    // Get home directory for boundary check
+    let home_dir = get_home_dir();
+
+    // Search upwards from current directory
+    loop {
+        let runfile_path = current_dir.join("Runfile");
+        if runfile_path.exists() {
+            return Some(runfile_path);
+        }
+
+        // Check if we've reached the home directory or root
+        let reached_boundary = if let Some(ref home) = home_dir {
+            current_dir == *home
+                || current_dir == PathBuf::from("/")
+                || current_dir == PathBuf::from("\\")
+        } else {
+            current_dir == PathBuf::from("/") || current_dir == PathBuf::from("\\")
+        };
+
+        if reached_boundary {
+            break;
+        }
+
+        // Move up one directory
+        match current_dir.parent() {
+            Some(parent) => current_dir = parent.to_path_buf(),
+            None => break, // Reached root
+        }
+    }
+
+    None
+}
+
+/// Load and merge both global (~/.runfile) and project (./Runfile) configurations.
+/// Returns the merged content with project functions taking precedence over global ones.
+/// Also returns metadata about which files were loaded.
+///
+/// Special cases:
+/// 1. If a custom runfile is set via --runfile flag, ONLY that file is used (no merging).
+/// 2. If RUN_NO_GLOBAL_MERGE env var is set, global runfile is not merged (for tests).
+///
+/// The merge strategy is simple: concatenate global content first, then project content.
+/// When parsed, later function definitions naturally override earlier ones in the interpreter.
+pub fn load_merged_config() -> Option<(String, MergeMetadata)> {
+    // If a custom runfile is explicitly specified, use ONLY that file (don't merge)
+    if let Some(custom_path) = get_custom_runfile_path() {
+        return load_from_path(&custom_path).map(|content| {
+            (
+                content,
+                MergeMetadata {
+                    has_global: false,
+                    has_project: true,
+                },
+            )
+        });
+    }
+
+    // Check if global merging is disabled (for tests)
+    let disable_global_merge = std::env::var("RUN_NO_GLOBAL_MERGE").is_ok();
+
+    // Load project runfile
+    let project_content = if let Some(project_path) = find_project_runfile_path() {
+        fs::read_to_string(&project_path).ok()
+    } else {
+        None
+    };
+
+    // Load global runfile (unless disabled)
+    let global_content = if disable_global_merge {
+        None
+    } else {
+        load_home_runfile()
+    };
+
+    match (global_content, project_content) {
+        (None, None) => None,
+        (Some(global), None) => Some((
+            global,
+            MergeMetadata {
+                has_global: true,
+                has_project: false,
+            },
+        )),
+        (None, Some(project)) => Some((
+            project,
+            MergeMetadata {
+                has_global: false,
+                has_project: true,
+            },
+        )),
+        (Some(global), Some(project)) => {
+            // Concatenate with global first, project second
+            // Add a newline separator to ensure proper parsing
+            let merged = format!("{}\n{}", global, project);
+            Some((
+                merged,
+                MergeMetadata {
+                    has_global: true,
+                    has_project: true,
+                },
+            ))
+        }
+    }
+}
+
+/// Metadata about which runfiles were loaded during a merge.
+#[derive(Debug, Clone, Copy)]
+pub struct MergeMetadata {
+    pub has_global: bool,
+    pub has_project: bool,
 }
