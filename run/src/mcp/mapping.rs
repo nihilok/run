@@ -7,8 +7,9 @@ use std::collections::HashMap;
 
 /// Resolve a sanitised tool name back to the original function name
 /// This is needed because MCP requires [a-zA-Z0-9_-] but we support colons in function names
+/// Uses merged global+project config to ensure all exposed tools are resolvable
 pub(super) fn resolve_tool_name(sanitised_name: &str) -> Result<String, JsonRpcError> {
-    let config_content = config::load_config().ok_or_else(|| JsonRpcError {
+    let (config_content, _metadata) = config::load_merged_config().ok_or_else(|| JsonRpcError {
         code: -32603,
         message: "No Runfile found".to_string(),
         data: None,
@@ -21,7 +22,9 @@ pub(super) fn resolve_tool_name(sanitised_name: &str) -> Result<String, JsonRpcE
     })?;
 
     // Look for a function whose sanitised name matches
-    for statement in program.statements {
+    // Process in reverse order (project overrides global, like in inspect())
+    let mut matching_name: Option<String> = None;
+    for statement in program.statements.iter().rev() {
         let (name, attributes) = match statement {
             Statement::SimpleFunctionDef {
                 name, attributes, ..
@@ -35,13 +38,15 @@ pub(super) fn resolve_tool_name(sanitised_name: &str) -> Result<String, JsonRpcE
         // Check if this function has @desc (would be exposed as tool)
         if attributes.iter().any(|a| matches!(a, Attribute::Desc(_))) {
             let tool_name = name.replace(':', "__");
-            if tool_name == sanitised_name {
-                return Ok(name);
+            if tool_name == sanitised_name && matching_name.is_none() {
+                // Found a match; since we're processing in reverse, this is the project version
+                matching_name = Some(name.clone());
+                break;
             }
         }
     }
 
-    Err(JsonRpcError {
+    matching_name.ok_or_else(|| JsonRpcError {
         code: -32602,
         message: format!("Tool not found: {}", sanitised_name),
         data: None,
@@ -49,39 +54,32 @@ pub(super) fn resolve_tool_name(sanitised_name: &str) -> Result<String, JsonRpcE
 }
 
 /// Map JSON arguments to positional shell arguments
+/// Uses merged global+project config with project taking precedence
 pub(super) fn map_arguments_to_positional(
     tool_name: &str,
     json_args: &serde_json::Value,
 ) -> Result<Vec<String>, JsonRpcError> {
-    // Load the Runfile to get function metadata
-    let config_content = match config::load_config() {
-        Some(content) => content,
-        None => {
-            return Err(JsonRpcError {
-                code: -32603,
-                message: "No Runfile found".to_string(),
-                data: None,
-            });
-        }
-    };
+    // Load merged Runfile to get function metadata
+    let (config_content, _metadata) = config::load_merged_config().ok_or_else(|| JsonRpcError {
+        code: -32603,
+        message: "No Runfile found".to_string(),
+        data: None,
+    })?;
 
-    let program = match parser::parse_script(&config_content) {
-        Ok(prog) => prog,
-        Err(e) => {
-            return Err(JsonRpcError {
-                code: -32603,
-                message: format!("Parse error: {}", e),
-                data: None,
-            });
-        }
-    };
+    let program = parser::parse_script(&config_content).map_err(|e| JsonRpcError {
+        code: -32603,
+        message: format!("Parse error: {}", e),
+        data: None,
+    })?;
 
     // Find the function and get its @arg attributes and parameters
+    // Process in reverse order to give precedence to project definitions
     let mut arg_mapping: HashMap<usize, String> = HashMap::new();
     let mut params_vec: Vec<crate::ast::Parameter> = Vec::new();
     let mut arg_metadata_by_name: HashMap<String, usize> = HashMap::new();
 
-    for statement in program.statements {
+    // Process in reverse order (project overrides global)
+    for statement in program.statements.iter().rev() {
         let (name, attributes, params) = match statement {
             Statement::SimpleFunctionDef {
                 name,
@@ -111,8 +109,8 @@ pub(super) fn map_arguments_to_positional(
                     }
                 }
             }
-            params_vec = params;
-            break;
+            params_vec = params.clone();
+            break; // Take the first match (which is project due to reverse order)
         }
     }
 
