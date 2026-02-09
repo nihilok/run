@@ -9,7 +9,7 @@ mod handlers;
 mod mapping;
 pub mod tools;
 
-use crate::mcp::handlers::{handle_initialize, handle_tools_call, handle_tools_list, JsonRpcError};
+use crate::mcp::handlers::{JsonRpcError, handle_initialize, handle_tools_call, handle_tools_list};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 

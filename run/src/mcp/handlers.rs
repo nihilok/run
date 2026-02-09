@@ -226,7 +226,7 @@ mod tests {
     #[serial]
     fn test_handle_get_cwd() {
         let original_cwd = env::current_dir().unwrap();
-        
+
         let params = json!({
             "name": "get_cwd",
             "arguments": {}
@@ -238,7 +238,7 @@ mod tests {
 
         let cwd = env::current_dir().unwrap();
         assert_eq!(text, cwd.display().to_string());
-        
+
         // Restore original CWD in case other tests changed it
         env::set_current_dir(original_cwd).unwrap();
     }
@@ -302,13 +302,14 @@ mod tests {
         // which might fail if no Runfile is present.
         // Let's see if we can just test it.
         let result = handle_tools_list(None);
-        
+
         if let Ok(value) = result {
             let tools = value.get("tools").unwrap().as_array().unwrap();
-            let tool_names: Vec<&str> = tools.iter()
+            let tool_names: Vec<&str> = tools
+                .iter()
                 .map(|t| t.get("name").unwrap().as_str().unwrap())
                 .collect();
-            
+
             assert!(tool_names.contains(&"set_cwd"));
             assert!(tool_names.contains(&"get_cwd"));
         } else {

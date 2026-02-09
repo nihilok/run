@@ -87,7 +87,10 @@ mod tests {
         assert_eq!(tools.len(), 2);
 
         let set_cwd = tools.iter().find(|t| t.name == TOOL_SET_CWD).unwrap();
-        assert_eq!(set_cwd.description, "Set the current working directory. Call this before other tools to change their execution context.");
+        assert_eq!(
+            set_cwd.description,
+            "Set the current working directory. Call this before other tools to change their execution context."
+        );
         assert_eq!(set_cwd.input_schema.schema_type, "object");
         assert!(set_cwd.input_schema.properties.contains_key("path"));
         assert_eq!(set_cwd.input_schema.properties["path"].param_type, "string");

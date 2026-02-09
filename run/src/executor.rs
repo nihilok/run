@@ -192,7 +192,8 @@ pub fn list_functions() {
                     std::process::exit(0);
                 } else {
                     // Determine source label
-                    let source_label = if let Some(custom_path) = config::get_custom_runfile_path() {
+                    let source_label = if let Some(custom_path) = config::get_custom_runfile_path()
+                    {
                         // Custom runfile specified via --runfile
                         custom_path.display().to_string()
                     } else if metadata.has_global {
@@ -263,7 +264,8 @@ fn list_functions_with_sources() {
     };
 
     let project_set: HashSet<_> = project_functions.iter().cloned().collect();
-    let global_only: Vec<_> = global_functions.iter()
+    let global_only: Vec<_> = global_functions
+        .iter()
         .filter(|f| !project_set.contains(*f))
         .cloned()
         .collect();

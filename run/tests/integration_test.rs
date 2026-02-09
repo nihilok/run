@@ -127,7 +127,7 @@ deploy() echo "Deploying..."
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Available functions"));  // Changed to match new format
+    assert!(stdout.contains("Available functions")); // Changed to match new format
     assert!(stdout.contains("build"));
     assert!(stdout.contains("test"));
     assert!(stdout.contains("deploy"));
