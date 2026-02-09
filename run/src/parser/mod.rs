@@ -43,7 +43,7 @@ pub fn parse_script(input: &str) -> Result<Program, Box<pest::error::Error<Rule>
                                     // Skip comments - attributes are collected in parse_statement
                                 }
                                 _ => {
-                                    if let Some(stmt) = parse_statement(content, input) {
+                                    if let Some(stmt) = parse_statement(content, &preprocessed) {
                                         statements.push(stmt);
                                     }
                                 }
