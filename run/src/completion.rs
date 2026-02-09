@@ -21,6 +21,7 @@ pub enum Shell {
 
 impl Shell {
     /// Returns the lowercase name of the shell.
+    #[must_use] 
     pub fn name(self) -> &'static str {
         match self {
             Shell::Bash => "bash",
@@ -31,6 +32,7 @@ impl Shell {
     }
 
     /// Returns the completion script content for this shell.
+    #[must_use] 
     pub fn completion_script(self) -> &'static str {
         match self {
             Shell::Bash => BASH_COMPLETION,
@@ -41,6 +43,7 @@ impl Shell {
     }
 
     /// Detect shell from the SHELL environment variable.
+    #[must_use] 
     pub fn detect() -> Option<Shell> {
         let shell_var = std::env::var("SHELL").ok()?;
         if shell_var.contains("bash") {
@@ -95,12 +98,12 @@ pub fn install_completion_interactive(
 /// Write a completion file to the specified directory, creating the directory if needed.
 fn write_completion_file(comp_dir: &PathBuf, filename: &str, content: &str) -> PathBuf {
     if let Err(e) = fs::create_dir_all(comp_dir) {
-        crate::fatal_error(&format!("Error creating completion directory: {}", e));
+        crate::fatal_error(&format!("Error creating completion directory: {e}"));
     }
 
     let comp_file = comp_dir.join(filename);
     if let Err(e) = fs::write(&comp_file, content) {
-        crate::fatal_error(&format!("Error writing completion file: {}", e));
+        crate::fatal_error(&format!("Error writing completion file: {e}"));
     }
 
     comp_file
@@ -202,7 +205,7 @@ fn install_powershell_completion(home: &PathBuf) {
 
     // Create profile directory if it doesn't exist
     if let Err(e) = std::fs::create_dir_all(&profile_dir) {
-        eprintln!("✗ Failed to create profile directory: {}", e);
+        eprintln!("✗ Failed to create profile directory: {e}");
         return;
     }
 
@@ -234,15 +237,15 @@ fn install_powershell_completion(home: &PathBuf) {
             .open(&profile_path)
         {
             Ok(mut file) => {
-                if let Err(e) = writeln!(file, "\n# run command completion\n{}", source_line) {
-                    eprintln!("✗ Failed to write to profile: {}", e);
+                if let Err(e) = writeln!(file, "\n# run command completion\n{source_line}") {
+                    eprintln!("✗ Failed to write to profile: {e}");
                 } else {
                     println!("✓ Added completion to PowerShell profile");
                     println!("  Profile: {}", profile_path.display());
                 }
             }
             Err(e) => {
-                eprintln!("✗ Failed to open profile file: {}", e);
+                eprintln!("✗ Failed to open profile file: {e}");
             }
         }
     }

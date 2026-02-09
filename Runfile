@@ -180,3 +180,8 @@ run_tests(...args) {
     echo "Total failed:  ${failed:-0}"
     echo "Total ignored: ${ignored:-0}"
 }
+
+# @desc Runs clippy linter on the entire workspace, including all targets
+clippy() {
+    cargo clippy --workspace --all-targets 2>&1 || true
+}

@@ -252,7 +252,7 @@ impl Interpreter {
             return Ok(());
         }
 
-        Err(format!("Function '{}' not found", function_name).into())
+        Err(format!("Function '{function_name}' not found").into())
     }
 
     /// Call a function with explicit arguments (parentheses syntax)
@@ -301,7 +301,7 @@ impl Interpreter {
             return Ok(());
         }
 
-        Err(format!("Function '{}' not found", function_name).into())
+        Err(format!("Function '{function_name}' not found").into())
     }
 
     fn substitute_args(&self, template: &str, args: &[String]) -> String {
@@ -357,7 +357,7 @@ impl Interpreter {
 
         // Replace user-defined variables (e.g., $myvar)
         for (var_name, var_value) in &self.variables {
-            let placeholder = format!("${}", var_name);
+            let placeholder = format!("${var_name}");
             result = result.replace(&placeholder, var_value);
         }
 
@@ -690,7 +690,7 @@ impl Interpreter {
         if let Some(code) = output.exit_code {
             if code != 0 {
                 self.add_captured_output(output);
-                return Err(format!("Command failed with exit code: {}", code).into());
+                return Err(format!("Command failed with exit code: {code}").into());
             }
         }
 
@@ -747,7 +747,7 @@ impl Interpreter {
                 if let Some(code) = output.exit_code {
                     if code != 0 {
                         self.add_captured_output(output);
-                        return Err(format!("Command failed with exit code: {}", code).into());
+                        return Err(format!("Command failed with exit code: {code}").into());
                     }
                 }
 

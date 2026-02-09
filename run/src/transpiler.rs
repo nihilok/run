@@ -14,24 +14,21 @@ pub enum Interpreter {
 
 impl Interpreter {
     /// Check if this interpreter is compatible with another for function composition
+    #[must_use] 
     pub fn is_compatible_with(&self, other: &Interpreter) -> bool {
         matches!(
             (self, other),
-            (Interpreter::Sh, Interpreter::Sh)
-                | (Interpreter::Sh, Interpreter::Bash)
-                | (Interpreter::Bash, Interpreter::Sh)
-                | (Interpreter::Bash, Interpreter::Bash)
-                | (Interpreter::Pwsh, Interpreter::Pwsh)
-                | (Interpreter::Python, Interpreter::Python)
-                | (Interpreter::Python, Interpreter::Python3)  // Python and Python3 can compose
-                | (Interpreter::Python3, Interpreter::Python)  // Python3 and Python can compose
-                | (Interpreter::Python3, Interpreter::Python3)
-                | (Interpreter::Node, Interpreter::Node)
-                | (Interpreter::Ruby, Interpreter::Ruby)
+            (Interpreter::Sh | Interpreter::Bash, Interpreter::Sh | Interpreter::Bash) |
+(Interpreter::Pwsh, Interpreter::Pwsh) |
+(Interpreter::Python | Interpreter::Python3,
+Interpreter::Python | Interpreter::Python3) |
+(Interpreter::Node, Interpreter::Node) |
+(Interpreter::Ruby, Interpreter::Ruby)
         )
     }
 
-    /// Convert ShellType to Interpreter
+    /// Convert `ShellType` to Interpreter
+    #[must_use] 
     pub fn from_shell_type(shell_type: &ShellType) -> Self {
         match shell_type {
             ShellType::Sh => Interpreter::Sh,
@@ -45,6 +42,7 @@ impl Interpreter {
     }
 
     /// Get the default interpreter for the platform
+    #[must_use] 
     pub fn default() -> Self {
         if cfg!(target_os = "windows") {
             Interpreter::Pwsh
@@ -60,32 +58,35 @@ impl Interpreter {
 /// * `name` - Function name (may contain colons)
 /// * `body` - Function body (command template or block)
 /// * `is_block` - Whether this is a block function
+#[must_use] 
 pub fn transpile_to_shell(name: &str, body: &str, is_block: bool) -> String {
     let sanitised = sanitise_name(name);
 
     if is_block {
         // Block function - body already contains multiple lines
         let indented = indent(body, "    ");
-        format!("{}() {{\n{}\n}}", sanitised, indented)
+        format!("{sanitised}() {{\n{indented}\n}}")
     } else {
         // Simple function - single command
-        format!("{}() {{\n    {}\n}}", sanitised, body)
+        format!("{sanitised}() {{\n    {body}\n}}")
     }
 }
 
-/// Transpile a function to PowerShell syntax
+/// Transpile a function to `PowerShell` syntax
+#[must_use] 
 pub fn transpile_to_pwsh(name: &str, body: &str, is_block: bool) -> String {
     let sanitised = sanitise_name(name);
 
     if is_block {
         let indented = indent(body, "    ");
-        format!("function {} {{\n{}\n}}", sanitised, indented)
+        format!("function {sanitised} {{\n{indented}\n}}")
     } else {
-        format!("function {} {{\n    {}\n}}", sanitised, body)
+        format!("function {sanitised} {{\n    {body}\n}}")
     }
 }
 
 /// sanitise function name by replacing colons with double underscores
+#[must_use] 
 pub fn sanitise_name(name: &str) -> String {
     name.replace(':', "__")
 }
@@ -97,7 +98,7 @@ fn indent(text: &str, prefix: &str) -> String {
             if line.trim().is_empty() {
                 String::new()
             } else {
-                format!("{}{}", prefix, line)
+                format!("{prefix}{line}")
             }
         })
         .collect::<Vec<_>>()
@@ -108,6 +109,7 @@ fn indent(text: &str, prefix: &str) -> String {
 ///
 /// This replaces function names containing colons with their sanitised versions
 /// (colons replaced with double underscores). Only replaces whole-word matches.
+#[must_use] 
 pub fn rewrite_call_sites(body: &str, sibling_names: &[&str]) -> String {
     let mut result = body.to_string();
 
@@ -163,9 +165,8 @@ fn replace_word(text: &str, pattern: &str, replacement: &str) -> String {
                 || result
                     .chars()
                     .last()
-                    .map(|c| !is_word_char(c))
-                    .unwrap_or(true);
-            let after_ok = chars.peek().map(|&c| !is_word_char(c)).unwrap_or(true);
+                    .map_or(true, |c| !is_word_char(c));
+            let after_ok = chars.peek().map_or(true, |&c| !is_word_char(c));
 
             if before_ok && after_ok {
                 // Valid word boundary, replace

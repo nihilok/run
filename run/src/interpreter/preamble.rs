@@ -121,10 +121,10 @@ fn build_incompatible_wrappers(
 
         let wrapper = match target_interpreter {
             TranspilerInterpreter::Pwsh => {
-                format!("function {} {{\n    run {} @args\n}}", sanitised, run_args)
+                format!("function {sanitised} {{\n    run {run_args} @args\n}}")
             }
             _ => {
-                format!("{}() {{\n    run {} \"$@\"\n}}", sanitised, run_args)
+                format!("{sanitised}() {{\n    run {run_args} \"$@\"\n}}")
             }
         };
 

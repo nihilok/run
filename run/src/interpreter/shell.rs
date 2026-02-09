@@ -14,8 +14,8 @@ pub(super) fn get_python_executable() -> String {
     }
 }
 
-/// Map a TranspilerInterpreter to shell command and argument
-/// Returns (shell_command, shell_arg, interpreter_name)
+/// Map a `TranspilerInterpreter` to shell command and argument
+/// Returns (`shell_command`, `shell_arg`, `interpreter_name`)
 pub(super) fn interpreter_to_shell_args(
     interpreter: &TranspilerInterpreter,
 ) -> (String, &'static str, &'static str) {
@@ -42,7 +42,7 @@ pub(super) fn execute_with_capture(
 
 /// Execute a command and capture its output, with additional arguments
 /// Arguments are passed after the script for polyglot languages (Python, Node, Ruby)
-/// The display_command is used for output/logging instead of the full script (which may include preamble)
+/// The `display_command` is used for output/logging instead of the full script (which may include preamble)
 pub(super) fn execute_with_capture_and_args(
     command: &str,
     shell_cmd: &str,
@@ -70,11 +70,11 @@ pub(super) fn execute_with_capture_and_args(
     if crate::output_file::is_mcp_output_enabled() {
         match crate::output_file::process_output_for_mcp(&stdout, "stdout") {
             Ok(processed) => stdout = processed.display_output,
-            Err(e) => eprintln!("Warning: Failed to process stdout for MCP: {}", e),
+            Err(e) => eprintln!("Warning: Failed to process stdout for MCP: {e}"),
         }
         match crate::output_file::process_output_for_mcp(&stderr, "stderr") {
             Ok(processed) => stderr = processed.display_output,
-            Err(e) => eprintln!("Warning: Failed to process stderr for MCP: {}", e),
+            Err(e) => eprintln!("Warning: Failed to process stderr for MCP: {e}"),
         }
     }
 
@@ -104,7 +104,7 @@ pub(super) fn execute_single_shell_invocation(
         .status()?;
 
     if !status.success() {
-        return Err(format!("Command failed with status: {}", status).into());
+        return Err(format!("Command failed with status: {status}").into());
     }
 
     Ok(())
@@ -169,7 +169,7 @@ pub(super) fn execute_command_with_args(
         .status()?;
 
     if !status.success() {
-        eprintln!("Command failed with status: {}", status);
+        eprintln!("Command failed with status: {status}");
     }
 
     Ok(())
@@ -183,7 +183,7 @@ pub(super) fn execute_command(
     execute_command_with_args(command, attributes, &[])
 }
 
-/// Resolve interpreter from shebang to ShellType
+/// Resolve interpreter from shebang to `ShellType`
 pub(super) fn resolve_shebang_interpreter(shebang: &str) -> Option<ShellType> {
     // Extract the binary name from the shebang
     let binary_name = if let Some(env_part) = shebang.strip_prefix("/usr/bin/env ") {
@@ -254,7 +254,7 @@ pub(super) fn escape_shell_value(value: &str) -> String {
         .replace('!', "\\!") // History expansion
 }
 
-/// Escape a string value for safe use in PowerShell variable assignment
+/// Escape a string value for safe use in `PowerShell` variable assignment
 pub(super) fn escape_pwsh_value(value: &str) -> String {
     // PowerShell uses backtick for escaping
     value

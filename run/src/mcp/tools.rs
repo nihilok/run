@@ -41,6 +41,7 @@ pub struct InspectOutput {
 }
 
 /// Returns the built-in tools provided by the MCP server itself
+#[must_use] 
 pub fn get_builtin_tools() -> Vec<Tool> {
     let mut tools = Vec::new();
 
@@ -78,6 +79,7 @@ pub fn get_builtin_tools() -> Vec<Tool> {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -86,7 +88,10 @@ mod tests {
         let tools = get_builtin_tools();
         assert_eq!(tools.len(), 2);
 
-        let set_cwd = tools.iter().find(|t| t.name == TOOL_SET_CWD).unwrap();
+        let set_cwd = tools
+            .iter()
+            .find(|t| t.name == TOOL_SET_CWD)
+            .expect("set_cwd tool should exist");
         assert_eq!(
             set_cwd.description,
             "Set the current working directory. Call this before other tools to change their execution context."
@@ -96,7 +101,10 @@ mod tests {
         assert_eq!(set_cwd.input_schema.properties["path"].param_type, "string");
         assert_eq!(set_cwd.input_schema.required, vec!["path".to_string()]);
 
-        let get_cwd = tools.iter().find(|t| t.name == TOOL_GET_CWD).unwrap();
+        let get_cwd = tools
+            .iter()
+            .find(|t| t.name == TOOL_GET_CWD)
+            .expect("get_cwd tool should exist");
         assert_eq!(get_cwd.description, "Get the current working directory.");
         assert_eq!(get_cwd.input_schema.schema_type, "object");
         assert!(get_cwd.input_schema.properties.is_empty());
@@ -134,7 +142,7 @@ pub(super) fn extract_function_metadata(
 
     // If we have params, use them (takes precedence over @arg for type/default)
     if !params.is_empty() {
-        for param in params.iter() {
+        for param in params {
             let param_description = arg_descriptions
                 .get(&param.name)
                 .cloned()
@@ -219,7 +227,7 @@ pub fn inspect() -> Result<InspectOutput, String> {
     };
 
     let program =
-        parser::parse_script(&config_content).map_err(|e| format!("Parse error: {}", e))?;
+        parser::parse_script(&config_content).map_err(|e| format!("Parse error: {e}"))?;
 
     let mut tools = Vec::new();
     let mut seen_names = std::collections::HashSet::new();
@@ -234,12 +242,11 @@ pub fn inspect() -> Result<InspectOutput, String> {
                 attributes,
                 ..
             } => {
-                if utils::matches_current_platform(attributes) && !seen_names.contains(name) {
-                    if let Some(tool) = extract_function_metadata(name, attributes, params) {
+                if utils::matches_current_platform(attributes) && !seen_names.contains(name)
+                    && let Some(tool) = extract_function_metadata(name, attributes, params) {
                         tools.push(tool);
                         seen_names.insert(name.clone());
                     }
-                }
             }
             Statement::BlockFunctionDef {
                 name,
@@ -247,12 +254,11 @@ pub fn inspect() -> Result<InspectOutput, String> {
                 attributes,
                 ..
             } => {
-                if utils::matches_current_platform(attributes) && !seen_names.contains(name) {
-                    if let Some(tool) = extract_function_metadata(name, attributes, params) {
+                if utils::matches_current_platform(attributes) && !seen_names.contains(name)
+                    && let Some(tool) = extract_function_metadata(name, attributes, params) {
                         tools.push(tool);
                         seen_names.insert(name.clone());
                     }
-                }
             }
             _ => {}
         }
@@ -268,14 +274,14 @@ pub fn inspect() -> Result<InspectOutput, String> {
 pub fn print_inspect() {
     match inspect() {
         Ok(output) => match serde_json::to_string_pretty(&output) {
-            Ok(json) => println!("{}", json),
+            Ok(json) => println!("{json}"),
             Err(e) => {
-                eprintln!("Error serialising output: {}", e);
+                eprintln!("Error serialising output: {e}");
                 std::process::exit(1);
             }
         },
         Err(e) => {
-            eprintln!("Error: {}", e);
+            eprintln!("Error: {e}");
             std::process::exit(1);
         }
     }

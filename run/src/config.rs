@@ -21,6 +21,7 @@ pub fn set_custom_runfile_path(path: Option<PathBuf>) {
 }
 
 /// Get the custom runfile path if set
+#[must_use] 
 pub fn get_custom_runfile_path() -> Option<PathBuf> {
     CUSTOM_RUNFILE_PATH.with(|p| p.borrow().clone())
 }
@@ -64,7 +65,7 @@ pub fn ensure_mcp_output_dir() -> PathBuf {
                 .unwrap_or_else(std::env::temp_dir);
             let dir = if base_dir
                 .file_name()
-                .map_or(false, |name| name == ".run-output")
+                .is_some_and(|name| name == ".run-output")
             {
                 base_dir
             } else {
@@ -72,7 +73,11 @@ pub fn ensure_mcp_output_dir() -> PathBuf {
             };
             *p.borrow_mut() = Some(dir);
         }
-        p.borrow().clone().unwrap()
+        // SAFETY: We just initialized the value above if it was None
+        match p.borrow().clone() {
+            Some(dir) => dir,
+            None => unreachable!("MCP output directory was just initialized"),
+        }
     })
 }
 
@@ -89,6 +94,7 @@ pub fn get_mcp_output_dir() -> PathBuf {
 }
 
 /// Get the user's home directory in a cross-platform way.
+#[must_use] 
 pub fn get_home_dir() -> Option<PathBuf> {
     // Try HOME first (Unix-like systems)
     if let Some(home) = std::env::var_os("HOME") {
@@ -115,6 +121,7 @@ pub fn get_home_dir() -> Option<PathBuf> {
 /// Load a Runfile from a specific path (file or directory)
 /// If path is a directory, looks for Runfile inside it
 /// Returns Some(content) if found, None otherwise
+#[must_use] 
 pub fn load_from_path(path: &Path) -> Option<String> {
     let runfile_path = if path.is_dir() {
         path.join("Runfile")
@@ -131,6 +138,7 @@ pub fn load_from_path(path: &Path) -> Option<String> {
 
 /// Search for a Runfile in the current directory or upwards, then fallback to ~/.runfile.
 /// Returns Some(content) if a file is found (even if empty), or None if no file exists.
+#[must_use] 
 pub fn load_config() -> Option<String> {
     // First, check if a custom runfile path is set
     if let Some(custom_path) = get_custom_runfile_path() {
@@ -162,10 +170,10 @@ pub fn load_config() -> Option<String> {
         // Check if we've reached the home directory or root
         let reached_boundary = if let Some(ref home) = home_dir {
             current_dir == *home
-                || current_dir == PathBuf::from("/")
-                || current_dir == PathBuf::from("\\")
+                || *current_dir == *"/"
+                || *current_dir == *"\\"
         } else {
-            current_dir == PathBuf::from("/") || current_dir == PathBuf::from("\\")
+            *current_dir == *"/" || *current_dir == *"\\"
         };
 
         if reached_boundary {
@@ -185,6 +193,7 @@ pub fn load_config() -> Option<String> {
 
 /// Load ~/.runfile from the user's home directory.
 /// Returns Some(content) if found, or None otherwise.
+#[must_use] 
 pub fn load_home_runfile() -> Option<String> {
     if let Some(home) = get_home_dir() {
         let runfile_path = home.join(".runfile");
@@ -202,13 +211,15 @@ pub const NO_RUNFILE_ERROR: &str =
     "Error: No Runfile found. Create ~/.runfile or ./Runfile to define functions.";
 
 /// Load config or exit with an error message.
+#[must_use] 
 pub fn load_config_or_exit() -> String {
     load_config().unwrap_or_else(|| crate::fatal_error(NO_RUNFILE_ERROR))
 }
 
 /// Find the path to the Runfile without loading its contents.
-/// Uses the same search logic as load_config().
+/// Uses the same search logic as `load_config()`.
 /// Returns Some(path) if found, None otherwise.
+#[must_use] 
 pub fn find_runfile_path() -> Option<PathBuf> {
     // First, check if a custom runfile path is set
     if let Some(custom_path) = get_custom_runfile_path() {
@@ -245,10 +256,10 @@ pub fn find_runfile_path() -> Option<PathBuf> {
         // Check if we've reached the home directory or root
         let reached_boundary = if let Some(ref home) = home_dir {
             current_dir == *home
-                || current_dir == PathBuf::from("/")
-                || current_dir == PathBuf::from("\\")
+                || *current_dir == *"/"
+                || *current_dir == *"\\"
         } else {
-            current_dir == PathBuf::from("/") || current_dir == PathBuf::from("\\")
+            *current_dir == *"/" || *current_dir == *"\\"
         };
 
         if reached_boundary {
@@ -279,6 +290,7 @@ fn find_home_runfile_path() -> Option<PathBuf> {
 
 /// Find the project Runfile path (searching upward from cwd).
 /// Returns None if no project Runfile is found (will not return ~/.runfile).
+#[must_use] 
 pub fn find_project_runfile_path() -> Option<PathBuf> {
     // First, check if a custom runfile path is set
     if let Some(custom_path) = get_custom_runfile_path() {
@@ -312,10 +324,10 @@ pub fn find_project_runfile_path() -> Option<PathBuf> {
         // Check if we've reached the home directory or root
         let reached_boundary = if let Some(ref home) = home_dir {
             current_dir == *home
-                || current_dir == PathBuf::from("/")
-                || current_dir == PathBuf::from("\\")
+                || *current_dir == *"/"
+                || *current_dir == *"\\"
         } else {
-            current_dir == PathBuf::from("/") || current_dir == PathBuf::from("\\")
+            *current_dir == *"/" || *current_dir == *"\\"
         };
 
         if reached_boundary {
@@ -338,10 +350,11 @@ pub fn find_project_runfile_path() -> Option<PathBuf> {
 ///
 /// Special cases:
 /// 1. If a custom runfile is set via --runfile flag, ONLY that file is used (no merging).
-/// 2. If RUN_NO_GLOBAL_MERGE env var is set, global runfile is not merged (for tests).
+/// 2. If `RUN_NO_GLOBAL_MERGE` env var is set, global runfile is not merged (for tests).
 ///
 /// The merge strategy is simple: concatenate global content first, then project content.
 /// When parsed, later function definitions naturally override earlier ones in the interpreter.
+#[must_use] 
 pub fn load_merged_config() -> Option<(String, MergeMetadata)> {
     // If a custom runfile is explicitly specified, use ONLY that file (don't merge)
     if let Some(custom_path) = get_custom_runfile_path() {
@@ -394,7 +407,7 @@ pub fn load_merged_config() -> Option<(String, MergeMetadata)> {
         (Some(global), Some(project)) => {
             // Concatenate with global first, project second
             // Add a newline separator to ensure proper parsing
-            let merged = format!("{}\n{}", global, project);
+            let merged = format!("{global}\n{project}");
             Some((
                 merged,
                 MergeMetadata {

@@ -17,7 +17,7 @@ pub(super) fn resolve_tool_name(sanitised_name: &str) -> Result<String, JsonRpcE
 
     let program = parser::parse_script(&config_content).map_err(|e| JsonRpcError {
         code: -32603,
-        message: format!("Parse error: {}", e),
+        message: format!("Parse error: {e}"),
         data: None,
     })?;
 
@@ -48,7 +48,7 @@ pub(super) fn resolve_tool_name(sanitised_name: &str) -> Result<String, JsonRpcE
 
     matching_name.ok_or_else(|| JsonRpcError {
         code: -32602,
-        message: format!("Tool not found: {}", sanitised_name),
+        message: format!("Tool not found: {sanitised_name}"),
         data: None,
     })
 }
@@ -68,7 +68,7 @@ pub(super) fn map_arguments_to_positional(
 
     let program = parser::parse_script(&config_content).map_err(|e| JsonRpcError {
         code: -32603,
-        message: format!("Parse error: {}", e),
+        message: format!("Parse error: {e}"),
         data: None,
     })?;
 
@@ -143,15 +143,15 @@ pub(super) fn map_arguments_to_positional(
 
     // Check for rest parameter — expand JSON array directly
     let rest_param = params_vec.iter().find(|p| p.is_rest);
-    if let Some(rest) = rest_param {
-        if let Some(args_obj) = json_args.as_object() {
-            if let Some(serde_json::Value::Array(arr)) = args_obj.get(&rest.name) {
+    if let Some(rest) = rest_param
+        && let Some(args_obj) = json_args.as_object()
+            && let Some(serde_json::Value::Array(arr)) = args_obj.get(&rest.name) {
                 let mut positional_args = Vec::new();
                 // First add any non-rest positional args
                 let max_position = *arg_mapping.keys().max().unwrap_or(&0);
                 if max_position > 0 {
                     positional_args.resize(max_position, String::new());
-                    for (position, param_name) in arg_mapping.iter() {
+                    for (position, param_name) in &arg_mapping {
                         if let Some(value) = args_obj.get(param_name) {
                             let arg_str = value_to_string(value);
                             if *position > 0 && *position <= positional_args.len() {
@@ -166,8 +166,6 @@ pub(super) fn map_arguments_to_positional(
                 }
                 return Ok(positional_args);
             }
-        }
-    }
 
     // If still no mapping found, return empty arguments
     if arg_mapping.is_empty() {
@@ -185,7 +183,7 @@ pub(super) fn map_arguments_to_positional(
     let max_position = *arg_mapping.keys().max().unwrap_or(&0);
     let mut positional_args = vec![String::new(); max_position];
 
-    for (position, param_name) in arg_mapping.iter() {
+    for (position, param_name) in &arg_mapping {
         if let Some(value) = args_obj.get(param_name) {
             let arg_str = value_to_string(value);
 

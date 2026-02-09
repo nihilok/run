@@ -20,7 +20,7 @@ pub fn run_repl() {
             "sh".to_string()
         }
     });
-    println!("Run Shell {} ({})", PKG_VERSION, run_shell);
+    println!("Run Shell {PKG_VERSION} ({run_shell})");
     println!("Type 'exit' or press Ctrl+D to quit\n");
 
     let mut interpreter = interpreter::Interpreter::new();
@@ -30,11 +30,11 @@ pub fn run_repl() {
         match parser::parse_script(&config_content) {
             Ok(program) => {
                 if let Err(e) = interpreter.execute(program) {
-                    eprintln!("Warning: Error loading Runfile functions: {}", e);
+                    eprintln!("Warning: Error loading Runfile functions: {e}");
                 }
             }
             Err(e) => {
-                eprintln!("Warning: Error parsing Runfile: {}", e);
+                eprintln!("Warning: Error parsing Runfile: {e}");
             }
         }
     }
@@ -46,7 +46,7 @@ pub fn run_repl() {
         // Print prompt
         print!("> ");
         if let Err(e) = stdout.flush() {
-            eprintln!("Error flushing stdout: {}", e);
+            eprintln!("Error flushing stdout: {e}");
             break;
         }
 
@@ -76,7 +76,7 @@ pub fn run_repl() {
                 match parser::parse_script(input) {
                     Ok(program) => {
                         if let Err(e) = interpreter.execute(program) {
-                            eprintln!("Error: {}", e);
+                            eprintln!("Error: {e}");
                         }
                     }
                     Err(e) => {
@@ -85,7 +85,7 @@ pub fn run_repl() {
                 }
             }
             Err(e) => {
-                eprintln!("Error reading input: {}", e);
+                eprintln!("Error reading input: {e}");
                 break;
             }
         }

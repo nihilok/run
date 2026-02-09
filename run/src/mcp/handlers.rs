@@ -58,7 +58,7 @@ pub(super) fn handle_tools_list(
 
             let value = serde_json::to_value(output).map_err(|e| JsonRpcError {
                 code: -32603,
-                message: format!("Failed to serialise tools: {}", e),
+                message: format!("Failed to serialise tools: {e}"),
                 data: None,
             })?;
 
@@ -66,7 +66,7 @@ pub(super) fn handle_tools_list(
         }
         Err(e) => Err(JsonRpcError {
             code: -32603,
-            message: format!("Internal error: {}", e),
+            message: format!("Internal error: {e}"),
             data: None,
         }),
     }
@@ -107,7 +107,7 @@ pub(super) fn handle_tools_call(
 
         std::env::set_current_dir(path).map_err(|e| JsonRpcError {
             code: -32603,
-            message: format!("Failed to set CWD: {}", e),
+            message: format!("Failed to set CWD: {e}"),
             data: None,
         })?;
 
@@ -121,7 +121,7 @@ pub(super) fn handle_tools_call(
     } else if tool_name == super::tools::TOOL_GET_CWD {
         let cwd = std::env::current_dir().map_err(|e| JsonRpcError {
             code: -32603,
-            message: format!("Failed to get CWD: {}", e),
+            message: format!("Failed to get CWD: {e}"),
             data: None,
         })?;
 
@@ -153,7 +153,7 @@ pub(super) fn handle_tools_call(
         .and_then(|p| p.canonicalize())
         .map_err(|e| JsonRpcError {
             code: -32603,
-            message: format!("Failed to get binary path: {}", e),
+            message: format!("Failed to get binary path: {e}"),
             data: None,
         })?;
 
@@ -184,7 +184,7 @@ pub(super) fn handle_tools_call(
 
     let output = cmd.output().map_err(|e| JsonRpcError {
         code: -32603,
-        message: format!("Failed to execute tool: {}", e),
+        message: format!("Failed to execute tool: {e}"),
         data: None,
     })?;
 
@@ -215,6 +215,7 @@ pub(super) fn handle_tools_call(
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::expect_err_used)]
 mod tests {
     use super::*;
     use serde_json::json;
@@ -225,47 +226,59 @@ mod tests {
     #[test]
     #[serial]
     fn test_handle_get_cwd() {
-        let original_cwd = env::current_dir().unwrap();
+        let original_cwd = env::current_dir().expect("Failed to get current directory");
 
         let params = json!({
             "name": "get_cwd",
             "arguments": {}
         });
 
-        let result = handle_tools_call(Some(params)).unwrap();
-        let content = result.get("content").unwrap().as_array().unwrap();
-        let text = content[0].get("text").unwrap().as_str().unwrap();
+        let result = handle_tools_call(Some(params)).expect("handle_tools_call should succeed");
+        let content = result
+            .get("content")
+            .expect("Result should have content")
+            .as_array()
+            .expect("Content should be an array");
+        let text = content[0]
+            .get("text")
+            .expect("Content item should have text")
+            .as_str()
+            .expect("Text should be a string");
 
-        let cwd = env::current_dir().unwrap();
+        let cwd = env::current_dir().expect("Failed to get current directory");
         assert_eq!(text, cwd.display().to_string());
 
         // Restore original CWD in case other tests changed it
-        env::set_current_dir(original_cwd).unwrap();
+        env::set_current_dir(original_cwd).expect("Failed to restore CWD");
     }
 
     #[test]
     #[serial]
     fn test_handle_set_cwd() {
-        let temp = tempdir().unwrap();
-        let temp_path = temp.path().canonicalize().unwrap();
-        let original_cwd = env::current_dir().unwrap();
+        let temp = tempdir().expect("Failed to create temp dir");
+        let temp_path = temp.path().canonicalize().expect("Failed to canonicalize");
+        let original_cwd = env::current_dir().expect("Failed to get current directory");
 
         let params = json!({
             "name": "set_cwd",
             "arguments": {
-                "path": temp_path.to_str().unwrap()
+                "path": temp_path.to_str().expect("Path should be valid UTF-8")
             }
         });
 
-        let result = handle_tools_call(Some(params)).unwrap();
-        let is_error = result.get("isError").unwrap().as_bool().unwrap();
+        let result = handle_tools_call(Some(params)).expect("handle_tools_call should succeed");
+        let is_error = result
+            .get("isError")
+            .expect("Result should have isError")
+            .as_bool()
+            .expect("isError should be bool");
         assert!(!is_error);
 
-        let new_cwd = env::current_dir().unwrap();
+        let new_cwd = env::current_dir().expect("Failed to get current directory");
         assert_eq!(new_cwd, temp_path);
 
         // Restore original CWD
-        env::set_current_dir(original_cwd).unwrap();
+        env::set_current_dir(original_cwd).expect("Failed to restore CWD");
     }
 
     #[test]
@@ -277,7 +290,7 @@ mod tests {
 
         let result = handle_tools_call(Some(params));
         assert!(result.is_err());
-        let err = result.unwrap_err();
+        let err = result.expect_err("Should return an error");
         assert_eq!(err.message, "Missing 'path' argument");
     }
 
@@ -292,7 +305,7 @@ mod tests {
 
         let result = handle_tools_call(Some(params));
         assert!(result.is_err());
-        let err = result.unwrap_err();
+        let err = result.expect_err("Should return an error");
         assert!(err.message.contains("Failed to set CWD"));
     }
 
@@ -304,10 +317,19 @@ mod tests {
         let result = handle_tools_list(None);
 
         if let Ok(value) = result {
-            let tools = value.get("tools").unwrap().as_array().unwrap();
+            let tools = value
+                .get("tools")
+                .expect("Result should have tools")
+                .as_array()
+                .expect("Tools should be an array");
             let tool_names: Vec<&str> = tools
                 .iter()
-                .map(|t| t.get("name").unwrap().as_str().unwrap())
+                .map(|t| {
+                    t.get("name")
+                        .expect("Tool should have name")
+                        .as_str()
+                        .expect("Name should be string")
+                })
                 .collect();
 
             assert!(tool_names.contains(&"set_cwd"));

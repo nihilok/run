@@ -57,8 +57,7 @@ pub fn process_output_for_mcp(
 
     // Include stream label and sequence to avoid collisions between streams and rapid successive commands
     let file_path = output_dir.join(format!(
-        "run-output-{}-{}-{}.txt",
-        timestamp, stream_label, sequence
+        "run-output-{timestamp}-{stream_label}-{sequence}.txt"
     ));
 
     // Write full output to file
@@ -91,18 +90,21 @@ pub fn process_output_for_mcp(
 }
 
 /// Check if MCP output directory is configured (indicating MCP mode)
+#[must_use] 
 pub fn is_mcp_output_enabled() -> bool {
     crate::config::is_mcp_output_configured()
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_short_output_unchanged() {
         let output = "line1\nline2\nline3";
-        let result = process_output_for_mcp(output, "stdout").unwrap();
+        let result =
+            process_output_for_mcp(output, "stdout").expect("Processing should succeed");
 
         assert_eq!(result.display_output, output);
         assert_eq!(result.total_lines, 3);
@@ -112,10 +114,11 @@ mod tests {
     #[test]
     fn test_exactly_threshold_lines_unchanged() {
         let output = (1..=OUTPUT_TRUNCATE_LINES)
-            .map(|i| format!("line{}", i))
+            .map(|i| format!("line{i}"))
             .collect::<Vec<_>>()
             .join("\n");
-        let result = process_output_for_mcp(&output, "stdout").unwrap();
+        let result =
+            process_output_for_mcp(&output, "stdout").expect("Processing should succeed");
 
         assert_eq!(result.display_output, output);
         assert_eq!(result.total_lines, OUTPUT_TRUNCATE_LINES);
@@ -125,11 +128,12 @@ mod tests {
     #[test]
     fn test_long_output_truncated() {
         let lines: Vec<String> = (1..=OUTPUT_TRUNCATE_LINES + 5)
-            .map(|i| format!("line{}", i))
+            .map(|i| format!("line{i}"))
             .collect();
         let output = lines.join("\n");
 
-        let result = process_output_for_mcp(&output, "stdout").unwrap();
+        let result =
+            process_output_for_mcp(&output, "stdout").expect("Processing should succeed");
 
         assert_eq!(result.total_lines, OUTPUT_TRUNCATE_LINES + 5);
         assert!(result.file_path.is_some());
@@ -137,16 +141,18 @@ mod tests {
             "Output truncated: {} total lines",
             OUTPUT_TRUNCATE_LINES + 5
         )));
-        assert!(
-            result
-                .display_output
-                .contains(&format!("showing last {}", OUTPUT_TRUNCATE_LINES))
-        );
+        assert!(result
+            .display_output
+            .contains(&format!("showing last {OUTPUT_TRUNCATE_LINES}")));
 
         // Check that the tail contains the last OUTPUT_TRUNCATE_LINES lines
-        let tail_part = result.display_output.split("\n\n").last().unwrap();
+        let tail_part = result
+            .display_output
+            .split("\n\n")
+            .last()
+            .expect("Should have tail part");
         let first_tail_line = OUTPUT_TRUNCATE_LINES + 5 - OUTPUT_TRUNCATE_LINES + 1;
-        assert!(tail_part.contains(&format!("line{}", first_tail_line))); // First line of tail
+        assert!(tail_part.contains(&format!("line{first_tail_line}"))); // First line of tail
         assert!(tail_part.contains(&format!("line{}", OUTPUT_TRUNCATE_LINES + 5))); // Last line of tail
 
         // Ensure early lines are not in the actual output tail

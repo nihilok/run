@@ -22,8 +22,7 @@ pub(super) fn parse_block_content(block_str: &str) -> String {
     let end = all_lines
         .iter()
         .rposition(|l| !l.trim().is_empty())
-        .map(|i| i + 1)
-        .unwrap_or(all_lines.len());
+        .map_or(all_lines.len(), |i| i + 1);
     let lines: Vec<&str> = if start < end {
         all_lines[start..end].to_vec()
     } else {

@@ -115,7 +115,7 @@ pub fn serve_mcp() {
         let line = match line {
             Ok(l) => l,
             Err(e) => {
-                eprintln!("Error reading stdin: {}", e);
+                eprintln!("Error reading stdin: {e}");
                 continue;
             }
         };
@@ -129,20 +129,20 @@ pub fn serve_mcp() {
         let request: JsonRpcRequest = match serde_json::from_str(&line) {
             Ok(req) => req,
             Err(e) => {
-                eprintln!("Error parsing JSON-RPC request: {}", e);
+                eprintln!("Error parsing JSON-RPC request: {e}");
                 let error_response = JsonRpcResponse {
                     jsonrpc: "2.0".to_string(),
                     id: None,
                     result: None,
                     error: Some(JsonRpcError {
                         code: -32700,
-                        message: format!("Parse error: {}", e),
+                        message: format!("Parse error: {e}"),
                         data: None,
                     }),
                 };
 
                 if let Ok(json) = serde_json::to_string(&error_response) {
-                    let _ = writeln!(stdout, "{}", json);
+                    let _ = writeln!(stdout, "{json}");
                     let _ = stdout.flush();
                 }
                 continue;
@@ -153,12 +153,11 @@ pub fn serve_mcp() {
         let response = process_request(request);
 
         // Only send response if one was returned (not a notification)
-        if let Some(response) = response {
-            if let Ok(json) = serde_json::to_string(&response) {
-                let _ = writeln!(stdout, "{}", json);
+        if let Some(response) = response
+            && let Ok(json) = serde_json::to_string(&response) {
+                let _ = writeln!(stdout, "{json}");
                 let _ = stdout.flush();
             }
-        }
     }
 }
 

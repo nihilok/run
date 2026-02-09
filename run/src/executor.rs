@@ -32,7 +32,7 @@ fn get_line(source: &str, line_num: usize) -> Option<String> {
     source
         .lines()
         .nth(line_num.saturating_sub(1))
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
 }
 
 /// Print a parse error with context from the source code.
@@ -41,7 +41,7 @@ pub fn print_parse_error(error: &dyn std::error::Error, source: &str, filename: 
 
     // Try to extract line information from pest error
     if let Some(line_info) = extract_line_from_error(&error_str) {
-        let file_prefix = filename.map(|f| format!("{}:", f)).unwrap_or_default();
+        let file_prefix = filename.map(|f| format!("{f}:")).unwrap_or_default();
         eprintln!(
             "Parse error in {}line {}: {}",
             file_prefix, line_info.line, line_info.message
@@ -58,7 +58,7 @@ pub fn print_parse_error(error: &dyn std::error::Error, source: &str, filename: 
             );
         }
     } else {
-        eprintln!("Parse error: {}", error_str);
+        eprintln!("Parse error: {error_str}");
     }
 }
 
@@ -80,7 +80,7 @@ pub fn execute_script(script: &str, filename: Option<String>) {
     // Execute the program
     let mut interpreter = interpreter::Interpreter::new();
     if let Err(e) = interpreter.execute(program) {
-        eprintln!("Execution error: {}", e);
+        eprintln!("Execution error: {e}");
         std::process::exit(1);
     }
 }
@@ -106,12 +106,9 @@ pub fn execute_file(path: &PathBuf) {
 /// * `output_format` - How to format the output.
 pub fn run_function_call(function_name: &str, args: &[String], output_format: OutputFormatArg) {
     // Load and merge config files from both ~/.runfile and ./Runfile
-    let config_content = match config::load_merged_config() {
-        Some((content, _metadata)) => content,
-        None => {
-            eprintln!("{}", config::NO_RUNFILE_ERROR);
-            std::process::exit(1);
-        }
+    let config_content = if let Some((content, _metadata)) = config::load_merged_config() { content } else {
+        eprintln!("{}", config::NO_RUNFILE_ERROR);
+        std::process::exit(1);
     };
 
     // Parse the config to load function definitions
@@ -122,7 +119,7 @@ pub fn run_function_call(function_name: &str, args: &[String], output_format: Ou
         Ok(program) => {
             // Execute to load function definitions
             if let Err(e) = interpreter.execute(program) {
-                eprintln!("Error loading functions: {}", e);
+                eprintln!("Error loading functions: {e}");
                 std::process::exit(1);
             }
         }
@@ -136,7 +133,7 @@ pub fn run_function_call(function_name: &str, args: &[String], output_format: Ou
     // For nested commands, try different combinations:
     // e.g., "docker shell app" -> try "docker:shell" with arg "app"
     if let Err(e) = interpreter.call_function_without_parens(function_name, args) {
-        eprintln!("Error: {}", e);
+        eprintln!("Error: {e}");
         std::process::exit(1);
     }
 
@@ -153,7 +150,7 @@ pub fn run_function_call(function_name: &str, args: &[String], output_format: Ou
             );
 
             if let Some(formatted) = output_format.format_result(&result) {
-                println!("{}", formatted);
+                println!("{formatted}");
             }
         }
     }
@@ -169,7 +166,11 @@ pub fn list_functions() {
         std::process::exit(1);
     }
 
-    let (merged_content, metadata) = merge_result.unwrap();
+    // SAFETY: We just checked that merge_result is Some above
+    let (merged_content, metadata) = match merge_result {
+        Some(result) => result,
+        None => unreachable!("merge_result is Some after is_none check"),
+    };
 
     // If we have both files, parse them separately to show sources
     // (unless RUN_NO_GLOBAL_MERGE is set, in which case we already have only one file)
@@ -182,7 +183,7 @@ pub fn list_functions() {
             Ok(program) => {
                 let mut interpreter = interpreter::Interpreter::new();
                 if let Err(e) = interpreter.execute(program) {
-                    eprintln!("Error loading functions: {}", e);
+                    eprintln!("Error loading functions: {e}");
                     std::process::exit(1);
                 }
 
@@ -201,14 +202,14 @@ pub fn list_functions() {
                     } else {
                         "./Runfile".to_string()
                     };
-                    println!("Available functions from {}:", source_label);
+                    println!("Available functions from {source_label}:");
                     for func in functions {
-                        println!("  {}", func);
+                        println!("  {func}");
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Error parsing Runfile: {}", e);
+                eprintln!("Error parsing Runfile: {e}");
                 std::process::exit(1);
             }
         }
@@ -225,13 +226,13 @@ fn list_functions_with_sources() {
             Ok(program) => {
                 let mut interp = interpreter::Interpreter::new();
                 if let Err(e) = interp.execute(program) {
-                    eprintln!("Error loading global functions: {}", e);
+                    eprintln!("Error loading global functions: {e}");
                     std::process::exit(1);
                 }
                 interp.list_available_functions()
             }
             Err(e) => {
-                eprintln!("Error parsing ~/.runfile: {}", e);
+                eprintln!("Error parsing ~/.runfile: {e}");
                 std::process::exit(1);
             }
         }
@@ -246,13 +247,13 @@ fn list_functions_with_sources() {
                 Ok(program) => {
                     let mut interp = interpreter::Interpreter::new();
                     if let Err(e) = interp.execute(program) {
-                        eprintln!("Error loading project functions: {}", e);
+                        eprintln!("Error loading project functions: {e}");
                         std::process::exit(1);
                     }
                     interp.list_available_functions()
                 }
                 Err(e) => {
-                    eprintln!("Error parsing project Runfile: {}", e);
+                    eprintln!("Error parsing project Runfile: {e}");
                     std::process::exit(1);
                 }
             }
@@ -285,9 +286,9 @@ fn list_functions_with_sources() {
         for func in &project_functions {
             // Check if this overrides a global function
             if global_functions.contains(func) {
-                println!("    {} (overrides global)", func);
+                println!("    {func} (overrides global)");
             } else {
-                println!("    {}", func);
+                println!("    {func}");
             }
         }
     }
@@ -295,7 +296,7 @@ fn list_functions_with_sources() {
     if !global_only.is_empty() {
         println!("\n  From ~/.runfile:");
         for func in &global_only {
-            println!("    {}", func);
+            println!("    {func}");
         }
     }
 }

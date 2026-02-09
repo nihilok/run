@@ -87,6 +87,7 @@ pub struct StructuredResult {
 
 impl StructuredResult {
     /// Create from a collection of command outputs
+    #[must_use] 
     pub fn from_outputs(
         function_name: &str,
         outputs: Vec<CommandOutput>,
@@ -102,15 +103,14 @@ impl StructuredResult {
                 outputs.len()
             )
         } else {
-            format!("Execution of {} failed", function_name)
+            format!("Execution of {function_name} failed")
         };
 
         // Try to extract SSH context from any of the commands
         let (remote_user, remote_host) = outputs
             .iter()
             .find_map(|o| ExecutionContext::extract_ssh_context(&o.command))
-            .map(|(user, host)| (Some(user), Some(host)))
-            .unwrap_or((None, None));
+            .map_or((None, None), |(user, host)| (Some(user), Some(host)));
 
         Self {
             context: ExecutionContext {
@@ -130,11 +130,13 @@ impl StructuredResult {
     }
 
     /// Format as JSON for programmatic consumption
+    #[must_use] 
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).unwrap_or_default()
     }
 
     /// Format as Markdown for LLM readability
+    #[must_use] 
     pub fn to_markdown(&self) -> String {
         let mut md = String::new();
 
@@ -179,11 +181,10 @@ impl StructuredResult {
                 md.push_str("```\n\n");
             }
 
-            if let Some(code) = output.exit_code {
-                if code != 0 {
-                    md.push_str(&format!("**Exit Code:** {}\n\n", code));
+            if let Some(code) = output.exit_code
+                && code != 0 {
+                    md.push_str(&format!("**Exit Code:** {code}\n\n"));
                 }
-            }
         }
 
         md
@@ -192,6 +193,7 @@ impl StructuredResult {
     /// Format optimized for MCP tool response (clean markdown, no implementation details)
     /// This intentionally hides the command source code to protect sensitive information
     /// like database connection strings, API keys, etc.
+    #[must_use] 
     pub fn to_mcp_format(&self) -> String {
         let mut md = String::new();
 
@@ -256,15 +258,12 @@ impl StructuredResult {
         }
 
         // Show exit code if failed
-        if !self.success {
-            if let Some(output) = self.outputs.last() {
-                if let Some(code) = output.exit_code {
-                    if code != 0 {
-                        md.push_str(&format!("**Exit Code:** {}\n", code));
+        if !self.success
+            && let Some(output) = self.outputs.last()
+                && let Some(code) = output.exit_code
+                    && code != 0 {
+                        md.push_str(&format!("**Exit Code:** {code}\n"));
                     }
-                }
-            }
-        }
 
         md
     }
@@ -282,8 +281,11 @@ impl ExecutionContext {
         //   ssh -T -o LogLevel=QUIET user@host
         // The regex looks for "ssh" followed by optional flags, then user@host
         let regex = SSH_REGEX.get_or_init(|| {
-            Regex::new(r"ssh\s+(?:-\S+\s+(?:\S+\s+)?)*(\w+)@([\w.-]+)")
-                .expect("SSH regex pattern is valid")
+            // This regex pattern is hardcoded and known to be valid
+            match Regex::new(r"ssh\s+(?:-\S+\s+(?:\S+\s+)?)*(\w+)@([\w.-]+)") {
+                Ok(r) => r,
+                Err(_) => unreachable!("SSH regex pattern is hardcoded and valid"),
+            }
         });
         let caps = regex.captures(command)?;
 
@@ -379,6 +381,7 @@ pub enum ShellType {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -386,7 +389,7 @@ mod tests {
     fn test_extract_ssh_context_basic() {
         let result = ExecutionContext::extract_ssh_context("ssh admin@webserver.example.com");
         assert!(result.is_some(), "Failed to match basic SSH command");
-        let (user, host) = result.unwrap();
+        let (user, host) = result.expect("Expected SSH context to be extracted");
         assert_eq!(user, "admin");
         assert_eq!(host, "webserver.example.com");
     }
@@ -396,7 +399,7 @@ mod tests {
         let result =
             ExecutionContext::extract_ssh_context("ssh -i ~/.ssh/key.pem ubuntu@192.168.1.1");
         assert!(result.is_some(), "Failed to match SSH with -i flag");
-        let (user, host) = result.unwrap();
+        let (user, host) = result.expect("Expected SSH context to be extracted");
         assert_eq!(user, "ubuntu");
         assert_eq!(host, "192.168.1.1");
     }
@@ -409,7 +412,7 @@ mod tests {
             result.is_some(),
             "Failed to match SSH with multiple options"
         );
-        let (user, host) = result.unwrap();
+        let (user, host) = result.expect("Expected SSH context to be extracted");
         assert_eq!(user, "root");
         assert_eq!(host, "server.local");
     }
