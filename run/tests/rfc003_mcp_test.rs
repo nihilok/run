@@ -20,16 +20,14 @@ fn get_binary_path() -> PathBuf {
 
     if !path.exists() {
         let build_output = Command::new("cargo")
-            .args(&["build", "--bin", "run"])
+            .args(["build", "--bin", "run"])
             .output()
             .expect("Failed to build binary");
 
-        if !build_output.status.success() {
-            panic!(
-                "Failed to build run binary: {}",
-                String::from_utf8_lossy(&build_output.stderr)
-            );
-        }
+        assert!(build_output.status.success(), 
+            "Failed to build run binary: {}",
+            String::from_utf8_lossy(&build_output.stderr)
+        );
     }
 
     path
@@ -63,10 +61,10 @@ fn test_parse_desc_attribute() {
 
     create_runfile(
         temp_dir.path(),
-        r#"
+        r"
 # @desc Restarts the docker containers and tails the logs
 restart() docker compose restart
-"#,
+",
     );
 
     // List functions to ensure it still works with @desc
@@ -88,12 +86,12 @@ fn test_parse_arg_attribute() {
 
     create_runfile(
         temp_dir.path(),
-        r#"
+        r"
 # @desc Scale a specific service
 # @arg 1:service string The name of the docker service
 # @arg 2:replicas integer The number of instances to spin up
 scale() docker compose scale $1=$2
-"#,
+",
     );
 
     // List functions to ensure it still works with @arg
@@ -170,12 +168,12 @@ fn test_inspect_output_json_structure() {
 
     create_runfile(
         temp_dir.path(),
-        r#"
+        r"
 # @desc Scale a specific service
 # @arg 1:service string The name of the docker service
 # @arg 2:replicas integer The number of instances to spin up
 scale() docker compose scale $1=$2
-"#,
+",
     );
 
     let output = test_command(&binary)
@@ -438,8 +436,7 @@ test() echo "test"
     // Should contain a JSON-RPC response
     assert!(
         stdout.contains("\"jsonrpc\":\"2.0\"") || stdout.contains("\"jsonrpc\": \"2.0\""),
-        "Expected JSON-RPC response, got: {}",
-        stdout
+        "Expected JSON-RPC response, got: {stdout}"
     );
 }
 
@@ -503,8 +500,7 @@ scale() echo "Scaling $1"
     // Should contain tools list with our "scale" function
     assert!(
         stdout.contains("scale") || stdout.contains("\"name\""),
-        "Expected tools list, got: {}",
-        stdout
+        "Expected tools list, got: {stdout}"
     );
 }
 // ========== Tests for Global + Project Runfile Merging ==========
@@ -655,10 +651,9 @@ project_tool() {
 
     if !tool_names.contains(&"global_tool") || !tool_names.contains(&"project_tool") {
         eprintln!(
-            "Expected global_tool and project_tool, got: {:?}",
-            tool_names
+            "Expected global_tool and project_tool, got: {tool_names:?}"
         );
-        eprintln!("Full output: {}", stdout);
+        eprintln!("Full output: {stdout}");
     }
 
     assert!(tool_names.contains(&"global_tool"));
@@ -718,11 +713,11 @@ shared_tool() {
         fs::rename(&backup_runfile, &original_runfile).ok();
     }
 
-    assert!(output.status.success(), "Command failed: {:?}", output);
+    assert!(output.status.success(), "Command failed: {output:?}");
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     let json: serde_json::Value =
-        serde_json::from_str(&stdout).expect(&format!("Invalid JSON: {}", stdout));
+        serde_json::from_str(&stdout).unwrap_or_else(|_| panic!("Invalid JSON: {stdout}"));
     let tools = json["tools"].as_array().expect("tools should be array");
 
     // Debug: print all tools
@@ -734,8 +729,7 @@ shared_tool() {
     assert_eq!(
         tools.len(),
         1,
-        "Should have only one tool (override), got: {:?}",
-        tools
+        "Should have only one tool (override), got: {tools:?}"
     );
 
     let tool = &tools[0];

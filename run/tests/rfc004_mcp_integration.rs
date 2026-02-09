@@ -6,7 +6,6 @@
 mod common;
 
 use common::*;
-use std::process::Command;
 
 #[test]
 fn test_mcp_inspect_with_params() {
@@ -65,12 +64,12 @@ fn test_mcp_inspect_with_rest_params() {
 
     create_runfile(
         temp_dir.path(),
-        r#"
+        r"
 # @desc Run command in container
 docker_exec(container, ...command) {
     docker exec $container $command
 }
-"#,
+",
     );
 
     let output = test_command(&binary)
@@ -105,14 +104,14 @@ fn test_mcp_inspect_hybrid_mode_with_descriptions() {
 
     create_runfile(
         temp_dir.path(),
-        r#"
+        r"
 # @desc Scale a service
 # @arg service The service to scale
 # @arg replicas Number of instances
 scale(service, replicas: int = 1) {
     docker compose scale $service=$replicas
 }
-"#,
+",
     );
 
     let output = test_command(&binary)
@@ -152,13 +151,13 @@ fn test_mcp_inspect_backward_compatibility() {
 
     create_runfile(
         temp_dir.path(),
-        r#"
+        r"
 # @desc Restart services
 # @arg 1:service string The service name
 restart() {
     docker compose restart $1
 }
-"#,
+",
     );
 
     let output = test_command(&binary)

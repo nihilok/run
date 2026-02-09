@@ -27,10 +27,10 @@ test_func() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
 
-    assert!(output.status.success(), "Command failed: {}", stderr);
+    assert!(output.status.success(), "Command failed: {stderr}");
 
     let json: serde_json::Value = serde_json::from_str(&stdout)
-        .unwrap_or_else(|e| panic!("Failed to parse JSON: {}. Stdout was: {}", e, stdout));
+        .unwrap_or_else(|e| panic!("Failed to parse JSON: {e}. Stdout was: {stdout}"));
 
     // Check structure
     assert_eq!(json["context"]["function_name"], "test_func");

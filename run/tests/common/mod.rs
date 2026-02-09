@@ -26,16 +26,14 @@ pub fn get_binary_path() -> PathBuf {
     if !path.exists() {
         // Try to build the binary
         let build_output = Command::new("cargo")
-            .args(&["build", "--bin", "run"])
+            .args(["build", "--bin", "run"])
             .output()
             .expect("Failed to build binary");
 
-        if !build_output.status.success() {
-            panic!(
-                "Failed to build run binary: {}",
-                String::from_utf8_lossy(&build_output.stderr)
-            );
-        }
+        assert!(build_output.status.success(), 
+            "Failed to build run binary: {}",
+            String::from_utf8_lossy(&build_output.stderr)
+        );
     }
 
     path
@@ -75,7 +73,7 @@ pub fn is_ruby_available() -> bool {
 pub const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Helper to create a Command with test environment
-/// Sets RUN_NO_GLOBAL_MERGE to isolate tests from user's ~/.runfile
+/// Sets `RUN_NO_GLOBAL_MERGE` to isolate tests from user's ~/.runfile
 pub fn test_command(binary: &PathBuf) -> Command {
     let mut cmd = Command::new(binary);
     cmd.env("RUN_NO_GLOBAL_MERGE", "1");

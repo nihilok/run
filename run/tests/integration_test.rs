@@ -23,16 +23,14 @@ fn get_binary_path() -> PathBuf {
     if !path.exists() {
         // Try to build the binary
         let build_output = Command::new("cargo")
-            .args(&["build", "--bin", "run"])
+            .args(["build", "--bin", "run"])
             .output()
             .expect("Failed to build binary");
 
-        if !build_output.status.success() {
-            panic!(
-                "Failed to build run binary: {}",
-                String::from_utf8_lossy(&build_output.stderr)
-            );
-        }
+        assert!(build_output.status.success(), 
+            "Failed to build run binary: {}",
+            String::from_utf8_lossy(&build_output.stderr)
+        );
     }
 
     path
@@ -50,7 +48,7 @@ fn create_runfile(dir: &std::path::Path, content: &str) {
 }
 
 /// Helper to create a Command with test environment
-/// Sets RUN_NO_GLOBAL_MERGE to isolate tests from user's ~/.runfile
+/// Sets `RUN_NO_GLOBAL_MERGE` to isolate tests from user's ~/.runfile
 fn test_command(binary: &PathBuf) -> Command {
     let mut cmd = Command::new(binary);
     cmd.env("RUN_NO_GLOBAL_MERGE", "1");
@@ -265,8 +263,7 @@ server() echo "port=${1:-8080}"
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("port=8080"),
-        "Expected 'port=8080' but got: {}",
-        stdout
+        "Expected 'port=8080' but got: {stdout}"
     );
 
     // Test with provided value
@@ -281,8 +278,7 @@ server() echo "port=${1:-8080}"
     let stdout2 = String::from_utf8_lossy(&output2.stdout);
     assert!(
         stdout2.contains("port=3000"),
-        "Expected 'port=3000' but got: {}",
-        stdout2
+        "Expected 'port=3000' but got: {stdout2}"
     );
 }
 
@@ -294,9 +290,9 @@ fn test_variable_default_in_unquoted_flag() {
     // This tests unquoted --flag=${var:-default} pattern
     create_runfile(
         temp_dir.path(),
-        r#"
+        r"
 server() echo port=${1:-8080}
-"#,
+",
     );
 
     // Test with default value
@@ -310,8 +306,7 @@ server() echo port=${1:-8080}
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("port=8080"),
-        "Expected 'port=8080' but got: {}",
-        stdout
+        "Expected 'port=8080' but got: {stdout}"
     );
 
     // Test with provided value
@@ -326,8 +321,7 @@ server() echo port=${1:-8080}
     let stdout2 = String::from_utf8_lossy(&output2.stdout);
     assert!(
         stdout2.contains("port=3000"),
-        "Expected 'port=3000' but got: {}",
-        stdout2
+        "Expected 'port=3000' but got: {stdout2}"
     );
 }
 
@@ -497,9 +491,9 @@ fn test_parse_error_handling() {
 
     create_runfile(
         temp_dir.path(),
-        r#"
+        r"
 invalid syntax here
-"#,
+",
     );
 
     let output = test_command(&binary)
@@ -989,11 +983,11 @@ fn test_install_completion_detects_existing_zshrc_config() {
     let zshrc_path = temp_dir.path().join(".zshrc");
     fs::write(
         &zshrc_path,
-        r#"
+        r"
 # My zshrc
 fpath=(~/.zsh/completion $fpath)
 autoload -Uz compinit && compinit
-"#,
+",
     )
     .unwrap();
 
@@ -1015,8 +1009,7 @@ autoload -Uz compinit && compinit
 
     assert!(
         lines_with_echo.is_empty(),
-        "Should not suggest adding config that already exists, but found: {:?}",
-        lines_with_echo
+        "Should not suggest adding config that already exists, but found: {lines_with_echo:?}"
     );
 }
 
@@ -1029,10 +1022,10 @@ fn test_install_completion_detects_partial_zshrc_config() {
     let zshrc_path = temp_dir.path().join(".zshrc");
     fs::write(
         &zshrc_path,
-        r#"
+        r"
 # My zshrc
 fpath=(~/.zsh/completion $fpath)
-"#,
+",
     )
     .unwrap();
 
@@ -1842,9 +1835,9 @@ test_inline() { echo "a"; echo "b"; echo "c" }
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("a"));
-    assert!(stdout.contains("b"));
-    assert!(stdout.contains("c"));
+    assert!(stdout.contains('a'));
+    assert!(stdout.contains('b'));
+    assert!(stdout.contains('c'));
 }
 
 #[test]
@@ -1868,9 +1861,9 @@ test_trailing() { echo "x"; echo "y"; echo "z"; }
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("x"));
-    assert!(stdout.contains("y"));
-    assert!(stdout.contains("z"));
+    assert!(stdout.contains('x'));
+    assert!(stdout.contains('y'));
+    assert!(stdout.contains('z'));
 }
 
 #[test]

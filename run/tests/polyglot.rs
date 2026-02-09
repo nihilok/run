@@ -167,13 +167,13 @@ fn test_shell_attribute_node() {
 
     create_runfile(
         temp_dir.path(),
-        r#"
+        r"
 # @shell node
 js() {
     const result = 15 + 25;
     console.log(`Result: ${result}`);
 }
-"#,
+",
     );
 
     if is_node_available() {
@@ -232,14 +232,14 @@ fn test_shell_node_multiline_with_loop() {
 
     create_runfile(
         temp_dir.path(),
-        r#"
+        r"
 # @shell node
 loop() {
     for (let i = 1; i <= 3; i++) {
         console.log(`Count: ${i}`);
     }
 }
-"#,
+",
     );
 
     if is_node_available() {

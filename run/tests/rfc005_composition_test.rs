@@ -21,16 +21,14 @@ fn get_binary_path() -> PathBuf {
     // If the binary doesn't exist in debug, try building it first
     if !path.exists() {
         let build_output = Command::new("cargo")
-            .args(&["build", "--bin", "run"])
+            .args(["build", "--bin", "run"])
             .output()
             .expect("Failed to build binary");
 
-        if !build_output.status.success() {
-            panic!(
-                "Failed to build run binary: {}",
-                String::from_utf8_lossy(&build_output.stderr)
-            );
-        }
+        assert!(build_output.status.success(), 
+            "Failed to build run binary: {}",
+            String::from_utf8_lossy(&build_output.stderr)
+        );
     }
 
     path

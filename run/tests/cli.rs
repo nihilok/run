@@ -9,7 +9,7 @@ use common::*;
 use std::process::Command;
 
 /// Helper to create a Command with test environment
-/// Sets RUN_NO_GLOBAL_MERGE to isolate tests from user's ~/.runfile
+/// Sets `RUN_NO_GLOBAL_MERGE` to isolate tests from user's ~/.runfile
 fn test_command_local(binary: &std::path::PathBuf) -> Command {
     let mut cmd = Command::new(binary);
     cmd.env("RUN_NO_GLOBAL_MERGE", "1");

@@ -343,9 +343,9 @@ fn test_parse_error_handling() {
 
     create_runfile(
         temp_dir.path(),
-        r#"
+        r"
 invalid syntax here
-"#,
+",
     );
 
     let output = Command::new(&binary)
