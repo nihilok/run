@@ -8,10 +8,18 @@ mod common;
 use common::*;
 use std::process::Command;
 
+/// Helper to create a Command with test environment
+/// Sets RUN_NO_GLOBAL_MERGE to isolate tests from user's ~/.runfile
+fn test_command_local(binary: &std::path::PathBuf) -> Command {
+    let mut cmd = Command::new(binary);
+    cmd.env("RUN_NO_GLOBAL_MERGE", "1");
+    cmd
+}
+
 #[test]
 fn test_version_flag() {
     let binary = get_binary_path();
-    let output = Command::new(&binary)
+    let output = test_command_local(&binary)
         .arg("--version")
         .output()
         .expect("Failed to execute command");
@@ -26,7 +34,7 @@ fn test_list_flag_no_runfile() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
 
-    let output = Command::new(&binary)
+    let output = test_command_local(&binary)
         .arg("--list")
         .current_dir(temp_dir.path())
         .env("HOME", temp_dir.path())
@@ -52,7 +60,7 @@ deploy() echo "Deploying..."
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command_local(&binary)
         .arg("--list")
         .current_dir(temp_dir.path())
         .output()
@@ -60,7 +68,7 @@ deploy() echo "Deploying..."
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Available functions:"));
+    assert!(stdout.contains("Available functions")); // Changed to match new format
     assert!(stdout.contains("build"));
     assert!(stdout.contains("test"));
     assert!(stdout.contains("deploy"));
@@ -78,7 +86,7 @@ hello() echo "Hello, World!"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command_local(&binary)
         .arg("-l")
         .current_dir(temp_dir.path())
         .output()
@@ -92,7 +100,7 @@ hello() echo "Hello, World!"
 #[test]
 fn test_generate_completion_bash() {
     let binary = get_binary_path();
-    let output = Command::new(&binary)
+    let output = test_command_local(&binary)
         .arg("--generate-completion")
         .arg("bash")
         .output()
@@ -108,7 +116,7 @@ fn test_generate_completion_bash() {
 #[test]
 fn test_generate_completion_zsh() {
     let binary = get_binary_path();
-    let output = Command::new(&binary)
+    let output = test_command_local(&binary)
         .arg("--generate-completion")
         .arg("zsh")
         .output()
@@ -123,7 +131,7 @@ fn test_generate_completion_zsh() {
 #[test]
 fn test_generate_completion_fish() {
     let binary = get_binary_path();
-    let output = Command::new(&binary)
+    let output = test_command_local(&binary)
         .arg("--generate-completion")
         .arg("fish")
         .output()
@@ -140,7 +148,7 @@ fn test_install_completion_zsh() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
 
-    let output = Command::new(&binary)
+    let output = test_command_local(&binary)
         .arg("--install-completion")
         .arg("zsh")
         .env("HOME", temp_dir.path())
@@ -157,7 +165,7 @@ fn test_install_completion_bash() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
 
-    let output = Command::new(&binary)
+    let output = test_command_local(&binary)
         .arg("--install-completion")
         .arg("bash")
         .env("HOME", temp_dir.path())
@@ -174,7 +182,7 @@ fn test_install_completion_fish() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
 
-    let output = Command::new(&binary)
+    let output = test_command_local(&binary)
         .arg("--install-completion")
         .arg("fish")
         .env("HOME", temp_dir.path())
@@ -191,7 +199,7 @@ fn test_install_completion_auto_detect_fails_with_unknown_shell() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
 
-    let output = Command::new(&binary)
+    let output = test_command_local(&binary)
         .arg("--install-completion")
         .env("HOME", temp_dir.path())
         .env("SHELL", "/bin/unknown_shell")

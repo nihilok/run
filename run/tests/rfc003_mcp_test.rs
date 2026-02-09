@@ -506,3 +506,236 @@ scale() echo "Scaling $1"
         stdout
     );
 }
+// ========== Tests for Global + Project Runfile Merging ==========
+
+#[test]
+fn test_merged_global_project_list() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // Create a global runfile
+    let home_dir = std::env::var("HOME").unwrap();
+    let global_runfile = std::path::PathBuf::from(&home_dir).join(".runfile.test_merge");
+    fs::write(
+        &global_runfile,
+        r#"
+# @desc Global utility function
+global_util() {
+    echo "From global"
+}
+
+# @desc Shared function (will be overridden)
+shared() {
+    echo "Global version"
+}
+"#,
+    )
+    .unwrap();
+
+    // Create a project runfile
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @desc Project-specific function
+project_func() {
+    echo "From project"
+}
+
+# @desc Shared function (overrides global)
+shared() {
+    echo "Project version"
+}
+"#,
+    );
+
+    // Temporarily swap global runfile
+    let original_runfile = std::path::PathBuf::from(&home_dir).join(".runfile");
+    let backup_runfile = std::path::PathBuf::from(&home_dir).join(".runfile.backup_test");
+    if original_runfile.exists() {
+        fs::rename(&original_runfile, &backup_runfile).ok();
+    }
+    fs::rename(&global_runfile, &original_runfile).unwrap();
+
+    let output = Command::new(&binary)
+        .arg("--list")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    // Restore original runfile
+    if original_runfile.exists() {
+        fs::remove_file(&original_runfile).ok();
+    }
+    if backup_runfile.exists() {
+        fs::rename(&backup_runfile, &original_runfile).ok();
+    }
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Should show both sources
+    assert!(stdout.contains("From ./Runfile:"));
+    assert!(stdout.contains("From ~/.runfile:"));
+
+    // Should show project functions
+    assert!(stdout.contains("project_func"));
+
+    // Should show shared function marked as override
+    assert!(stdout.contains("shared (overrides global)"));
+
+    // Should show global-only function
+    assert!(stdout.contains("global_util"));
+}
+
+#[test]
+fn test_mcp_inspect_includes_global_tools() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // Create a global runfile
+    let home_dir = std::env::var("HOME").unwrap();
+    let global_runfile = std::path::PathBuf::from(&home_dir).join(".runfile.test_mcp");
+    fs::write(
+        &global_runfile,
+        r#"
+# @desc Global MCP tool
+global_tool() {
+    echo "Global tool"
+}
+"#,
+    )
+    .unwrap();
+
+    // Create a project runfile
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @desc Project MCP tool
+project_tool() {
+    echo "Project tool"
+}
+"#,
+    );
+
+    // Temporarily swap global runfile
+    let original_runfile = std::path::PathBuf::from(&home_dir).join(".runfile");
+    let backup_runfile = std::path::PathBuf::from(&home_dir).join(".runfile.backup_test");
+    if original_runfile.exists() {
+        fs::rename(&original_runfile, &backup_runfile).ok();
+    }
+    fs::rename(&global_runfile, &original_runfile).unwrap();
+
+    let output = Command::new(&binary)
+        .arg("--inspect")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    // Restore original runfile
+    if original_runfile.exists() {
+        fs::remove_file(&original_runfile).ok();
+    }
+    if backup_runfile.exists() {
+        fs::rename(&backup_runfile, &original_runfile).ok();
+    }
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON");
+    let tools = json["tools"].as_array().expect("tools should be array");
+
+    // Should have both tools
+    assert_eq!(tools.len(), 2, "Should have both global and project tools");
+
+    let tool_names: Vec<&str> = tools
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+
+    if !tool_names.contains(&"global_tool") || !tool_names.contains(&"project_tool") {
+        eprintln!("Expected global_tool and project_tool, got: {:?}", tool_names);
+        eprintln!("Full output: {}", stdout);
+    }
+
+    assert!(tool_names.contains(&"global_tool"));
+    assert!(tool_names.contains(&"project_tool"));
+}
+
+#[test]
+fn test_mcp_project_overrides_global() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // Create a global runfile with a shared tool
+    let home_dir = std::env::var("HOME").unwrap();
+    let global_runfile = std::path::PathBuf::from(&home_dir).join(".runfile.test_override");
+    fs::write(
+        &global_runfile,
+        r#"
+# @desc Shared tool from global
+shared_tool() {
+    echo "Global version"
+}
+"#,
+    )
+    .unwrap();
+
+    // Create a project runfile that overrides it
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @desc Shared tool from project (overrides global)
+shared_tool() {
+    echo "Project version"
+}
+"#,
+    );
+
+    // Temporarily swap global runfile
+    let original_runfile = std::path::PathBuf::from(&home_dir).join(".runfile");
+    let backup_runfile = std::path::PathBuf::from(&home_dir).join(".runfile.backup_test");
+    if original_runfile.exists() {
+        fs::rename(&original_runfile, &backup_runfile).ok();
+    }
+    fs::rename(&global_runfile, &original_runfile).unwrap();
+
+    let output = Command::new(&binary)
+        .arg("--inspect")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    // Restore original runfile
+    if original_runfile.exists() {
+        fs::remove_file(&original_runfile).ok();
+    }
+    if backup_runfile.exists() {
+        fs::rename(&backup_runfile, &original_runfile).ok();
+    }
+
+    assert!(output.status.success(), "Command failed: {:?}", output);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect(&format!("Invalid JSON: {}", stdout));
+    let tools = json["tools"].as_array().expect("tools should be array");
+
+    // Debug: print all tools
+    if tools.len() != 1 {
+        eprintln!("Expected 1 tool, got {}: {:?}", tools.len(), tools);
+    }
+
+    // Should have exactly one tool (project overrides global)
+    assert_eq!(tools.len(), 1, "Should have only one tool (override), got: {:?}", tools);
+
+    let tool = &tools[0];
+    assert_eq!(tool["name"].as_str().unwrap(), "shared_tool");
+    assert_eq!(
+        tool["description"].as_str().unwrap(),
+        "Shared tool from project (overrides global)",
+        "Should use project description, not global"
+    );
+}
+
+// Note: Tests that manipulate ~/.runfile may need to run serially to avoid race conditions
+// Run with: cargo test --test rfc003_mcp_test -- --test-threads=1

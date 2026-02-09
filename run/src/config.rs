@@ -21,7 +21,7 @@ pub fn set_custom_runfile_path(path: Option<PathBuf>) {
 }
 
 /// Get the custom runfile path if set
-fn get_custom_runfile_path() -> Option<PathBuf> {
+pub fn get_custom_runfile_path() -> Option<PathBuf> {
     CUSTOM_RUNFILE_PATH.with(|p| p.borrow().clone())
 }
 
@@ -366,8 +366,10 @@ pub fn load_merged_config() -> Option<(String, MergeMetadata)> {
         None
     };
 
-    // Load global runfile (unless disabled)
-    let global_content = if disable_global_merge {
+    // Load global runfile
+    // If RUN_NO_GLOBAL_MERGE is set AND we have a project runfile, don't merge global
+    // But if there's no project runfile, still allow global as fallback
+    let global_content = if disable_global_merge && project_content.is_some() {
         None
     } else {
         load_home_runfile()
