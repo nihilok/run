@@ -49,6 +49,14 @@ fn create_runfile(dir: &std::path::Path, content: &str) {
     fs::write(runfile_path, content).unwrap();
 }
 
+/// Helper to create a Command with test environment
+/// Sets RUN_NO_GLOBAL_MERGE to isolate tests from user's ~/.runfile
+fn test_command(binary: &PathBuf) -> Command {
+    let mut cmd = Command::new(binary);
+    cmd.env("RUN_NO_GLOBAL_MERGE", "1");
+    cmd
+}
+
 /// Helper to check if Python is available on the system
 fn is_python_available() -> bool {
     which::which("python3").is_ok() || which::which("python").is_ok()
@@ -69,7 +77,7 @@ const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[test]
 fn test_version_flag() {
     let binary = get_binary_path();
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--version")
         .output()
         .expect("Failed to execute command");
@@ -85,7 +93,7 @@ fn test_list_flag_no_runfile() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--list")
         .current_dir(temp_dir.path())
         .env("HOME", temp_dir.path()) // Override HOME to avoid loading ~/.runfile
@@ -111,7 +119,7 @@ deploy() echo "Deploying..."
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--list")
         .current_dir(temp_dir.path())
         .output()
@@ -119,7 +127,7 @@ deploy() echo "Deploying..."
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Available functions:"));
+    assert!(stdout.contains("Available functions"));  // Changed to match new format
     assert!(stdout.contains("build"));
     assert!(stdout.contains("test"));
     assert!(stdout.contains("deploy"));
@@ -137,7 +145,7 @@ hello() echo "Hello, World!"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("-l")
         .current_dir(temp_dir.path())
         .output()
@@ -160,7 +168,7 @@ greet() echo "Hello from run!"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("greet")
         .current_dir(temp_dir.path())
         .output()
@@ -183,7 +191,7 @@ greet() echo "Hello, $1!"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("greet")
         .arg("Alice")
         .current_dir(temp_dir.path())
@@ -208,7 +216,7 @@ server() echo "Starting server on port ${1:-8080}"
     );
 
     // Test with default value (no argument provided) - bash handles the default
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("server")
         .current_dir(temp_dir.path())
         .output()
@@ -219,7 +227,7 @@ server() echo "Starting server on port ${1:-8080}"
     assert!(stdout.contains("port 8080"));
 
     // Test with provided value - bash substitutes the provided arg
-    let output2 = Command::new(&binary)
+    let output2 = test_command(&binary)
         .arg("server")
         .arg("3000")
         .current_dir(temp_dir.path())
@@ -247,7 +255,7 @@ server() echo "port=${1:-8080}"
     );
 
     // Test with default value
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("server")
         .current_dir(temp_dir.path())
         .output()
@@ -262,7 +270,7 @@ server() echo "port=${1:-8080}"
     );
 
     // Test with provided value
-    let output2 = Command::new(&binary)
+    let output2 = test_command(&binary)
         .arg("server")
         .arg("3000")
         .current_dir(temp_dir.path())
@@ -292,7 +300,7 @@ server() echo port=${1:-8080}
     );
 
     // Test with default value
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("server")
         .current_dir(temp_dir.path())
         .output()
@@ -307,7 +315,7 @@ server() echo port=${1:-8080}
     );
 
     // Test with provided value
-    let output2 = Command::new(&binary)
+    let output2 = test_command(&binary)
         .arg("server")
         .arg("3000")
         .current_dir(temp_dir.path())
@@ -335,7 +343,7 @@ add() echo "$1 + $2 = $(($1 + $2))"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("add")
         .arg("5")
         .arg("3")
@@ -360,7 +368,7 @@ docker:shell() echo "Opening Docker shell for $1"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("docker")
         .arg("shell")
         .arg("myapp")
@@ -390,7 +398,7 @@ parent() echo "Called from parent"
     let subdir = temp_dir.path().join("subdir");
     fs::create_dir(&subdir).unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("parent")
         .current_dir(&subdir)
         .output()
@@ -420,7 +428,7 @@ test() echo "From local"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("test")
         .current_dir(&local_dir)
         .env("HOME", temp_dir.path())
@@ -448,7 +456,7 @@ hello()
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg(script_path.to_str().unwrap())
         .current_dir(temp_dir.path())
         .output()
@@ -471,7 +479,7 @@ build() echo "Building..."
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("nonexistent")
         .current_dir(temp_dir.path())
         .output()
@@ -494,7 +502,7 @@ invalid syntax here
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("test")
         .current_dir(temp_dir.path())
         .output()
@@ -518,7 +526,7 @@ echo_all() echo "All args: $@"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("echo_all")
         .arg("foo")
         .arg("bar")
@@ -544,7 +552,7 @@ count() echo "one\ntwo\nthree" | wc -l
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("count")
         .current_dir(temp_dir.path())
         .output()
@@ -570,7 +578,7 @@ test() echo "Testing"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--list")
         .current_dir(temp_dir.path())
         .output()
@@ -595,7 +603,7 @@ multiline() echo "This is a" \
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("multiline")
         .current_dir(temp_dir.path())
         .output()
@@ -621,7 +629,7 @@ greet(World)
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg(script_path.to_str().unwrap())
         .current_dir(temp_dir.path())
         .output()
@@ -647,7 +655,7 @@ docker:logs(app)
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg(script_path.to_str().unwrap())
         .current_dir(temp_dir.path())
         .output()
@@ -673,7 +681,7 @@ greet("Alice", "Bob")
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg(script_path.to_str().unwrap())
         .current_dir(temp_dir.path())
         .output()
@@ -699,7 +707,7 @@ show(bare, "quoted")
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg(script_path.to_str().unwrap())
         .current_dir(temp_dir.path())
         .output()
@@ -725,7 +733,7 @@ echo "Hello, $name!"
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg(script_path.to_str().unwrap())
         .current_dir(temp_dir.path())
         .output()
@@ -752,7 +760,7 @@ show(production)
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg(script_path.to_str().unwrap())
         .current_dir(temp_dir.path())
         .output()
@@ -779,7 +787,7 @@ echo "$first and $second"
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg(script_path.to_str().unwrap())
         .current_dir(temp_dir.path())
         .output()
@@ -805,7 +813,7 @@ echo "Application: $app_name"
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg(script_path.to_str().unwrap())
         .current_dir(temp_dir.path())
         .output()
@@ -819,7 +827,7 @@ echo "Application: $app_name"
 #[test]
 fn test_generate_completion_bash() {
     let binary = get_binary_path();
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--generate-completion")
         .arg("bash")
         .output()
@@ -835,7 +843,7 @@ fn test_generate_completion_bash() {
 #[test]
 fn test_generate_completion_zsh() {
     let binary = get_binary_path();
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--generate-completion")
         .arg("zsh")
         .output()
@@ -850,7 +858,7 @@ fn test_generate_completion_zsh() {
 #[test]
 fn test_generate_completion_fish() {
     let binary = get_binary_path();
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--generate-completion")
         .arg("fish")
         .output()
@@ -868,7 +876,7 @@ fn test_install_completion_zsh() {
     let temp_dir = create_temp_dir();
 
     // Set HOME to temp directory
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--install-completion")
         .arg("zsh")
         .env("HOME", temp_dir.path())
@@ -897,7 +905,7 @@ fn test_install_completion_bash() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--install-completion")
         .arg("bash")
         .env("HOME", temp_dir.path())
@@ -926,7 +934,7 @@ fn test_install_completion_fish() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--install-completion")
         .arg("fish")
         .env("HOME", temp_dir.path())
@@ -957,7 +965,7 @@ fn test_install_completion_detects_missing_zshrc_config() {
     let zshrc_path = temp_dir.path().join(".zshrc");
     fs::write(&zshrc_path, "# Empty zshrc\n").unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--install-completion")
         .arg("zsh")
         .env("HOME", temp_dir.path())
@@ -989,7 +997,7 @@ autoload -Uz compinit && compinit
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--install-completion")
         .arg("zsh")
         .env("HOME", temp_dir.path())
@@ -1028,7 +1036,7 @@ fpath=(~/.zsh/completion $fpath)
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--install-completion")
         .arg("zsh")
         .env("HOME", temp_dir.path())
@@ -1057,7 +1065,7 @@ fn test_install_completion_auto_detect_fails_with_unknown_shell() {
     let temp_dir = create_temp_dir();
 
     // Set SHELL to something unsupported
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--install-completion")
         .env("HOME", temp_dir.path())
         .env("SHELL", "/bin/ksh") // Unsupported shell
@@ -1083,7 +1091,7 @@ fn test_install_completion_overwrites_existing_file() {
     fs::write(&comp_file, "# Old completion content\n").unwrap();
 
     // Install new completion
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--install-completion")
         .arg("zsh")
         .env("HOME", temp_dir.path())
@@ -1114,7 +1122,7 @@ function greet {
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("greet")
         .current_dir(temp_dir.path())
         .output()
@@ -1139,7 +1147,7 @@ function greet() {
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("greet")
         .current_dir(temp_dir.path())
         .output()
@@ -1162,7 +1170,7 @@ function greet echo "Hello inline!"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("greet")
         .current_dir(temp_dir.path())
         .output()
@@ -1185,7 +1193,7 @@ function greet() echo "Hello parens inline!"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("greet")
         .current_dir(temp_dir.path())
         .output()
@@ -1210,7 +1218,7 @@ function docker:shell {
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("docker:shell")
         .current_dir(temp_dir.path())
         .output()
@@ -1233,7 +1241,7 @@ function docker:logs echo "Showing logs"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("docker:logs")
         .current_dir(temp_dir.path())
         .output()
@@ -1256,7 +1264,7 @@ function greet echo "Hello, $1!"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("greet")
         .arg("World")
         .current_dir(temp_dir.path())
@@ -1284,7 +1292,7 @@ function deploy {
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("deploy")
         .current_dir(temp_dir.path())
         .output()
@@ -1309,7 +1317,7 @@ function quick { echo "one"; echo "two"; echo "three"; }
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("quick")
         .current_dir(temp_dir.path())
         .output()
@@ -1347,7 +1355,7 @@ function keyword_inline echo "keyword inline"
     );
 
     // Test all four variants
-    let output1 = Command::new(&binary)
+    let output1 = test_command(&binary)
         .arg("traditional")
         .current_dir(temp_dir.path())
         .output()
@@ -1355,7 +1363,7 @@ function keyword_inline echo "keyword inline"
     assert!(output1.status.success());
     assert!(String::from_utf8_lossy(&output1.stdout).contains("traditional"));
 
-    let output2 = Command::new(&binary)
+    let output2 = test_command(&binary)
         .arg("keyword_block")
         .current_dir(temp_dir.path())
         .output()
@@ -1363,7 +1371,7 @@ function keyword_inline echo "keyword inline"
     assert!(output2.status.success());
     assert!(String::from_utf8_lossy(&output2.stdout).contains("keyword block"));
 
-    let output3 = Command::new(&binary)
+    let output3 = test_command(&binary)
         .arg("keyword_parens")
         .current_dir(temp_dir.path())
         .output()
@@ -1371,7 +1379,7 @@ function keyword_inline echo "keyword inline"
     assert!(output3.status.success());
     assert!(String::from_utf8_lossy(&output3.stdout).contains("keyword parens"));
 
-    let output4 = Command::new(&binary)
+    let output4 = test_command(&binary)
         .arg("keyword_inline")
         .current_dir(temp_dir.path())
         .output()
@@ -1398,7 +1406,7 @@ clean() echo "Windows clean"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("clean")
         .current_dir(temp_dir.path())
         .output()
@@ -1426,7 +1434,7 @@ clean() echo "Windows only"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("clean")
         .current_dir(temp_dir.path())
         .output()
@@ -1456,7 +1464,7 @@ build() echo "macOS build"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("build")
         .current_dir(temp_dir.path())
         .output()
@@ -1488,7 +1496,7 @@ no_attr_func() echo "No attribute"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--list")
         .current_dir(temp_dir.path())
         .output()
@@ -1526,7 +1534,7 @@ math() {
 
     // Check if python is available
     if is_python_available() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("math")
             .current_dir(temp_dir.path())
             .output()
@@ -1559,7 +1567,7 @@ calc() {
 
     // Check if python is available
     if is_python_available() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("calc")
             .arg("hello")
             .current_dir(temp_dir.path())
@@ -1590,7 +1598,7 @@ server() {
 
     // Check if node is available
     if is_node_available() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("server")
             .current_dir(temp_dir.path())
             .output()
@@ -1625,7 +1633,7 @@ greet() {
 
     // Check if node is available
     if is_node_available() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("greet")
             .arg("Alice")
             .current_dir(temp_dir.path())
@@ -1653,7 +1661,7 @@ test_func() echo "Running in bash"
 
     // Bash should be available on Unix systems
     if cfg!(unix) && which::which("bash").is_ok() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("test_func")
             .current_dir(temp_dir.path())
             .output()
@@ -1683,7 +1691,7 @@ hello() {
 
     // Check if ruby is available
     if is_ruby_available() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("hello")
             .current_dir(temp_dir.path())
             .output()
@@ -1713,7 +1721,7 @@ unix_python() {
 
     // Only run on Unix with Python available
     if cfg!(unix) && (is_python_available()) {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("unix_python")
             .current_dir(temp_dir.path())
             .output()
@@ -1742,7 +1750,7 @@ build() echo "Regular build"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--list")
         .current_dir(temp_dir.path())
         .output()
@@ -1772,7 +1780,7 @@ posix_func() echo "POSIX function"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("posix_func")
         .current_dir(temp_dir.path())
         .output()
@@ -1801,7 +1809,7 @@ simple() print("Simple inline Python")
 
     // Check if python is available
     if is_python_available() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("simple")
             .current_dir(temp_dir.path())
             .output()
@@ -1826,7 +1834,7 @@ test_inline() { echo "a"; echo "b"; echo "c" }
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("test_inline")
         .current_dir(temp_dir.path())
         .output()
@@ -1852,7 +1860,7 @@ test_trailing() { echo "x"; echo "y"; echo "z"; }
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("test_trailing")
         .current_dir(temp_dir.path())
         .output()
@@ -1878,7 +1886,7 @@ function test_func { echo "first"; echo "second"; echo "third" }
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("test_func")
         .current_dir(temp_dir.path())
         .output()
@@ -1913,7 +1921,7 @@ counter() {
     );
 
     if is_node_available() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("counter")
             .current_dir(temp_dir.path())
             .output()
@@ -1950,7 +1958,7 @@ counter() {
     );
 
     if is_python_available() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("counter")
             .current_dir(temp_dir.path())
             .output()
@@ -1985,7 +1993,7 @@ analyze() {
     );
 
     if is_python_available() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("analyze")
             .current_dir(temp_dir.path())
             .output()
@@ -2014,7 +2022,7 @@ calc() {
     );
 
     if which::which("python3").is_ok() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("calc")
             .current_dir(temp_dir.path())
             .output()
@@ -2043,7 +2051,7 @@ server() {
     );
 
     if is_node_available() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("server")
             .current_dir(temp_dir.path())
             .output()
@@ -2073,7 +2081,7 @@ setup() {
     );
 
     if cfg!(unix) && which::which("bash").is_ok() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("setup")
             .current_dir(temp_dir.path())
             .output()
@@ -2102,7 +2110,7 @@ test_func() {
     );
 
     if cfg!(unix) && which::which("bash").is_ok() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("test_func")
             .current_dir(temp_dir.path())
             .output()
@@ -2130,7 +2138,7 @@ simple() {
     );
 
     if cfg!(unix) {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("simple")
             .current_dir(temp_dir.path())
             .output()
@@ -2162,7 +2170,7 @@ process() {
     );
 
     if is_python_available() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("process")
             .arg("data.json")
             .current_dir(temp_dir.path())
@@ -2195,7 +2203,7 @@ test_precedence() {
     );
 
     if is_python_available() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("test_precedence")
             .current_dir(temp_dir.path())
             .output()
@@ -2228,7 +2236,7 @@ analyze() {
     );
 
     if is_python_available() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("analyze")
             .current_dir(temp_dir.path())
             .output()
@@ -2259,7 +2267,7 @@ counter() {
     );
 
     if is_python_available() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("counter")
             .current_dir(temp_dir.path())
             .output()
@@ -2291,7 +2299,7 @@ greet() {
     );
 
     if is_ruby_available() {
-        let output = Command::new(&binary)
+        let output = test_command(&binary)
             .arg("greet")
             .current_dir(temp_dir.path())
             .output()
@@ -2317,7 +2325,7 @@ simple() {
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("simple")
         .current_dir(temp_dir.path())
         .output()
@@ -2345,7 +2353,7 @@ broken() {
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("broken")
         .current_dir(temp_dir.path())
         .output()
@@ -2377,7 +2385,7 @@ test_function() {
     .unwrap();
 
     // Run with --runfile pointing to the file
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--runfile")
         .arg(&custom_runfile)
         .arg("test_function")
@@ -2409,7 +2417,7 @@ greet() {
     );
 
     // Run from a different directory, pointing --runfile to the subdirectory
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--runfile")
         .arg(&subdir)
         .arg("greet")
@@ -2450,7 +2458,7 @@ main() {
     );
 
     // Run from temp_dir but point --runfile to subdir
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--runfile")
         .arg(&subdir)
         .arg("main")
@@ -2479,7 +2487,7 @@ test() echo "testing"
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--runfile")
         .arg(&custom_runfile)
         .arg("--list")
@@ -2500,7 +2508,7 @@ fn test_runfile_flag_nonexistent_file() {
 
     let nonexistent = temp_dir.path().join("DoesNotExist");
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--runfile")
         .arg(&nonexistent)
         .arg("--list")
@@ -2534,7 +2542,7 @@ relative_test() {
     .unwrap();
 
     // Run with a relative path
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--runfile")
         .arg("configs/project.runfile")
         .arg("relative_test")
@@ -2565,7 +2573,7 @@ greet() {
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--runfile")
         .arg(&custom_runfile)
         .arg("--inspect")
@@ -2611,7 +2619,7 @@ docker:down() {
     .unwrap();
 
     // Test first nested function
-    let output1 = Command::new(&binary)
+    let output1 = test_command(&binary)
         .arg("--runfile")
         .arg(&custom_runfile)
         .arg("docker:up")
@@ -2624,7 +2632,7 @@ docker:down() {
     assert!(stdout1.contains("Starting containers"));
 
     // Test second nested function
-    let output2 = Command::new(&binary)
+    let output2 = test_command(&binary)
         .arg("--runfile")
         .arg(&custom_runfile)
         .arg("docker:down")
@@ -2656,7 +2664,7 @@ absolute_test() {
     // Use the absolute path
     let absolute_path = custom_runfile.canonicalize().unwrap();
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--runfile")
         .arg(&absolute_path)
         .arg("absolute_test")

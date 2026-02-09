@@ -45,6 +45,14 @@ fn create_runfile(dir: &std::path::Path, content: &str) {
     fs::write(runfile_path, content).unwrap();
 }
 
+/// Helper to create a Command with test environment
+fn test_command(binary: &PathBuf) -> Command {
+    let mut cmd = Command::new(binary);
+    // Disable global runfile merging for test isolation
+    cmd.env("RUN_NO_GLOBAL_MERGE", "1");
+    cmd
+}
+
 // ========== Phase 1: Parsing @desc and @arg Attributes ==========
 
 #[test]
@@ -61,7 +69,7 @@ restart() docker compose restart
     );
 
     // List functions to ensure it still works with @desc
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--list")
         .current_dir(temp_dir.path())
         .output()
@@ -88,7 +96,7 @@ scale() docker compose scale $1=$2
     );
 
     // List functions to ensure it still works with @arg
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--list")
         .current_dir(temp_dir.path())
         .output()
@@ -113,7 +121,7 @@ greet() echo "Hello, $1!"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("greet")
         .arg("World")
         .current_dir(temp_dir.path())
@@ -140,7 +148,7 @@ test() echo "test"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
@@ -169,7 +177,7 @@ scale() docker compose scale $1=$2
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
@@ -221,7 +229,7 @@ build() echo "Building..."
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
@@ -255,7 +263,7 @@ deploy() echo "Deploying to $1"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
@@ -289,7 +297,7 @@ test() echo "Verbose: $1"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
@@ -323,7 +331,7 @@ win_func() echo "Windows"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = test_command(&binary)
         .arg("--inspect")
         .current_dir(temp_dir.path())
         .output()
@@ -349,7 +357,7 @@ fn test_serve_mcp_flag_exists() {
     let binary = get_binary_path();
 
     // Just check that the flag is recognized (we'll kill it quickly)
-    let mut child = Command::new(&binary)
+    let mut child = test_command(&binary)
         .arg("--serve-mcp")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -389,7 +397,7 @@ test() echo "test"
 "#,
     );
 
-    let mut child = Command::new(&binary)
+    let mut child = test_command(&binary)
         .arg("--serve-mcp")
         .current_dir(temp_dir.path())
         .stdin(std::process::Stdio::piped())
@@ -450,7 +458,7 @@ scale() echo "Scaling $1"
 "#,
     );
 
-    let mut child = Command::new(&binary)
+    let mut child = test_command(&binary)
         .arg("--serve-mcp")
         .current_dir(temp_dir.path())
         .stdin(std::process::Stdio::piped())

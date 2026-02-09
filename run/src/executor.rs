@@ -105,8 +105,14 @@ pub fn execute_file(path: &PathBuf) {
 /// * `args` - Arguments to pass to the function.
 /// * `output_format` - How to format the output.
 pub fn run_function_call(function_name: &str, args: &[String], output_format: OutputFormatArg) {
-    // Load the config file from ~/.runfile or ./Runfile
-    let config_content = config::load_config_or_exit();
+    // Load and merge config files from both ~/.runfile and ./Runfile
+    let config_content = match config::load_merged_config() {
+        Some((content, _metadata)) => content,
+        None => {
+            eprintln!("{}", config::NO_RUNFILE_ERROR);
+            std::process::exit(1);
+        }
+    };
 
     // Parse the config to load function definitions
     let mut interpreter = interpreter::Interpreter::new();
@@ -155,37 +161,131 @@ pub fn run_function_call(function_name: &str, args: &[String], output_format: Ou
 
 /// List all available functions from the Runfile.
 pub fn list_functions() {
-    let config_content = config::load_config_or_exit();
+    // Try to load both global and project runfiles
+    let merge_result = config::load_merged_config();
 
-    // Parse the config to extract function names
-    match parser::parse_script(&config_content) {
-        Ok(program) => {
-            // Use interpreter to handle platform filtering
-            let mut interpreter = interpreter::Interpreter::new();
+    if merge_result.is_none() {
+        eprintln!("{}", config::NO_RUNFILE_ERROR);
+        std::process::exit(1);
+    }
 
-            // Execute to load function definitions (this applies platform filtering)
-            if let Err(e) = interpreter.execute(program) {
-                eprintln!("Error loading functions: {}", e);
-                std::process::exit(1);
-            }
+    let (merged_content, metadata) = merge_result.unwrap();
 
-            // Get the list of available functions
-            let functions = interpreter.list_available_functions();
+    // If we have both files, parse them separately to show sources
+    // (unless RUN_NO_GLOBAL_MERGE is set, in which case we already have only one file)
+    let disable_global_merge = std::env::var("RUN_NO_GLOBAL_MERGE").is_ok();
+    if metadata.has_global && metadata.has_project && !disable_global_merge {
+        list_functions_with_sources();
+    } else {
+        // Single source, use simple listing
+        match parser::parse_script(&merged_content) {
+            Ok(program) => {
+                let mut interpreter = interpreter::Interpreter::new();
+                if let Err(e) = interpreter.execute(program) {
+                    eprintln!("Error loading functions: {}", e);
+                    std::process::exit(1);
+                }
 
-            if functions.is_empty() {
-                println!("No functions defined in Runfile.");
-                // Exit with success since the file was found and parsed correctly
-                std::process::exit(0);
-            } else {
-                println!("Available functions:");
-                for func in functions {
-                    println!("  {}", func);
+                let functions = interpreter.list_available_functions();
+                if functions.is_empty() {
+                    println!("No functions defined in Runfile.");
+                    std::process::exit(0);
+                } else {
+                    let source_label = if metadata.has_global { "~/.runfile" } else { "./Runfile" };
+                    println!("Available functions from {}:", source_label);
+                    for func in functions {
+                        println!("  {}", func);
+                    }
                 }
             }
+            Err(e) => {
+                eprintln!("Error parsing Runfile: {}", e);
+                std::process::exit(1);
+            }
         }
-        Err(e) => {
-            eprintln!("Error parsing Runfile: {}", e);
-            std::process::exit(1);
+    }
+}
+
+/// List functions with source information when both global and project runfiles exist.
+fn list_functions_with_sources() {
+    use std::collections::HashSet;
+
+    // Load and parse global runfile
+    let global_functions = if let Some(global_content) = config::load_home_runfile() {
+        match parser::parse_script(&global_content) {
+            Ok(program) => {
+                let mut interp = interpreter::Interpreter::new();
+                if let Err(e) = interp.execute(program) {
+                    eprintln!("Error loading global functions: {}", e);
+                    std::process::exit(1);
+                }
+                interp.list_available_functions()
+            }
+            Err(e) => {
+                eprintln!("Error parsing ~/.runfile: {}", e);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
+    // Load and parse project runfile
+    let project_functions = if let Some(project_path) = config::find_project_runfile_path() {
+        if let Ok(project_content) = fs::read_to_string(&project_path) {
+            match parser::parse_script(&project_content) {
+                Ok(program) => {
+                    let mut interp = interpreter::Interpreter::new();
+                    if let Err(e) = interp.execute(program) {
+                        eprintln!("Error loading project functions: {}", e);
+                        std::process::exit(1);
+                    }
+                    interp.list_available_functions()
+                }
+                Err(e) => {
+                    eprintln!("Error parsing project Runfile: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+
+    let project_set: HashSet<_> = project_functions.iter().cloned().collect();
+    let global_only: Vec<_> = global_functions.iter()
+        .filter(|f| !project_set.contains(*f))
+        .cloned()
+        .collect();
+
+    // Display results
+    let has_any = !project_functions.is_empty() || !global_only.is_empty();
+
+    if !has_any {
+        println!("No functions defined in Runfile.");
+        std::process::exit(0);
+    }
+
+    println!("Available functions:");
+
+    if !project_functions.is_empty() {
+        println!("\n  From ./Runfile:");
+        for func in &project_functions {
+            // Check if this overrides a global function
+            if global_functions.contains(func) {
+                println!("    {} (overrides global)", func);
+            } else {
+                println!("    {}", func);
+            }
+        }
+    }
+
+    if !global_only.is_empty() {
+        println!("\n  From ~/.runfile:");
+        for func in &global_only {
+            println!("    {}", func);
         }
     }
 }
