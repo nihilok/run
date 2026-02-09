@@ -25,16 +25,6 @@ clean() del /Q dist
 clean() rm -rf dist
 ```
 
-**Inline guards inside one function:**
-```bash
-# @desc Open the project
-open() {
-    @macos { open . }
-    @linux { xdg-open . }
-    @windows { start . }
-}
-```
-
 ## Interpreter selection
 There are two ways to pick an interpreter for a function body:
 
