@@ -164,3 +164,7 @@ long_output(count) {
     done
 }
 
+# @desc Function that runs tests using Cargo; optionally accepts additional arguments to pass to cargo test (always provides "--package run" by default and captures both stdout and stderr); example:  `run_tests --test some_test.rs`
+run_tests(...args) {
+    cargo test --package run "$@" 2>&1
+}
