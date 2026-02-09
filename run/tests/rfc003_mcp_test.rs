@@ -3,6 +3,7 @@
 #![allow(clippy::unwrap_used)]
 #![allow(clippy::expect_used)]
 
+use serial_test::serial;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -509,6 +510,7 @@ scale() echo "Scaling $1"
 // ========== Tests for Global + Project Runfile Merging ==========
 
 #[test]
+#[serial]
 fn test_merged_global_project_list() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
@@ -588,6 +590,7 @@ shared() {
 }
 
 #[test]
+#[serial]
 fn test_mcp_inspect_includes_global_tools() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
@@ -648,13 +651,13 @@ project_tool() {
     // Should have both tools
     assert_eq!(tools.len(), 2, "Should have both global and project tools");
 
-    let tool_names: Vec<&str> = tools
-        .iter()
-        .map(|t| t["name"].as_str().unwrap())
-        .collect();
+    let tool_names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
 
     if !tool_names.contains(&"global_tool") || !tool_names.contains(&"project_tool") {
-        eprintln!("Expected global_tool and project_tool, got: {:?}", tool_names);
+        eprintln!(
+            "Expected global_tool and project_tool, got: {:?}",
+            tool_names
+        );
         eprintln!("Full output: {}", stdout);
     }
 
@@ -663,6 +666,7 @@ project_tool() {
 }
 
 #[test]
+#[serial]
 fn test_mcp_project_overrides_global() {
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
@@ -717,7 +721,8 @@ shared_tool() {
     assert!(output.status.success(), "Command failed: {:?}", output);
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect(&format!("Invalid JSON: {}", stdout));
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect(&format!("Invalid JSON: {}", stdout));
     let tools = json["tools"].as_array().expect("tools should be array");
 
     // Debug: print all tools
@@ -726,7 +731,12 @@ shared_tool() {
     }
 
     // Should have exactly one tool (project overrides global)
-    assert_eq!(tools.len(), 1, "Should have only one tool (override), got: {:?}", tools);
+    assert_eq!(
+        tools.len(),
+        1,
+        "Should have only one tool (override), got: {:?}",
+        tools
+    );
 
     let tool = &tools[0];
     assert_eq!(tool["name"].as_str().unwrap(), "shared_tool");
