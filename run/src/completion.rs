@@ -2,7 +2,7 @@
 
 use clap::ValueEnum;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // Embed completion scripts at compile time
 const BASH_COMPLETION: &str = include_str!("../completions/run.bash");
@@ -109,7 +109,7 @@ fn write_completion_file(comp_dir: &PathBuf, filename: &str, content: &str) -> P
     comp_file
 }
 
-fn install_bash_completion(home: &PathBuf) {
+fn install_bash_completion(home: &Path) {
     // Install to ~/.local/share/bash-completion/completions/run
     let comp_dir = home.join(".local/share/bash-completion/completions");
     let comp_file = write_completion_file(&comp_dir, "run", BASH_COMPLETION);
@@ -119,7 +119,7 @@ fn install_bash_completion(home: &PathBuf) {
     println!("  source ~/.bashrc");
 }
 
-fn install_zsh_completion(home: &PathBuf) {
+fn install_zsh_completion(home: &Path) {
     // Install to ~/.zsh/completion/_run
     let comp_dir = home.join(".zsh/completion");
     let comp_file = write_completion_file(&comp_dir, "_run", ZSH_COMPLETION);
@@ -172,7 +172,7 @@ fn install_zsh_completion(home: &PathBuf) {
     println!("  exec zsh");
 }
 
-fn install_fish_completion(home: &PathBuf) {
+fn install_fish_completion(home: &Path) {
     // Install to ~/.config/fish/completions/run.fish
     let comp_dir = home.join(".config/fish/completions");
     let comp_file = write_completion_file(&comp_dir, "run.fish", FISH_COMPLETION);
@@ -183,7 +183,7 @@ fn install_fish_completion(home: &PathBuf) {
     println!("  exec fish");
 }
 
-fn install_powershell_completion(home: &PathBuf) {
+fn install_powershell_completion(home: &Path) {
     #[cfg(windows)]
     let comp_dir = home.join("Documents").join("PowerShell").join("Scripts");
 

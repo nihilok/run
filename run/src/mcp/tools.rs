@@ -78,40 +78,6 @@ pub fn get_builtin_tools() -> Vec<Tool> {
     tools
 }
 
-#[cfg(test)]
-#[allow(clippy::expect_used)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_get_builtin_tools() {
-        let tools = get_builtin_tools();
-        assert_eq!(tools.len(), 2);
-
-        let set_cwd = tools
-            .iter()
-            .find(|t| t.name == TOOL_SET_CWD)
-            .expect("set_cwd tool should exist");
-        assert_eq!(
-            set_cwd.description,
-            "Set the current working directory. Call this before other tools to change their execution context."
-        );
-        assert_eq!(set_cwd.input_schema.schema_type, "object");
-        assert!(set_cwd.input_schema.properties.contains_key("path"));
-        assert_eq!(set_cwd.input_schema.properties["path"].param_type, "string");
-        assert_eq!(set_cwd.input_schema.required, vec!["path".to_string()]);
-
-        let get_cwd = tools
-            .iter()
-            .find(|t| t.name == TOOL_GET_CWD)
-            .expect("get_cwd tool should exist");
-        assert_eq!(get_cwd.description, "Get the current working directory.");
-        assert_eq!(get_cwd.input_schema.schema_type, "object");
-        assert!(get_cwd.input_schema.properties.is_empty());
-        assert!(get_cwd.input_schema.required.is_empty());
-    }
-}
-
 /// Extract metadata from function attributes and parameters
 /// Returns None if the function has no @desc attribute
 pub(super) fn extract_function_metadata(
@@ -241,14 +207,8 @@ pub fn inspect() -> Result<InspectOutput, String> {
                 params,
                 attributes,
                 ..
-            } => {
-                if utils::matches_current_platform(attributes) && !seen_names.contains(name)
-                    && let Some(tool) = extract_function_metadata(name, attributes, params) {
-                        tools.push(tool);
-                        seen_names.insert(name.clone());
-                    }
             }
-            Statement::BlockFunctionDef {
+            | Statement::BlockFunctionDef {
                 name,
                 params,
                 attributes,
@@ -284,5 +244,39 @@ pub fn print_inspect() {
             eprintln!("Error: {e}");
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_builtin_tools() {
+        let tools = get_builtin_tools();
+        assert_eq!(tools.len(), 2);
+
+        let set_cwd = tools
+            .iter()
+            .find(|t| t.name == TOOL_SET_CWD)
+            .expect("set_cwd tool should exist");
+        assert_eq!(
+            set_cwd.description,
+            "Set the current working directory. Call this before other tools to change their execution context."
+        );
+        assert_eq!(set_cwd.input_schema.schema_type, "object");
+        assert!(set_cwd.input_schema.properties.contains_key("path"));
+        assert_eq!(set_cwd.input_schema.properties["path"].param_type, "string");
+        assert_eq!(set_cwd.input_schema.required, vec!["path".to_string()]);
+
+        let get_cwd = tools
+            .iter()
+            .find(|t| t.name == TOOL_GET_CWD)
+            .expect("get_cwd tool should exist");
+        assert_eq!(get_cwd.description, "Get the current working directory.");
+        assert_eq!(get_cwd.input_schema.schema_type, "object");
+        assert!(get_cwd.input_schema.properties.is_empty());
+        assert!(get_cwd.input_schema.required.is_empty());
     }
 }

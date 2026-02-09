@@ -52,14 +52,7 @@ fn process_request(request: JsonRpcRequest) -> Option<JsonRpcResponse> {
     // Handle notifications (requests without an id)
     if request.id.is_none() {
         // Process notification but don't send a response
-        match request.method.as_str() {
-            "initialized" | "notifications/initialized" => {
-                // Acknowledged, no response needed
-            }
-            _ => {
-                // Unknown notification, just ignore
-            }
-        }
+        // Acknowledged, no response needed for any notification
         return None;
     }
 

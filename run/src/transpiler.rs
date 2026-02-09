@@ -40,10 +40,10 @@ Interpreter::Python | Interpreter::Python3) |
             ShellType::Ruby => Interpreter::Ruby,
         }
     }
+}
 
-    /// Get the default interpreter for the platform
-    #[must_use] 
-    pub fn default() -> Self {
+impl Default for Interpreter {
+    fn default() -> Self {
         if cfg!(target_os = "windows") {
             Interpreter::Pwsh
         } else {

@@ -215,7 +215,7 @@ pub(super) fn handle_tools_call(
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::expect_err_used)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use serde_json::json;

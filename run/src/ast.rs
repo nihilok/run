@@ -2,6 +2,7 @@
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::fmt::Write as _;
 use std::sync::OnceLock;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -141,33 +142,36 @@ impl StructuredResult {
         let mut md = String::new();
 
         // Header with context
-        md.push_str(&format!(
+        let _ = write!(
+            md,
             "## Execution: `{}`\n\n",
             self.context.function_name
-        ));
+        );
 
         if let Some(host) = &self.context.remote_host {
-            md.push_str(&format!(
-                "**Host:** {}@{}\n",
+            let _ = writeln!(
+                md,
+                "**Host:** {}@{}",
                 self.context.remote_user.as_deref().unwrap_or("?"),
                 host
-            ));
+            );
         }
 
-        md.push_str(&format!(
-            "**Status:** {}\n",
+        let _ = writeln!(
+            md,
+            "**Status:** {}",
             if self.success {
                 "✓ Success"
             } else {
                 "✗ Failed"
             }
-        ));
-        md.push_str(&format!("**Duration:** {}ms\n\n", self.total_duration_ms));
+        );
+        let _ = write!(md, "**Duration:** {}ms\n\n", self.total_duration_ms);
 
         // Individual command outputs
         for (i, output) in self.outputs.iter().enumerate() {
-            md.push_str(&format!("### Step {} ({}ms)\n", i + 1, output.duration_ms));
-            md.push_str(&format!("`{}`\n\n", output.command));
+            let _ = writeln!(md, "### Step {} ({}ms)", i + 1, output.duration_ms);
+            let _ = write!(md, "`{}`\n\n", output.command);
 
             if !output.stdout.is_empty() {
                 md.push_str("**Output:**\n```\n");
@@ -183,7 +187,7 @@ impl StructuredResult {
 
             if let Some(code) = output.exit_code
                 && code != 0 {
-                    md.push_str(&format!("**Exit Code:** {code}\n\n"));
+                    let _ = writeln!(md, "**Exit Code:** {code}");
                 }
         }
 
@@ -198,28 +202,31 @@ impl StructuredResult {
         let mut md = String::new();
 
         // Header with context
-        md.push_str(&format!(
+        let _ = write!(
+            md,
             "## Execution: `{}`\n\n",
             self.context.function_name
-        ));
+        );
 
         if let Some(host) = &self.context.remote_host {
-            md.push_str(&format!(
-                "**Host:** {}@{}\n",
+            let _ = writeln!(
+                md,
+                "**Host:** {}@{}",
                 self.context.remote_user.as_deref().unwrap_or("?"),
                 host
-            ));
+            );
         }
 
-        md.push_str(&format!(
-            "**Status:** {}\n",
+        let _ = writeln!(
+            md,
+            "**Status:** {}",
             if self.success {
                 "✓ Success"
             } else {
                 "✗ Failed"
             }
-        ));
-        md.push_str(&format!("**Duration:** {}ms\n\n", self.total_duration_ms));
+        );
+        let _ = write!(md, "**Duration:** {}ms\n\n", self.total_duration_ms);
 
         // For MCP, we only show output, not implementation
         // Combine all outputs into a single section
@@ -262,7 +269,7 @@ impl StructuredResult {
             && let Some(output) = self.outputs.last()
                 && let Some(code) = output.exit_code
                     && code != 0 {
-                        md.push_str(&format!("**Exit Code:** {code}\n"));
+                        let _ = writeln!(md, "**Exit Code:** {code}");
                     }
 
         md

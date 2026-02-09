@@ -34,6 +34,21 @@ pub struct Interpreter {
     last_interpreter: String,
 }
 
+impl Default for Interpreter {
+    fn default() -> Self {
+        Self {
+            variables: HashMap::new(),
+            functions: HashMap::new(),
+            simple_functions: HashMap::new(),
+            block_functions: HashMap::new(),
+            function_metadata: HashMap::new(),
+            output_mode: OutputMode::default(),
+            captured_outputs: Vec::new(),
+            last_interpreter: "sh".to_string(),
+        }
+    }
+}
+
 /// Shell-quote a slice of arguments so each remains a separate word when
 /// substituted into a shell command string via text replacement.
 fn shell_quote_args(args: &[String]) -> String {
@@ -52,17 +67,9 @@ fn shell_quote_args(args: &[String]) -> String {
 }
 
 impl Interpreter {
+    #[must_use]
     pub fn new() -> Self {
-        Self {
-            variables: HashMap::new(),
-            functions: HashMap::new(),
-            simple_functions: HashMap::new(),
-            block_functions: HashMap::new(),
-            function_metadata: HashMap::new(),
-            output_mode: OutputMode::default(),
-            captured_outputs: Vec::new(),
-            last_interpreter: "sh".to_string(),
-        }
+        Self::default()
     }
 
     /// Set the output capture mode
@@ -151,9 +158,9 @@ impl Interpreter {
     /// Call a function without parentheses, trying multiple name resolution strategies
     ///
     /// This method attempts to match function names in different ways:
-    /// 1. Direct match: "docker_shell" with args
-    /// 2. If args exist, try first arg as subcommand: "docker" + "shell" -> "docker:shell"
-    /// 3. Try replacing underscores with colons: "docker_shell" -> "docker:shell"
+    /// 1. Direct match: `docker_shell` with args
+    /// 2. If args exist, try first arg as subcommand: `docker` + `shell` -> `docker:shell`
+    /// 3. Try replacing underscores with colons: `docker_shell` -> `docker:shell`
     ///
     /// # Errors
     ///
@@ -640,7 +647,7 @@ impl Interpreter {
     }
 
     /// Execute a command with the current output mode
-    /// The display_command is shown in structured output instead of the full script (which may include preamble)
+    /// The `display_command` is shown in structured output instead of the full script (which may include preamble)
     fn execute_with_mode(
         &mut self,
         script: &str,

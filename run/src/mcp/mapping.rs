@@ -28,8 +28,8 @@ pub(super) fn resolve_tool_name(sanitised_name: &str) -> Result<String, JsonRpcE
         let (name, attributes) = match statement {
             Statement::SimpleFunctionDef {
                 name, attributes, ..
-            } => (name, attributes),
-            Statement::BlockFunctionDef {
+            }
+            | Statement::BlockFunctionDef {
                 name, attributes, ..
             } => (name, attributes),
             _ => continue,
@@ -86,8 +86,8 @@ pub(super) fn map_arguments_to_positional(
                 attributes,
                 params,
                 ..
-            } => (name, attributes, params),
-            Statement::BlockFunctionDef {
+            }
+            | Statement::BlockFunctionDef {
                 name,
                 attributes,
                 params,

@@ -52,8 +52,7 @@ pub fn parse_script(input: &str) -> Result<Program, Box<pest::error::Error<Rule>
                     }
                 }
             }
-            Rule::EOI => {}
-            _ => {}
+            Rule::EOI | _ => {}
         }
     }
 
@@ -83,7 +82,7 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
             let (params, body_pair) = if let Some(next) = inner.next() {
                 if next.as_rule() == Rule::param_list {
                     // Parse parameters
-                    let params = parse_param_list(next).unwrap_or_default();
+                    let params = parse_param_list(next);
                     let body = inner.next()?;
                     (params, body)
                 } else {
@@ -227,7 +226,7 @@ fn parse_command(pair: pest::iterators::Pair<Rule>) -> String {
     result.trim().to_string()
 }
 
-fn parse_param_list(pair: pest::iterators::Pair<Rule>) -> Option<Vec<crate::ast::Parameter>> {
+fn parse_param_list(pair: pest::iterators::Pair<Rule>) -> Vec<crate::ast::Parameter> {
     let mut params = Vec::new();
 
     for inner in pair.into_inner() {
@@ -240,7 +239,7 @@ fn parse_param_list(pair: pest::iterators::Pair<Rule>) -> Option<Vec<crate::ast:
         }
     }
 
-    Some(params)
+    params
 }
 
 fn parse_param(pair: pest::iterators::Pair<Rule>) -> Option<crate::ast::Parameter> {
@@ -274,7 +273,6 @@ fn parse_param(pair: pest::iterators::Pair<Rule>) -> Option<crate::ast::Paramete
                     param_type = match type_pair.as_str() {
                         "int" | "integer" => crate::ast::ArgType::Integer,
                         "bool" | "boolean" => crate::ast::ArgType::Boolean,
-                        "str" | "string" => crate::ast::ArgType::String,
                         _ => crate::ast::ArgType::String,
                     };
                 }
@@ -573,11 +571,11 @@ shell() docker compose exec $1 bash
 
     #[test]
     fn test_arg_without_position_hybrid_mode() {
-        let input = r#"
+        let input = r"
 # @arg service The service to scale
 # @arg replicas Number of instances
 scale(service, replicas) docker compose scale $service=$replicas
-"#;
+";
         let result = parse_script(input).unwrap();
 
         if let Statement::SimpleFunctionDef {

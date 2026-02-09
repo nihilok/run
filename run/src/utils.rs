@@ -2,7 +2,8 @@
 
 use crate::ast::{ArgType, Attribute, OsPlatform};
 
-/// Convert ArgType to JSON schema type string
+/// Convert `ArgType` to JSON schema type string
+#[must_use]
 pub fn arg_type_to_json_type(arg_type: &ArgType) -> &'static str {
     match arg_type {
         ArgType::String => "string",
@@ -16,6 +17,7 @@ pub fn arg_type_to_json_type(arg_type: &ArgType) -> &'static str {
 /// Returns `true` if:
 /// - No OS attributes are present (available on all platforms)
 /// - At least one OS attribute matches the current platform
+#[must_use]
 pub fn matches_current_platform(attributes: &[Attribute]) -> bool {
     // If no OS attributes, function is available on all platforms
     let os_attrs: Vec<&OsPlatform> = attributes
