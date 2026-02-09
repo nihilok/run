@@ -141,7 +141,24 @@ pub(super) fn extract_function_metadata(
     }
 
     // If we have params, use them (takes precedence over @arg for type/default)
-    if !params.is_empty() {
+    if params.is_empty() {
+        // Fall back to @arg attributes for backward compatibility
+        for attr in attributes {
+            if let Attribute::Arg(arg_meta) = attr {
+                let param_type = utils::arg_type_to_json_type(&arg_meta.arg_type);
+
+                properties.insert(
+                    arg_meta.name.clone(),
+                    ParameterSchema {
+                        param_type: param_type.to_string(),
+                        description: arg_meta.description.clone(),
+                    },
+                );
+
+                required.push(arg_meta.name.clone());
+            }
+        }
+    } else {
         for param in params {
             let param_description = arg_descriptions
                 .get(&param.name)
@@ -170,23 +187,6 @@ pub(super) fn extract_function_metadata(
                 if param.default_value.is_none() {
                     required.push(param.name.clone());
                 }
-            }
-        }
-    } else {
-        // Fall back to @arg attributes for backward compatibility
-        for attr in attributes {
-            if let Attribute::Arg(arg_meta) = attr {
-                let param_type = utils::arg_type_to_json_type(&arg_meta.arg_type);
-
-                properties.insert(
-                    arg_meta.name.clone(),
-                    ParameterSchema {
-                        param_type: param_type.to_string(),
-                        description: arg_meta.description.clone(),
-                    },
-                );
-
-                required.push(arg_meta.name.clone());
             }
         }
     }

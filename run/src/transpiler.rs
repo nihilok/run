@@ -165,8 +165,8 @@ fn replace_word(text: &str, pattern: &str, replacement: &str) -> String {
                 || result
                     .chars()
                     .last()
-                    .map_or(true, |c| !is_word_char(c));
-            let after_ok = chars.peek().map_or(true, |&c| !is_word_char(c));
+                    .is_none_or(|c| !is_word_char(c));
+            let after_ok = chars.peek().is_none_or(|&c| !is_word_char(c));
 
             if before_ok && after_ok {
                 // Valid word boundary, replace
