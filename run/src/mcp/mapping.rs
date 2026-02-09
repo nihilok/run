@@ -141,6 +141,34 @@ pub(super) fn map_arguments_to_positional(
         }
     }
 
+    // Check for rest parameter — expand JSON array directly
+    let rest_param = params_vec.iter().find(|p| p.is_rest);
+    if let Some(rest) = rest_param {
+        if let Some(args_obj) = json_args.as_object() {
+            if let Some(serde_json::Value::Array(arr)) = args_obj.get(&rest.name) {
+                let mut positional_args = Vec::new();
+                // First add any non-rest positional args
+                let max_position = *arg_mapping.keys().max().unwrap_or(&0);
+                if max_position > 0 {
+                    positional_args.resize(max_position, String::new());
+                    for (position, param_name) in arg_mapping.iter() {
+                        if let Some(value) = args_obj.get(param_name) {
+                            let arg_str = value_to_string(value);
+                            if *position > 0 && *position <= positional_args.len() {
+                                positional_args[position - 1] = arg_str;
+                            }
+                        }
+                    }
+                }
+                // Then append all rest args
+                for item in arr {
+                    positional_args.push(value_to_string(item));
+                }
+                return Ok(positional_args);
+            }
+        }
+    }
+
     // If still no mapping found, return empty arguments
     if arg_mapping.is_empty() {
         return Ok(Vec::new());
@@ -159,13 +187,7 @@ pub(super) fn map_arguments_to_positional(
 
     for (position, param_name) in arg_mapping.iter() {
         if let Some(value) = args_obj.get(param_name) {
-            let arg_str = match value {
-                serde_json::Value::String(s) => s.clone(),
-                serde_json::Value::Number(n) => n.to_string(),
-                serde_json::Value::Bool(b) => b.to_string(),
-                serde_json::Value::Null => String::new(),
-                _ => value.to_string(),
-            };
+            let arg_str = value_to_string(value);
 
             if *position > 0 && *position <= positional_args.len() {
                 positional_args[position - 1] = arg_str;
@@ -174,4 +196,15 @@ pub(super) fn map_arguments_to_positional(
     }
 
     Ok(positional_args)
+}
+
+/// Convert a JSON value to a string for shell argument passing
+fn value_to_string(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Null => String::new(),
+        _ => value.to_string(),
+    }
 }

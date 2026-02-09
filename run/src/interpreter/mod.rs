@@ -34,6 +34,23 @@ pub struct Interpreter {
     last_interpreter: String,
 }
 
+/// Shell-quote a slice of arguments so each remains a separate word when
+/// substituted into a shell command string via text replacement.
+fn shell_quote_args(args: &[String]) -> String {
+    args.iter()
+        .map(|a| {
+            if a.is_empty() {
+                "''".to_string()
+            } else if a.bytes().all(|b| matches!(b, b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'/' | b':' | b'=' | b'+' | b'@' | b'%' | b',')) {
+                a.clone()
+            } else {
+                format!("'{}'", a.replace('\'', "'\\''"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 impl Interpreter {
     pub fn new() -> Self {
         Self {
@@ -330,8 +347,12 @@ impl Interpreter {
         }
 
         // Also support $@ for all arguments
+        // Shell-quote each arg individually so they remain separate words
         if result.contains("$@") {
-            result = result.replace("$@", &args.join(" "));
+            let quoted = shell_quote_args(args);
+            // Replace "$@" (with surrounding quotes) first, then bare $@
+            result = result.replace("\"$@\"", &quoted);
+            result = result.replace("$@", &quoted);
         }
 
         // Replace user-defined variables (e.g., $myvar)
@@ -357,15 +378,16 @@ impl Interpreter {
         if !params.is_empty() {
             for (i, param) in params.iter().enumerate() {
                 if param.is_rest {
-                    // Rest parameter: join all remaining args
+                    // Rest parameter: shell-quote all remaining args individually
                     let rest_args = if i < args.len() {
-                        args[i..].join(" ")
+                        shell_quote_args(&args[i..])
                     } else {
                         String::new()
                     };
                     result = result.replace(&format!("${}", param.name), &rest_args);
                     result = result.replace(&format!("${{{}}}", param.name), &rest_args);
-                    // Also support $@ for rest parameters
+                    // Also support "$@" and $@ for rest parameters
+                    result = result.replace("\"$@\"", &rest_args);
                     result = result.replace("$@", &rest_args);
                 } else {
                     let value = if i < args.len() {
