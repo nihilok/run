@@ -548,9 +548,9 @@ shared() {
 "#,
     );
 
-    // Temporarily swap global runfile
+    // Temporarily swap global runfile (use unique backup name to avoid test interference)
     let original_runfile = std::path::PathBuf::from(&home_dir).join(".runfile");
-    let backup_runfile = std::path::PathBuf::from(&home_dir).join(".runfile.backup_test");
+    let backup_runfile = std::path::PathBuf::from(&home_dir).join(".runfile.backup_test_merge");
     if original_runfile.exists() {
         fs::rename(&original_runfile, &backup_runfile).ok();
     }
@@ -617,9 +617,9 @@ project_tool() {
 "#,
     );
 
-    // Temporarily swap global runfile
+    // Temporarily swap global runfile (use unique backup name to avoid test interference)
     let original_runfile = std::path::PathBuf::from(&home_dir).join(".runfile");
-    let backup_runfile = std::path::PathBuf::from(&home_dir).join(".runfile.backup_test");
+    let backup_runfile = std::path::PathBuf::from(&home_dir).join(".runfile.backup_test_mcp");
     if original_runfile.exists() {
         fs::rename(&original_runfile, &backup_runfile).ok();
     }
@@ -673,7 +673,7 @@ fn test_mcp_project_overrides_global() {
     fs::write(
         &global_runfile,
         r#"
-# @desc Shared tool from global
+# @desc Shared tool from project (overrides global)
 shared_tool() {
     echo "Global version"
 }
@@ -692,9 +692,9 @@ shared_tool() {
 "#,
     );
 
-    // Temporarily swap global runfile
+    // Temporarily swap global runfile (use unique backup name to avoid test interference)
     let original_runfile = std::path::PathBuf::from(&home_dir).join(".runfile");
-    let backup_runfile = std::path::PathBuf::from(&home_dir).join(".runfile.backup_test");
+    let backup_runfile = std::path::PathBuf::from(&home_dir).join(".runfile.backup_test_override");
     if original_runfile.exists() {
         fs::rename(&original_runfile, &backup_runfile).ok();
     }
