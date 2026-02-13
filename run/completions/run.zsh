@@ -18,7 +18,7 @@ _run() {
         local list_output
         list_output=$($run_cmd --list 2>/dev/null)
         if [[ $? -eq 0 && -n "$list_output" ]]; then
-            all_funcs=("${(@f)$(echo $list_output | command sed -n 's/^  //p')}")
+            all_funcs=("${(@f)$(echo $list_output | command sed 's/ (overrides global)//' | command sed -n 's/^  *\([^ ][^ ]*\) *$/\1/p')}")
         fi
     fi
 

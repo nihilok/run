@@ -17,7 +17,7 @@ function __run_get_top_level
     end
 
     # Get all functions and extract top-level names
-    set -l all_funcs (run --list 2>/dev/null | string match -r '^  \S+' | string trim)
+    set -l all_funcs (run --list 2>/dev/null | string replace ' (overrides global)' '' | string match -r '^\s+\S+$' | string trim)
     set -l top_level
     set -l seen
 
@@ -42,7 +42,7 @@ end
 # Helper function to get subcommands for a namespace
 function __run_get_subcommands
     set -l namespace $argv[1]
-    set -l all_funcs (run --list 2>/dev/null | string match -r '^  \S+' | string trim)
+    set -l all_funcs (run --list 2>/dev/null | string replace ' (overrides global)' '' | string match -r '^\s+\S+$' | string trim)
 
     for func in $all_funcs
         if string match -q "$namespace:*" $func
