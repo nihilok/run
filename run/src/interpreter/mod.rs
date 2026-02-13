@@ -226,6 +226,32 @@ impl Interpreter {
             }
         }
 
+        // Try replacing double underscores with colons (MCP sanitization convention)
+        // e.g., "nested__function" -> "nested:function"
+        if function_name.contains("__") {
+            let with_colons = function_name.replace("__", ":");
+            if let Some(command_template) = self.simple_functions.get(&with_colons).cloned() {
+                let attributes = self.get_simple_function_attributes(&with_colons).to_vec();
+                return self.execute_simple_function(
+                    &with_colons,
+                    &command_template,
+                    args,
+                    &attributes,
+                );
+            }
+            if let Some(commands) = self.block_functions.get(&with_colons).cloned() {
+                let (attributes, shebang) = self.get_block_function_metadata(&with_colons);
+                let shebang_owned = shebang.map(String::from);
+                return self.execute_block_commands(
+                    &with_colons,
+                    &commands,
+                    args,
+                    &attributes,
+                    shebang_owned.as_deref(),
+                );
+            }
+        }
+
         // Try replacing underscores with colons
         let with_colons = function_name.replace("_", ":");
         if with_colons != function_name {
