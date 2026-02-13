@@ -132,12 +132,9 @@ pub fn run_function_call(function_name: &str, args: &[String], output_format: Ou
     // Now execute the function call with arguments
     // For nested commands, try different combinations:
     // e.g., "docker shell app" -> try "docker:shell" with arg "app"
-    if let Err(e) = interpreter.call_function_without_parens(function_name, args) {
-        eprintln!("Error: {e}");
-        std::process::exit(1);
-    }
+    let exec_result = interpreter.call_function_without_parens(function_name, args);
 
-    // If in structured mode, output the captured results
+    // If in structured mode, output the captured results (even on error, so stderr is not lost)
     if matches!(output_format.mode(), crate::ast::OutputMode::Structured) {
         let outputs = interpreter.take_captured_outputs();
         if !outputs.is_empty() {
@@ -153,6 +150,11 @@ pub fn run_function_call(function_name: &str, args: &[String], output_format: Ou
                 println!("{formatted}");
             }
         }
+    }
+
+    if let Err(e) = exec_result {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
     }
 }
 
