@@ -198,8 +198,8 @@ pub(super) fn handle_tools_call(
         "text": stdout
     })];
 
-    // Only include stderr if there was an error (structured output captures stderr in the markdown)
-    if !stderr.is_empty() && !output.status.success() {
+    // Always include non-empty stderr so warnings and errors are never silently lost
+    if !stderr.is_empty() {
         content.push(serde_json::json!({
             "type": "text",
             "text": format!("STDERR:\n{}", stderr)
