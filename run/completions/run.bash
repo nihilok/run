@@ -70,7 +70,7 @@ _run_complete() {
         local namespace="$prev"
 
         if command -v run &> /dev/null; then
-            local all_funcs=$(run --list 2>/dev/null | sed -n 's/^  //p')
+            local all_funcs=$(run --list 2>/dev/null | sed 's/ (overrides global)//' | sed -n 's/^  *\([^ ][^ ]*\) *$/\1/p')
             local subcommands=""
 
             while IFS= read -r func; do

@@ -11,7 +11,8 @@
                 $listOutput = & run --list 2>$null
                 if ($LASTEXITCODE -eq 0 -and $listOutput) {
                     $listOutput | ForEach-Object {
-                        if ($_ -match '^\s{2}(\S+)') {
+                        $line = $_ -replace ' \(overrides global\)', ''
+                        if ($line -match '^\s+(\S+)\s*$') {
                             $matches[1]
                         }
                     }
