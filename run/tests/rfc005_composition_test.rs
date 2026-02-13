@@ -904,3 +904,35 @@ deploy() {
         "Expected 'deploy done' in output"
     );
 }
+
+#[test]
+fn test_double_underscore_resolves_to_colon_function() {
+    // Test that calling a function with double underscores (MCP sanitized name)
+    // resolves to the original colon-named function.
+    // e.g., "run app__build" should find and execute "app:build"
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let runfile = r#"
+app:build() echo "app build executed"
+"#;
+    create_runfile(temp_dir.path(), runfile);
+
+    let output = Command::new(&binary)
+        .arg("app__build")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("app build executed"),
+        "Expected double underscore to resolve to colon function"
+    );
+}
