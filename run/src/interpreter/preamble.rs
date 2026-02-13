@@ -146,7 +146,7 @@ pub(super) fn build_function_preamble(
 ) -> String {
     let mut preamble = String::new();
 
-    // Collect only compatible sibling function names (for call site rewriting)
+    // Collect compatible sibling function names
     let compatible_siblings = collect_compatible_siblings(
         target_name,
         target_interpreter,
@@ -155,7 +155,24 @@ pub(super) fn build_function_preamble(
         function_metadata,
         resolve_interpreter,
     );
-    let sibling_names: Vec<&str> = compatible_siblings.iter().map(|s| s.as_str()).collect();
+
+    // Also collect incompatible colon siblings so their call sites within
+    // compatible preamble functions get rewritten to match the wrapper names
+    let incompatible_colon_siblings = collect_incompatible_colon_siblings(
+        target_name,
+        target_interpreter,
+        simple_functions,
+        block_functions,
+        function_metadata,
+        resolve_interpreter,
+    );
+
+    // Combine both lists for call site rewriting
+    let all_rewritable: Vec<&str> = compatible_siblings
+        .iter()
+        .chain(incompatible_colon_siblings.iter())
+        .map(|s| s.as_str())
+        .collect();
 
     // Transpile simple functions
     for (name, command_template) in simple_functions {
@@ -172,7 +189,7 @@ pub(super) fn build_function_preamble(
         }
 
         // Rewrite call sites in the command template
-        let rewritten_body = transpiler::rewrite_call_sites(command_template, &sibling_names);
+        let rewritten_body = transpiler::rewrite_call_sites(command_template, &all_rewritable);
 
         let transpiled = match target_interpreter {
             TranspilerInterpreter::Pwsh => {
@@ -204,7 +221,7 @@ pub(super) fn build_function_preamble(
 
         // Join commands and rewrite call sites
         let body = commands.join("\n");
-        let rewritten_body = transpiler::rewrite_call_sites(&body, &sibling_names);
+        let rewritten_body = transpiler::rewrite_call_sites(&body, &all_rewritable);
 
         let transpiled = match target_interpreter {
             TranspilerInterpreter::Pwsh => {
@@ -218,15 +235,7 @@ pub(super) fn build_function_preamble(
     }
 
     // Add wrapper functions for incompatible siblings with colons
-    let incompatible = collect_incompatible_colon_siblings(
-        target_name,
-        target_interpreter,
-        simple_functions,
-        block_functions,
-        function_metadata,
-        resolve_interpreter,
-    );
-    let wrappers = build_incompatible_wrappers(&incompatible, target_interpreter);
+    let wrappers = build_incompatible_wrappers(&incompatible_colon_siblings, target_interpreter);
     if !wrappers.is_empty() {
         preamble.push_str(&wrappers);
     }

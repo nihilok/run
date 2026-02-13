@@ -39,6 +39,15 @@ fn create_temp_dir() -> tempfile::TempDir {
     tempfile::TempDir::new().unwrap()
 }
 
+/// Helper to get PATH that includes the binary's directory.
+/// This is needed for tests that use incompatible wrappers, which call `run` as a subprocess.
+fn get_path_with_binary() -> String {
+    let binary = get_binary_path();
+    let binary_dir = binary.parent().unwrap();
+    let current_path = env::var("PATH").unwrap_or_default();
+    format!("{}:{}", binary_dir.display(), current_path)
+}
+
 /// Helper to create a Runfile in a directory
 fn create_runfile(dir: &std::path::Path, content: &str) {
     let runfile_path = dir.join("Runfile");
@@ -563,6 +572,7 @@ wrapper() {
         .arg("wrapper")
         .current_dir(temp_dir.path())
         .env("HOME", temp_dir.path())
+        .env("PATH", get_path_with_binary())
         .output()
         .expect("Failed to execute command");
 
@@ -611,6 +621,7 @@ wrapper() {
         .arg("wrapper")
         .current_dir(temp_dir.path())
         .env("HOME", temp_dir.path())
+        .env("PATH", get_path_with_binary())
         .output()
         .expect("Failed to execute command");
 
@@ -663,6 +674,7 @@ multi_call() {
         .arg("multi_call")
         .current_dir(temp_dir.path())
         .env("HOME", temp_dir.path())
+        .env("PATH", get_path_with_binary())
         .output()
         .expect("Failed to execute command");
 
@@ -719,6 +731,7 @@ ci() {
         .arg("ci")
         .current_dir(temp_dir.path())
         .env("HOME", temp_dir.path())
+        .env("PATH", get_path_with_binary())
         .output()
         .expect("Failed to execute command");
 
@@ -811,6 +824,7 @@ deploy:full() {
         .arg("deploy:full")
         .current_dir(temp_dir.path())
         .env("HOME", temp_dir.path())
+        .env("PATH", get_path_with_binary())
         .output()
         .expect("Failed to execute command");
 
@@ -826,4 +840,67 @@ deploy:full() {
         "Expected node:healthcheck output"
     );
     assert!(stdout.contains("app stopping"), "Expected app:stop output");
+}
+
+#[test]
+fn test_compatible_preamble_function_calling_incompatible_colon_function() {
+    // Test that a compatible preamble function (e.g., app:build) can call
+    // an incompatible colon function (e.g., node:validate) via the generated wrapper.
+    // This verifies that incompatible colon sibling call sites are rewritten
+    // inside preamble functions, not just in the main body.
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let runfile = r#"
+# Compatible shell function that calls an incompatible colon function
+app:build() {
+    echo "building app"
+    node:validate
+    echo "build complete"
+}
+
+# Incompatible node function
+# @shell node
+node:validate() {
+    console.log("Validation passed!");
+}
+
+# Main function calls the compatible colon function
+deploy() {
+    app:build
+    echo "deploy done"
+}
+"#;
+    create_runfile(temp_dir.path(), runfile);
+
+    let output = Command::new(&binary)
+        .arg("deploy")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .env("PATH", get_path_with_binary())
+        .output()
+        .expect("Failed to execute command");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("building app"),
+        "Expected 'building app' in output"
+    );
+    assert!(
+        stdout.contains("Validation passed!"),
+        "Expected Node.js validation output from preamble function"
+    );
+    assert!(
+        stdout.contains("build complete"),
+        "Expected 'build complete' in output"
+    );
+    assert!(
+        stdout.contains("deploy done"),
+        "Expected 'deploy done' in output"
+    );
 }
