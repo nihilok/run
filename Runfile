@@ -166,7 +166,7 @@ long_output(count) {
 
 # @desc Function that runs tests using Cargo; optionally accepts additional arguments to pass to cargo test (always provides "--package run" by default and captures both stdout and stderr); example:  `run_tests --test some_test.rs`
 run_tests(...args) {
-    output=$(cargo test --package run "$@" 2>&1)
+    output=$(cargo test --package run "$@")
     echo "$output"
     
     # Parse and display totals
@@ -183,5 +183,17 @@ run_tests(...args) {
 
 # @desc Runs clippy linter on the entire workspace, including all targets
 clippy() {
-    cargo clippy --workspace --all-targets 2>&1 || true
+    cargo clippy --workspace --all-targets || true
+}
+
+# @desc Test function that produces large output on both stdout and stderr
+# @arg stdout_lines Number of lines to output to stdout
+# @arg stderr_lines Number of lines to output to stderr
+test_both_streams(stdout_lines, stderr_lines) {
+    for i in $(seq 1 $1); do
+        echo "STDOUT Line $i"
+    done
+    for i in $(seq 1 $2); do
+        echo "STDERR Line $i" >&2
+    done
 }
