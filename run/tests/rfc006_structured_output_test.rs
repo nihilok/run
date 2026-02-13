@@ -198,3 +198,41 @@ ssh_test() {
 }
 
 // Note: Unit tests for extract_ssh_context are in run/src/ast.rs
+
+#[test]
+fn test_structured_markdown_with_stderr() {
+    let temp_dir = TempDir::new().unwrap();
+    let runfile_path = temp_dir.path().join("Runfile");
+
+    let runfile_content = r#"
+# @desc Test function with both stdout and stderr
+mixed_output() {
+    echo "stdout message"
+    echo "stderr message" >&2
+}
+"#;
+
+    fs::write(&runfile_path, runfile_content).unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_run"))
+        .arg("--runfile")
+        .arg(&runfile_path)
+        .arg("--output-format=markdown")
+        .arg("mixed_output")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    // Check markdown structure includes both streams
+    assert!(stdout.contains("## Execution: `mixed_output`"));
+    assert!(stdout.contains("**Status:** ✓ Success"));
+    assert!(stdout.contains("**Output:**"));
+    assert!(stdout.contains("stdout message"));
+
+    // Stderr should be in separate "Errors:" section
+    assert!(stdout.contains("**Errors:**"));
+    assert!(stdout.contains("stderr message"));
+}
