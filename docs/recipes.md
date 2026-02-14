@@ -3,6 +3,7 @@
 Copy-pasteable Runfile snippets for common workflows. Adjust names and paths to fit your project.
 
 ## Docker workflows
+
 ```bash
 # @desc Build the Docker image
 docker:build() {
@@ -23,9 +24,11 @@ docker:logs(...services) {
     docker compose logs -f "$@"
 }
 ```
+
 Run with `run docker build`, `run docker up`, or `run docker logs api web`.
 
 ## CI pipeline
+
 ```bash
 # @desc Lint the project
 lint() cargo clippy -- -D warnings
@@ -46,6 +49,7 @@ ci() {
 ```
 
 ## Polyglot data helpers
+
 ```bash
 # @desc Analyze a JSON file
 # @arg file Path to the JSON file
@@ -69,6 +73,7 @@ csv_to_json(input: str, output: str) {
 ```
 
 ## Platform-specific commands
+
 ```bash
 # @desc Clean build artifacts
 # @os windows
@@ -94,10 +99,11 @@ open() {
 ```
 
 ## Deploy with dependencies
+
 ```bash
-# @desc Build once, then deploy
 build() cargo build --release
 
+# @desc Build and deploy
 deploy(env: str, version = "latest") {
     build || exit 1
     echo "Deploying $version to $env"

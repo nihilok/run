@@ -1,0 +1,23 @@
+[book]
+title = "run"
+authors = ["nihilok", "sebastian"]
+description = "The bridge between human and AI tooling - define functions in a Runfile, run them from your terminal, or expose them as MCP tools"
+language = "en"
+src = "docs"
+
+[build]
+build-dir = "book"
+
+[output.html]
+default-theme = "rust"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/nihilok/run"
+edit-url-template = "https://github.com/nihilok/run/edit/main/{path}"
+site-url = "/docs/"
+
+[output.html.fold]
+enable = true
+level = 0
+
+[output.html.playground]
+editable = false
