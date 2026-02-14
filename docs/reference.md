@@ -4,7 +4,7 @@ Quick lookups for attributes, environment variables, and discovery rules.
 
 ## Attribute summary
 - `@desc <text>` — short description for listings and MCP tools.
-- `@arg <name> <description>` — document parameters (names should match the signature).
+- `@arg <name> [type] <description>` — document parameters (names should match the signature). Optional type can be `string`, `integer`, `float`/`number`, `boolean`, or `object`/`dict`.
 - `@os <unix|windows|macos|linux>` — restrict a function to a platform.
 - Platform branching: use separate `# @os` variants or branch inside the shell body (inline `@macos {}` style guards are not supported).
 - `@shell <interpreter>` — force an interpreter (`python3`, `node`, `pwsh`, `bash`, `sh`, etc.). Overrides any shebang.

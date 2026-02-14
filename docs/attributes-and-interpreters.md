@@ -4,7 +4,7 @@ Attributes live in comments (`# @key value`) and adjust how a function is expose
 
 ## Descriptions and args
 - `@desc` — one-line summary shown in listings and MCP tool schemas.
-- `@arg <name> <description>` — add human-readable parameter docs. Names should match the signature.
+- `@arg <name> [type] <description>` — add human-readable parameter docs. Names should match the signature. Optional type keyword (`string`, `integer`, `float`/`number`, `boolean`, `object`/`dict`) sets the JSON schema type for MCP.
 
 ```bash
 # @desc Deploy to an environment

@@ -17,7 +17,7 @@ This searches for the nearest `Runfile` (or `~/.runfile` fallback) and exposes i
 ```bash
 run --inspect
 ```
-Outputs the JSON schema that agents receive—useful for debugging descriptions, parameter types, and defaults.
+Outputs the JSON schema that agents receive—useful for debugging descriptions, parameter types, and defaults. Supported types: `str`/`string`, `int`/`integer`, `float`/`number`, `bool`/`boolean`, `object`/`obj`/`dict`.
 
 ## Configure MCP servers for your agents
 Add an entry to your MCP config:

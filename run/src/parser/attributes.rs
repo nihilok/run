@@ -153,7 +153,9 @@ fn parse_arg_attribute(arg_text: &str) -> Option<Attribute> {
             match parts[1] {
                 "string" => (ArgType::String, 2),
                 "integer" => (ArgType::Integer, 2),
+                "float" | "number" => (ArgType::Float, 2),
                 "boolean" => (ArgType::Boolean, 2),
+                "object" | "dict" => (ArgType::Object, 2),
                 _ => (ArgType::String, 1), // Default to string, description starts at index 1
             }
         } else {

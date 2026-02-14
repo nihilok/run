@@ -25,7 +25,7 @@ Run `run --install-completion` (auto-detects shell) or `run --generate-completio
 Use `run --working-dir /path/to/project <function> ...` so discovery happens in that directory.
 
 ## Are type hints enforced at runtime?
-No. Types in signatures power documentation and MCP schemas. Validate inside your function if needed.
+In shell functions, no — types power documentation and MCP schemas only. In polyglot functions (Python, Node.js, Ruby), `int`, `float`, `bool`, and `object` types trigger automatic conversion of CLI string arguments. Validate inside your function for anything beyond that.
 
 ## Is it safe to keep secrets in functions when using MCP?
 Theoretically, yes. MCP exposes only the schema (names, descriptions, parameter shapes). Function bodies are not sent to the agent. 

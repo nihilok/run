@@ -8,7 +8,9 @@ pub fn arg_type_to_json_type(arg_type: &ArgType) -> &'static str {
     match arg_type {
         ArgType::String => "string",
         ArgType::Integer => "integer",
+        ArgType::Float => "number",
         ArgType::Boolean => "boolean",
+        ArgType::Object => "object",
     }
 }
 
@@ -58,7 +60,9 @@ mod tests {
     fn test_arg_type_to_json_type() {
         assert_eq!(arg_type_to_json_type(&ArgType::String), "string");
         assert_eq!(arg_type_to_json_type(&ArgType::Integer), "integer");
+        assert_eq!(arg_type_to_json_type(&ArgType::Float), "number");
         assert_eq!(arg_type_to_json_type(&ArgType::Boolean), "boolean");
+        assert_eq!(arg_type_to_json_type(&ArgType::Object), "object");
     }
 
     #[test]

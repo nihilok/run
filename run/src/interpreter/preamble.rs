@@ -288,7 +288,14 @@ pub(super) fn build_polyglot_arg_preamble(
 /// Build Python variable declarations from parameters.
 /// Python uses `sys.argv` where index 0 is `-c`, so user args start at index 1.
 fn build_python_arg_preamble(params: &[crate::ast::Parameter]) -> String {
-    let mut lines = vec!["import sys".to_string()];
+    let needs_json = params
+        .iter()
+        .any(|p| matches!(p.param_type, crate::ast::ArgType::Object));
+    let mut lines = if needs_json {
+        vec!["import sys".to_string(), "import json".to_string()]
+    } else {
+        vec!["import sys".to_string()]
+    };
 
     for (i, param) in params.iter().enumerate() {
         let idx = i + 1; // sys.argv[0] is -c
@@ -307,8 +314,16 @@ fn build_python_arg_preamble(params: &[crate::ast::Parameter]) -> String {
                     "{} = int(sys.argv[{idx}]) if len(sys.argv) > {idx} else {default_literal}",
                     param.name
                 ),
+                crate::ast::ArgType::Float => format!(
+                    "{} = float(sys.argv[{idx}]) if len(sys.argv) > {idx} else {default_literal}",
+                    param.name
+                ),
                 crate::ast::ArgType::Boolean => format!(
                     "{} = (sys.argv[{idx}].lower() in ('true', '1', 'yes')) if len(sys.argv) > {idx} else {default_literal}",
+                    param.name
+                ),
+                crate::ast::ArgType::Object => format!(
+                    "{} = json.loads(sys.argv[{idx}]) if len(sys.argv) > {idx} else {default_literal}",
                     param.name
                 ),
                 crate::ast::ArgType::String => format!("{} = {}", param.name, raw_expr),
@@ -343,8 +358,16 @@ fn build_node_arg_preamble(params: &[crate::ast::Parameter]) -> String {
                     "const {} = process.argv.length > {idx} ? parseInt(process.argv[{idx}], 10) : {default_literal};",
                     param.name
                 ),
+                crate::ast::ArgType::Float => format!(
+                    "const {} = process.argv.length > {idx} ? parseFloat(process.argv[{idx}]) : {default_literal};",
+                    param.name
+                ),
                 crate::ast::ArgType::Boolean => format!(
                     "const {} = process.argv.length > {idx} ? !['false', '0', ''].includes(process.argv[{idx}].toLowerCase()) : {default_literal};",
+                    param.name
+                ),
+                crate::ast::ArgType::Object => format!(
+                    "const {} = process.argv.length > {idx} ? JSON.parse(process.argv[{idx}]) : {default_literal};",
                     param.name
                 ),
                 crate::ast::ArgType::String => format!(
@@ -366,7 +389,13 @@ fn build_node_arg_preamble(params: &[crate::ast::Parameter]) -> String {
 /// Build Ruby variable declarations from parameters.
 /// Ruby uses `ARGV` where index 0 is the first user argument.
 fn build_ruby_arg_preamble(params: &[crate::ast::Parameter]) -> String {
+    let needs_json = params
+        .iter()
+        .any(|p| matches!(p.param_type, crate::ast::ArgType::Object));
     let mut lines = Vec::new();
+    if needs_json {
+        lines.push("require 'json'".to_string());
+    }
 
     for (i, param) in params.iter().enumerate() {
         if param.is_rest {
@@ -380,8 +409,16 @@ fn build_ruby_arg_preamble(params: &[crate::ast::Parameter]) -> String {
                     "{} = ARGV.length > {i} ? ARGV[{i}].to_i : {default_literal}",
                     param.name
                 ),
+                crate::ast::ArgType::Float => format!(
+                    "{} = ARGV.length > {i} ? ARGV[{i}].to_f : {default_literal}",
+                    param.name
+                ),
                 crate::ast::ArgType::Boolean => format!(
                     "{} = ARGV.length > {i} ? !['false', '0', ''].include?(ARGV[{i}].downcase) : {default_literal}",
+                    param.name
+                ),
+                crate::ast::ArgType::Object => format!(
+                    "{} = ARGV.length > {i} ? JSON.parse(ARGV[{i}]) : {default_literal}",
                     param.name
                 ),
                 crate::ast::ArgType::String => format!(
@@ -404,13 +441,19 @@ fn build_ruby_arg_preamble(params: &[crate::ast::Parameter]) -> String {
 
 fn python_literal(value: &str, arg_type: &crate::ast::ArgType) -> String {
     match arg_type {
-        crate::ast::ArgType::Integer => value.to_string(),
+        crate::ast::ArgType::Integer | crate::ast::ArgType::Float => value.to_string(),
         crate::ast::ArgType::Boolean => {
             if ["true", "1", "yes"].contains(&value.to_lowercase().as_str()) {
                 "True".to_string()
             } else {
                 "False".to_string()
             }
+        }
+        crate::ast::ArgType::Object => {
+            format!(
+                "json.loads('{}')",
+                value.replace('\\', "\\\\").replace('\'', "\\'")
+            )
         }
         crate::ast::ArgType::String => {
             format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
@@ -421,9 +464,11 @@ fn python_literal(value: &str, arg_type: &crate::ast::ArgType) -> String {
 fn convert_python_value(expr: &str, arg_type: &crate::ast::ArgType) -> String {
     match arg_type {
         crate::ast::ArgType::Integer => format!("int({expr})"),
+        crate::ast::ArgType::Float => format!("float({expr})"),
         crate::ast::ArgType::Boolean => {
             format!("{expr}.lower() in ('true', '1', 'yes')")
         }
+        crate::ast::ArgType::Object => format!("json.loads({expr})"),
         crate::ast::ArgType::String => expr.to_string(),
     }
 }
@@ -431,9 +476,11 @@ fn convert_python_value(expr: &str, arg_type: &crate::ast::ArgType) -> String {
 fn convert_python_list(expr: &str, arg_type: &crate::ast::ArgType) -> String {
     match arg_type {
         crate::ast::ArgType::Integer => format!("[int(x) for x in {expr}]"),
+        crate::ast::ArgType::Float => format!("[float(x) for x in {expr}]"),
         crate::ast::ArgType::Boolean => {
             format!("[x.lower() in ('true', '1', 'yes') for x in {expr}]")
         }
+        crate::ast::ArgType::Object => format!("[json.loads(x) for x in {expr}]"),
         crate::ast::ArgType::String => expr.to_string(),
     }
 }
@@ -442,13 +489,19 @@ fn convert_python_list(expr: &str, arg_type: &crate::ast::ArgType) -> String {
 
 fn node_literal(value: &str, arg_type: &crate::ast::ArgType) -> String {
     match arg_type {
-        crate::ast::ArgType::Integer => value.to_string(),
+        crate::ast::ArgType::Integer | crate::ast::ArgType::Float => value.to_string(),
         crate::ast::ArgType::Boolean => {
             if ["true", "1", "yes"].contains(&value.to_lowercase().as_str()) {
                 "true".to_string()
             } else {
                 "false".to_string()
             }
+        }
+        crate::ast::ArgType::Object => {
+            format!(
+                "JSON.parse('{}')",
+                value.replace('\\', "\\\\").replace('\'', "\\'")
+            )
         }
         crate::ast::ArgType::String => {
             format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
@@ -459,9 +512,11 @@ fn node_literal(value: &str, arg_type: &crate::ast::ArgType) -> String {
 fn convert_node_value(expr: &str, arg_type: &crate::ast::ArgType) -> String {
     match arg_type {
         crate::ast::ArgType::Integer => format!("parseInt({expr}, 10)"),
+        crate::ast::ArgType::Float => format!("parseFloat({expr})"),
         crate::ast::ArgType::Boolean => {
             format!("!['false', '0', ''].includes({expr}.toLowerCase())")
         }
+        crate::ast::ArgType::Object => format!("JSON.parse({expr})"),
         crate::ast::ArgType::String => expr.to_string(),
     }
 }
@@ -469,9 +524,11 @@ fn convert_node_value(expr: &str, arg_type: &crate::ast::ArgType) -> String {
 fn convert_node_list(expr: &str, arg_type: &crate::ast::ArgType) -> String {
     match arg_type {
         crate::ast::ArgType::Integer => format!("{expr}.map(x => parseInt(x, 10))"),
+        crate::ast::ArgType::Float => format!("{expr}.map(x => parseFloat(x))"),
         crate::ast::ArgType::Boolean => {
             format!("{expr}.map(x => !['false', '0', ''].includes(x.toLowerCase()))")
         }
+        crate::ast::ArgType::Object => format!("{expr}.map(x => JSON.parse(x))"),
         crate::ast::ArgType::String => expr.to_string(),
     }
 }
@@ -480,13 +537,19 @@ fn convert_node_list(expr: &str, arg_type: &crate::ast::ArgType) -> String {
 
 fn ruby_literal(value: &str, arg_type: &crate::ast::ArgType) -> String {
     match arg_type {
-        crate::ast::ArgType::Integer => value.to_string(),
+        crate::ast::ArgType::Integer | crate::ast::ArgType::Float => value.to_string(),
         crate::ast::ArgType::Boolean => {
             if ["true", "1", "yes"].contains(&value.to_lowercase().as_str()) {
                 "true".to_string()
             } else {
                 "false".to_string()
             }
+        }
+        crate::ast::ArgType::Object => {
+            format!(
+                "JSON.parse('{}')",
+                value.replace('\\', "\\\\").replace('\'', "\\'")
+            )
         }
         crate::ast::ArgType::String => {
             format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
@@ -497,9 +560,11 @@ fn ruby_literal(value: &str, arg_type: &crate::ast::ArgType) -> String {
 fn convert_ruby_value(expr: &str, arg_type: &crate::ast::ArgType) -> String {
     match arg_type {
         crate::ast::ArgType::Integer => format!("{expr}.to_i"),
+        crate::ast::ArgType::Float => format!("{expr}.to_f"),
         crate::ast::ArgType::Boolean => {
             format!("!['false', '0', ''].include?({expr}.downcase)")
         }
+        crate::ast::ArgType::Object => format!("JSON.parse({expr})"),
         crate::ast::ArgType::String => expr.to_string(),
     }
 }
@@ -507,8 +572,12 @@ fn convert_ruby_value(expr: &str, arg_type: &crate::ast::ArgType) -> String {
 fn convert_ruby_list(expr: &str, arg_type: &crate::ast::ArgType) -> String {
     match arg_type {
         crate::ast::ArgType::Integer => format!("{expr}.map(&:to_i)"),
+        crate::ast::ArgType::Float => format!("{expr}.map(&:to_f)"),
         crate::ast::ArgType::Boolean => {
             format!("{expr}.map {{ |x| !['false', '0', ''].include?(x.downcase) }}")
+        }
+        crate::ast::ArgType::Object => {
+            format!("{expr}.map {{ |x| JSON.parse(x) }}")
         }
         crate::ast::ArgType::String => expr.to_string(),
     }
@@ -993,5 +1062,114 @@ mod tests {
         )];
         let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Node);
         assert!(result.contains("const verbose = process.argv.length > 1 ? !['false', '0', ''].includes(process.argv[1].toLowerCase()) : false;"));
+    }
+
+    // --- Float type tests ---
+
+    #[test]
+    fn test_python_preamble_float_type() {
+        let params = vec![make_typed_param("rate", crate::ast::ArgType::Float, None)];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Python);
+        assert!(result.contains("rate = float(sys.argv[1])"));
+    }
+
+    #[test]
+    fn test_python_preamble_float_default() {
+        let params = vec![make_typed_param(
+            "rate",
+            crate::ast::ArgType::Float,
+            Some("3.14"),
+        )];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Python);
+        assert!(result.contains("float(sys.argv[1]) if len(sys.argv) > 1 else 3.14"));
+    }
+
+    #[test]
+    fn test_node_preamble_float_type() {
+        let params = vec![make_typed_param("rate", crate::ast::ArgType::Float, None)];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Node);
+        assert!(result.contains("const rate = parseFloat(process.argv[1]);"));
+    }
+
+    #[test]
+    fn test_node_preamble_float_default() {
+        let params = vec![make_typed_param(
+            "rate",
+            crate::ast::ArgType::Float,
+            Some("3.14"),
+        )];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Node);
+        assert!(result.contains(
+            "const rate = process.argv.length > 1 ? parseFloat(process.argv[1]) : 3.14;"
+        ));
+    }
+
+    #[test]
+    fn test_ruby_preamble_float_type() {
+        let params = vec![make_typed_param("rate", crate::ast::ArgType::Float, None)];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Ruby);
+        assert!(result.contains("rate = ARGV[0].to_f"));
+    }
+
+    #[test]
+    fn test_ruby_preamble_float_default() {
+        let params = vec![make_typed_param(
+            "rate",
+            crate::ast::ArgType::Float,
+            Some("3.14"),
+        )];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Ruby);
+        assert!(result.contains("rate = ARGV.length > 0 ? ARGV[0].to_f : 3.14"));
+    }
+
+    // --- Object type tests ---
+
+    #[test]
+    fn test_python_preamble_object_type() {
+        let params = vec![make_typed_param(
+            "config",
+            crate::ast::ArgType::Object,
+            None,
+        )];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Python);
+        assert!(result.contains("import json"));
+        assert!(result.contains("config = json.loads(sys.argv[1])"));
+    }
+
+    #[test]
+    fn test_python_preamble_object_no_json_import_without_object() {
+        let params = vec![make_typed_param("name", crate::ast::ArgType::String, None)];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Python);
+        assert!(!result.contains("import json"));
+    }
+
+    #[test]
+    fn test_node_preamble_object_type() {
+        let params = vec![make_typed_param(
+            "config",
+            crate::ast::ArgType::Object,
+            None,
+        )];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Node);
+        assert!(result.contains("const config = JSON.parse(process.argv[1]);"));
+    }
+
+    #[test]
+    fn test_ruby_preamble_object_type() {
+        let params = vec![make_typed_param(
+            "config",
+            crate::ast::ArgType::Object,
+            None,
+        )];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Ruby);
+        assert!(result.contains("require 'json'"));
+        assert!(result.contains("config = JSON.parse(ARGV[0])"));
+    }
+
+    #[test]
+    fn test_ruby_preamble_no_json_require_without_object() {
+        let params = vec![make_typed_param("name", crate::ast::ArgType::String, None)];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Ruby);
+        assert!(!result.contains("require 'json'"));
     }
 }

@@ -38,10 +38,14 @@ greet(name, greeting = "Hello") {
 }
 ```
 
-Type hints (`int`, `bool`) apply real conversions in polyglot scripts: `int` wraps in `int()`/`parseInt()`/`.to_i`, and `bool` performs truth-checking. See [Polyglot commands](./polyglot-commands.md) for the full mapping table.
+Type hints apply real conversions in polyglot scripts: `int` wraps in `int()`/`parseInt()`/`.to_i`, `float` wraps in `float()`/`parseFloat()`/`.to_f`, `bool` performs truth-checking, and `object` parses a JSON string via `json.loads()`/`JSON.parse()`. See [Polyglot commands](./polyglot-commands.md) for the full mapping table.
 
 ## Types in signatures
-Type hints (`str`, `int`, `bool`) are used for MCP schema generation. In shell functions, conversion is up to your script. In polyglot functions (Python, Node.js, Ruby), `int` and `bool` types are automatically converted when parameters are injected.
+Type hints (`str`, `int`, `float`/`number`, `bool`, `object`/`obj`/`dict`) are used for MCP schema generation. In shell functions, conversion is up to your script. In polyglot functions (Python, Node.js, Ruby), typed parameters are automatically converted when injected:
+- `int`/`integer` — parsed as an integer
+- `float`/`number` — parsed as a floating-point number
+- `bool`/`boolean` — parsed as a boolean (truthy: `true`, `1`, `yes`)
+- `object`/`obj`/`dict` — parsed from a JSON string into a native object/dict
 
 ## Quoting and spaces
 Arguments are passed as plain CLI tokens. Quote values containing spaces or shell-sensitive characters:

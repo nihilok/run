@@ -45,7 +45,7 @@ param = { rest_param | regular_param }
 rest_param = { "..." ~ param_identifier }
 regular_param = { param_identifier ~ param_type_annotation? ~ param_default? }
 param_type_annotation = { ":" ~ WHITESPACE* ~ param_type }
-param_type = { "string" | "integer" | "boolean" | "int" | "str" | "bool" }
+param_type = { "string" | "integer" | "boolean" | "object" | "number" | "float" | "dict" | "int" | "str" | "bool" | "obj" }
 param_default = { "=" ~ WHITESPACE* ~ default_value }
 default_value = @{ 
     "\"" ~ ("\\\"" | (!"\"" ~ ANY))* ~ "\""   // Double-quoted string

@@ -359,7 +359,9 @@ pub struct ArgMetadata {
 pub enum ArgType {
     String,
     Integer,
+    Float,
     Boolean,
+    Object,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -271,7 +271,9 @@ fn parse_param(pair: pest::iterators::Pair<Rule>) -> Option<crate::ast::Paramete
                 if let Some(type_pair) = next.into_inner().next() {
                     param_type = match type_pair.as_str() {
                         "int" | "integer" => crate::ast::ArgType::Integer,
+                        "float" | "number" => crate::ast::ArgType::Float,
                         "bool" | "boolean" => crate::ast::ArgType::Boolean,
+                        "obj" | "object" | "dict" => crate::ast::ArgType::Object,
                         _ => crate::ast::ArgType::String,
                     };
                 }
