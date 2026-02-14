@@ -14,21 +14,25 @@ pub enum Interpreter {
 
 impl Interpreter {
     /// Check if this interpreter is compatible with another for function composition
-    #[must_use] 
+    #[must_use]
     pub fn is_compatible_with(&self, other: &Interpreter) -> bool {
         matches!(
             (self, other),
-            (Interpreter::Sh | Interpreter::Bash, Interpreter::Sh | Interpreter::Bash) |
-(Interpreter::Pwsh, Interpreter::Pwsh) |
-(Interpreter::Python | Interpreter::Python3,
-Interpreter::Python | Interpreter::Python3) |
-(Interpreter::Node, Interpreter::Node) |
-(Interpreter::Ruby, Interpreter::Ruby)
+            (
+                Interpreter::Sh | Interpreter::Bash,
+                Interpreter::Sh | Interpreter::Bash
+            ) | (Interpreter::Pwsh, Interpreter::Pwsh)
+                | (
+                    Interpreter::Python | Interpreter::Python3,
+                    Interpreter::Python | Interpreter::Python3
+                )
+                | (Interpreter::Node, Interpreter::Node)
+                | (Interpreter::Ruby, Interpreter::Ruby)
         )
     }
 
     /// Convert `ShellType` to Interpreter
-    #[must_use] 
+    #[must_use]
     pub fn from_shell_type(shell_type: &ShellType) -> Self {
         match shell_type {
             ShellType::Sh => Interpreter::Sh,
@@ -58,7 +62,7 @@ impl Default for Interpreter {
 /// * `name` - Function name (may contain colons)
 /// * `body` - Function body (command template or block)
 /// * `is_block` - Whether this is a block function
-#[must_use] 
+#[must_use]
 pub fn transpile_to_shell(name: &str, body: &str, is_block: bool) -> String {
     let sanitised = sanitise_name(name);
 
@@ -73,7 +77,7 @@ pub fn transpile_to_shell(name: &str, body: &str, is_block: bool) -> String {
 }
 
 /// Transpile a function to `PowerShell` syntax
-#[must_use] 
+#[must_use]
 pub fn transpile_to_pwsh(name: &str, body: &str, is_block: bool) -> String {
     let sanitised = sanitise_name(name);
 
@@ -86,7 +90,7 @@ pub fn transpile_to_pwsh(name: &str, body: &str, is_block: bool) -> String {
 }
 
 /// sanitise function name by replacing colons with double underscores
-#[must_use] 
+#[must_use]
 pub fn sanitise_name(name: &str) -> String {
     name.replace(':', "__")
 }
@@ -109,7 +113,7 @@ fn indent(text: &str, prefix: &str) -> String {
 ///
 /// This replaces function names containing colons with their sanitised versions
 /// (colons replaced with double underscores). Only replaces whole-word matches.
-#[must_use] 
+#[must_use]
 pub fn rewrite_call_sites(body: &str, sibling_names: &[&str]) -> String {
     let mut result = body.to_string();
 
@@ -161,11 +165,8 @@ fn replace_word(text: &str, pattern: &str, replacement: &str) -> String {
 
             // We matched the pattern, now check word boundaries
             // Check if there's a non-word character (or start/end) before and after
-            let before_ok = result.is_empty()
-                || result
-                    .chars()
-                    .last()
-                    .is_none_or(|c| !is_word_char(c));
+            let before_ok =
+                result.is_empty() || result.chars().last().is_none_or(|c| !is_word_char(c));
             let after_ok = chars.peek().is_none_or(|&c| !is_word_char(c));
 
             if before_ok && after_ok {

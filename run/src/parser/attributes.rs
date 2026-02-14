@@ -55,9 +55,10 @@ fn strip_quotes(s: &str) -> String {
     let trimmed = s.trim();
     if ((trimmed.starts_with('"') && trimmed.ends_with('"'))
         || (trimmed.starts_with('\'') && trimmed.ends_with('\'')))
-        && trimmed.len() >= 2 {
-            return trimmed[1..trimmed.len() - 1].to_string();
-        }
+        && trimmed.len() >= 2
+    {
+        return trimmed[1..trimmed.len() - 1].to_string();
+    }
     trimmed.to_string()
 }
 

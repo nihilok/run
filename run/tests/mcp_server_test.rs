@@ -24,7 +24,8 @@ fn get_binary_path() -> PathBuf {
             .output()
             .expect("Failed to build binary");
 
-        assert!(build_output.status.success(), 
+        assert!(
+            build_output.status.success(),
             "Failed to build run binary: {}",
             String::from_utf8_lossy(&build_output.stderr)
         );
@@ -650,9 +651,7 @@ project_tool() {
     let tool_names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
 
     if !tool_names.contains(&"global_tool") || !tool_names.contains(&"project_tool") {
-        eprintln!(
-            "Expected global_tool and project_tool, got: {tool_names:?}"
-        );
+        eprintln!("Expected global_tool and project_tool, got: {tool_names:?}");
         eprintln!("Full output: {stdout}");
     }
 

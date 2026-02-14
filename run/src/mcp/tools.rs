@@ -41,7 +41,7 @@ pub struct InspectOutput {
 }
 
 /// Returns the built-in tools provided by the MCP server itself
-#[must_use] 
+#[must_use]
 pub fn get_builtin_tools() -> Vec<Tool> {
     let mut tools = Vec::new();
 
@@ -192,8 +192,7 @@ pub fn inspect() -> Result<InspectOutput, String> {
         None => return Ok(InspectOutput { tools: Vec::new() }), // No Runfile = no tools
     };
 
-    let program =
-        parser::parse_script(&config_content).map_err(|e| format!("Parse error: {e}"))?;
+    let program = parser::parse_script(&config_content).map_err(|e| format!("Parse error: {e}"))?;
 
     let mut tools = Vec::new();
     let mut seen_names = std::collections::HashSet::new();
@@ -214,11 +213,13 @@ pub fn inspect() -> Result<InspectOutput, String> {
                 attributes,
                 ..
             } => {
-                if utils::matches_current_platform(attributes) && !seen_names.contains(name)
-                    && let Some(tool) = extract_function_metadata(name, attributes, params) {
-                        tools.push(tool);
-                        seen_names.insert(name.clone());
-                    }
+                if utils::matches_current_platform(attributes)
+                    && !seen_names.contains(name)
+                    && let Some(tool) = extract_function_metadata(name, attributes, params)
+                {
+                    tools.push(tool);
+                    seen_names.insert(name.clone());
+                }
             }
             _ => {}
         }

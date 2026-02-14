@@ -106,7 +106,9 @@ pub fn execute_file(path: &PathBuf) {
 /// * `output_format` - How to format the output.
 pub fn run_function_call(function_name: &str, args: &[String], output_format: OutputFormatArg) {
     // Load and merge config files from both ~/.runfile and ./Runfile
-    let config_content = if let Some((content, _metadata)) = config::load_merged_config() { content } else {
+    let config_content = if let Some((content, _metadata)) = config::load_merged_config() {
+        content
+    } else {
         eprintln!("{}", config::NO_RUNFILE_ERROR);
         std::process::exit(1);
     };

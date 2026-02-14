@@ -145,27 +145,28 @@ pub(super) fn map_arguments_to_positional(
     let rest_param = params_vec.iter().find(|p| p.is_rest);
     if let Some(rest) = rest_param
         && let Some(args_obj) = json_args.as_object()
-            && let Some(serde_json::Value::Array(arr)) = args_obj.get(&rest.name) {
-                let mut positional_args = Vec::new();
-                // First add any non-rest positional args
-                let max_position = *arg_mapping.keys().max().unwrap_or(&0);
-                if max_position > 0 {
-                    positional_args.resize(max_position, String::new());
-                    for (position, param_name) in &arg_mapping {
-                        if let Some(value) = args_obj.get(param_name) {
-                            let arg_str = value_to_string(value);
-                            if *position > 0 && *position <= positional_args.len() {
-                                positional_args[position - 1] = arg_str;
-                            }
-                        }
+        && let Some(serde_json::Value::Array(arr)) = args_obj.get(&rest.name)
+    {
+        let mut positional_args = Vec::new();
+        // First add any non-rest positional args
+        let max_position = *arg_mapping.keys().max().unwrap_or(&0);
+        if max_position > 0 {
+            positional_args.resize(max_position, String::new());
+            for (position, param_name) in &arg_mapping {
+                if let Some(value) = args_obj.get(param_name) {
+                    let arg_str = value_to_string(value);
+                    if *position > 0 && *position <= positional_args.len() {
+                        positional_args[position - 1] = arg_str;
                     }
                 }
-                // Then append all rest args
-                for item in arr {
-                    positional_args.push(value_to_string(item));
-                }
-                return Ok(positional_args);
             }
+        }
+        // Then append all rest args
+        for item in arr {
+            positional_args.push(value_to_string(item));
+        }
+        return Ok(positional_args);
+    }
 
     // If still no mapping found, return empty arguments
     if arg_mapping.is_empty() {
@@ -214,10 +215,7 @@ mod tests {
 
     #[test]
     fn test_value_to_string_string() {
-        assert_eq!(
-            value_to_string(&json!("hello")),
-            "hello"
-        );
+        assert_eq!(value_to_string(&json!("hello")), "hello");
     }
 
     #[test]

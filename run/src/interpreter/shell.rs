@@ -367,10 +367,7 @@ mod tests {
 
     #[test]
     fn test_resolve_shebang_sh_direct() {
-        assert_eq!(
-            resolve_shebang_interpreter("/bin/sh"),
-            Some(ShellType::Sh)
-        );
+        assert_eq!(resolve_shebang_interpreter("/bin/sh"), Some(ShellType::Sh));
     }
 
     #[test]
