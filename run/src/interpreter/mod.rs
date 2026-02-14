@@ -617,11 +617,18 @@ impl Interpreter {
         let full_script = commands.join("\n");
 
         if is_polyglot {
-            // For polyglot languages, execute without preamble
             let script = if shebang.is_some() {
                 shell::strip_shebang(&full_script)
             } else {
                 full_script
+            };
+
+            // Inject named arg variables from function parameters
+            let arg_preamble = preamble::build_polyglot_arg_preamble(params, &target_interpreter);
+            let script = if arg_preamble.is_empty() {
+                script
+            } else {
+                format!("{arg_preamble}\n{script}")
             };
 
             let substituted = self.substitute_args_with_params(&script, args, params);

@@ -28,8 +28,20 @@ echo_all(...args) echo "Args: $args"
 # run echo_all foo bar -> Args: foo bar
 ```
 
+## Polyglot parameter mapping
+Named parameters also work in Python, Node.js, and Ruby functions. `run` auto-generates variable declarations so you can use parameter names directly:
+
+```bash
+# @shell python
+greet(name, greeting = "Hello") {
+    print(f"{greeting}, {name}!")
+}
+```
+
+Type hints (`int`, `bool`) apply real conversions in polyglot scripts: `int` wraps in `int()`/`parseInt()`/`.to_i`, and `bool` performs truth-checking. See [Polyglot commands](./polyglot-commands.md) for the full mapping table.
+
 ## Types in signatures
-Type hints (`str`, `int`, `bool`) are for documentation and MCP schema generation. Execution happens in the configured shell or interpreter, so convert inside your function if needed.
+Type hints (`str`, `int`, `bool`) are used for MCP schema generation. In shell functions, conversion is up to your script. In polyglot functions (Python, Node.js, Ruby), `int` and `bool` types are automatically converted when parameters are injected.
 
 ## Quoting and spaces
 Arguments are passed as plain CLI tokens. Quote values containing spaces or shell-sensitive characters:

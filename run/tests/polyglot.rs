@@ -369,6 +369,306 @@ test() {
     assert!(stdout.contains("Default shell"));
 }
 
+// Polyglot named parameter tests
+
+#[test]
+fn test_python_named_param() {
+    if !is_python_available() {
+        return;
+    }
+
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @shell python
+greet(name) {
+    print(f"Hello, {name}!")
+}
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("greet")
+        .arg("World")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Hello, World!"), "stdout: {stdout}");
+}
+
+#[test]
+fn test_python_named_param_with_default() {
+    if !is_python_available() {
+        return;
+    }
+
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @shell python
+greet(name, greeting = "Hello") {
+    print(f"{greeting}, {name}!")
+}
+"#,
+    );
+
+    // Test with default
+    let output = Command::new(&binary)
+        .arg("greet")
+        .arg("World")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Hello, World!"), "stdout: {stdout}");
+
+    // Test overriding default
+    let output = Command::new(&binary)
+        .arg("greet")
+        .arg("World")
+        .arg("Hi")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Hi, World!"), "stdout: {stdout}");
+}
+
+#[test]
+fn test_node_named_param() {
+    if !is_node_available() {
+        return;
+    }
+
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r"
+# @shell node
+greet(name) {
+    console.log(`Hello, ${name}!`);
+}
+",
+    );
+
+    let output = Command::new(&binary)
+        .arg("greet")
+        .arg("World")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Hello, World!"), "stdout: {stdout}");
+}
+
+#[test]
+fn test_node_named_param_with_default() {
+    if !is_node_available() {
+        return;
+    }
+
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @shell node
+greet(name, greeting = "Hello") {
+    console.log(`${greeting}, ${name}!`);
+}
+"#,
+    );
+
+    // Test with default
+    let output = Command::new(&binary)
+        .arg("greet")
+        .arg("World")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Hello, World!"), "stdout: {stdout}");
+
+    // Test overriding default
+    let output = Command::new(&binary)
+        .arg("greet")
+        .arg("World")
+        .arg("Hi")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Hi, World!"), "stdout: {stdout}");
+}
+
+#[test]
+fn test_python_no_params_still_works() {
+    if !is_python_available() {
+        return;
+    }
+
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @shell python
+hello() {
+    print("Hello, World!")
+}
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("hello")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Hello, World!"), "stdout: {stdout}");
+}
+
+#[test]
+fn test_ruby_named_param() {
+    if !is_ruby_available() {
+        return;
+    }
+
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @shell ruby
+greet(name) {
+    puts "Hello, #{name}!"
+}
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("greet")
+        .arg("World")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Hello, World!"), "stdout: {stdout}");
+}
+
+#[test]
+fn test_ruby_named_param_with_default() {
+    if !is_ruby_available() {
+        return;
+    }
+
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r##"
+# @shell ruby
+greet(name, greeting = "Hello") {
+    puts "#{greeting}, #{name}!"
+}
+"##,
+    );
+
+    // Test with default
+    let output = Command::new(&binary)
+        .arg("greet")
+        .arg("World")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Hello, World!"), "stdout: {stdout}");
+
+    // Test overriding default
+    let output = Command::new(&binary)
+        .arg("greet")
+        .arg("World")
+        .arg("Hi")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Hi, World!"), "stdout: {stdout}");
+}
+
 #[test]
 fn test_shell_attribute_bash_explicit() {
     let binary = get_binary_path();

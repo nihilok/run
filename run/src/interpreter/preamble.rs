@@ -249,6 +249,271 @@ pub(super) fn build_function_preamble(
     preamble
 }
 
+/// Build a preamble that declares named variables from function parameters
+/// for polyglot scripts (Python, Node.js, Ruby).
+///
+/// This allows polyglot functions with named params (e.g., `greet(name, greeting = "Hello")`)
+/// to access their arguments as proper named variables instead of manually unpacking
+/// `sys.argv`, `process.argv`, etc.
+pub(super) fn build_polyglot_arg_preamble(
+    params: &[crate::ast::Parameter],
+    interpreter: &TranspilerInterpreter,
+) -> String {
+    if params.is_empty() {
+        return String::new();
+    }
+
+    let is_polyglot = matches!(
+        interpreter,
+        TranspilerInterpreter::Python
+            | TranspilerInterpreter::Python3
+            | TranspilerInterpreter::Node
+            | TranspilerInterpreter::Ruby
+    );
+
+    if !is_polyglot {
+        return String::new();
+    }
+
+    match interpreter {
+        TranspilerInterpreter::Python | TranspilerInterpreter::Python3 => {
+            build_python_arg_preamble(params)
+        }
+        TranspilerInterpreter::Node => build_node_arg_preamble(params),
+        TranspilerInterpreter::Ruby => build_ruby_arg_preamble(params),
+        _ => String::new(),
+    }
+}
+
+/// Build Python variable declarations from parameters.
+/// Python uses `sys.argv` where index 0 is `-c`, so user args start at index 1.
+fn build_python_arg_preamble(params: &[crate::ast::Parameter]) -> String {
+    let mut lines = vec!["import sys".to_string()];
+
+    for (i, param) in params.iter().enumerate() {
+        let idx = i + 1; // sys.argv[0] is -c
+
+        if param.is_rest {
+            let raw = format!("sys.argv[{idx}:]");
+            let converted = convert_python_list(&raw, &param.param_type);
+            lines.push(format!("{} = {}", param.name, converted));
+        } else if let Some(ref default) = param.default_value {
+            let default_literal = python_literal(default, &param.param_type);
+            let raw_expr =
+                format!("sys.argv[{idx}] if len(sys.argv) > {idx} else {default_literal}");
+            // For types needing conversion, wrap the whole expression
+            let line = match param.param_type {
+                crate::ast::ArgType::Integer => format!(
+                    "{} = int(sys.argv[{idx}]) if len(sys.argv) > {idx} else {default_literal}",
+                    param.name
+                ),
+                crate::ast::ArgType::Boolean => format!(
+                    "{} = (sys.argv[{idx}].lower() in ('true', '1', 'yes')) if len(sys.argv) > {idx} else {default_literal}",
+                    param.name
+                ),
+                crate::ast::ArgType::String => format!("{} = {}", param.name, raw_expr),
+            };
+            lines.push(line);
+        } else {
+            let raw = format!("sys.argv[{idx}]");
+            let converted = convert_python_value(&raw, &param.param_type);
+            lines.push(format!("{} = {}", param.name, converted));
+        }
+    }
+
+    lines.join("\n")
+}
+
+/// Build Node.js variable declarations from parameters.
+/// `process.argv[0]` is the node binary path; user args start at index 1.
+fn build_node_arg_preamble(params: &[crate::ast::Parameter]) -> String {
+    let mut lines = Vec::new();
+
+    for (i, param) in params.iter().enumerate() {
+        let idx = i + 1; // process.argv[0] is node path
+
+        if param.is_rest {
+            let raw = format!("process.argv.slice({idx})");
+            let converted = convert_node_list(&raw, &param.param_type);
+            lines.push(format!("const {} = {};", param.name, converted));
+        } else if let Some(ref default) = param.default_value {
+            let default_literal = node_literal(default, &param.param_type);
+            let line = match param.param_type {
+                crate::ast::ArgType::Integer => format!(
+                    "const {} = process.argv.length > {idx} ? parseInt(process.argv[{idx}], 10) : {default_literal};",
+                    param.name
+                ),
+                crate::ast::ArgType::Boolean => format!(
+                    "const {} = process.argv.length > {idx} ? !['false', '0', ''].includes(process.argv[{idx}].toLowerCase()) : {default_literal};",
+                    param.name
+                ),
+                crate::ast::ArgType::String => format!(
+                    "const {} = process.argv.length > {idx} ? process.argv[{idx}] : {default_literal};",
+                    param.name
+                ),
+            };
+            lines.push(line);
+        } else {
+            let raw = format!("process.argv[{idx}]");
+            let converted = convert_node_value(&raw, &param.param_type);
+            lines.push(format!("const {} = {};", param.name, converted));
+        }
+    }
+
+    lines.join("\n")
+}
+
+/// Build Ruby variable declarations from parameters.
+/// Ruby uses `ARGV` where index 0 is the first user argument.
+fn build_ruby_arg_preamble(params: &[crate::ast::Parameter]) -> String {
+    let mut lines = Vec::new();
+
+    for (i, param) in params.iter().enumerate() {
+        if param.is_rest {
+            let raw = format!("ARGV[{i}..]");
+            let converted = convert_ruby_list(&raw, &param.param_type);
+            lines.push(format!("{} = {}", param.name, converted));
+        } else if let Some(ref default) = param.default_value {
+            let default_literal = ruby_literal(default, &param.param_type);
+            let line = match param.param_type {
+                crate::ast::ArgType::Integer => format!(
+                    "{} = ARGV.length > {i} ? ARGV[{i}].to_i : {default_literal}",
+                    param.name
+                ),
+                crate::ast::ArgType::Boolean => format!(
+                    "{} = ARGV.length > {i} ? !['false', '0', ''].include?(ARGV[{i}].downcase) : {default_literal}",
+                    param.name
+                ),
+                crate::ast::ArgType::String => format!(
+                    "{} = ARGV.length > {i} ? ARGV[{i}] : {default_literal}",
+                    param.name
+                ),
+            };
+            lines.push(line);
+        } else {
+            let raw = format!("ARGV[{i}]");
+            let converted = convert_ruby_value(&raw, &param.param_type);
+            lines.push(format!("{} = {}", param.name, converted));
+        }
+    }
+
+    lines.join("\n")
+}
+
+// --- Python helpers ---
+
+fn python_literal(value: &str, arg_type: &crate::ast::ArgType) -> String {
+    match arg_type {
+        crate::ast::ArgType::Integer => value.to_string(),
+        crate::ast::ArgType::Boolean => {
+            if ["true", "1", "yes"].contains(&value.to_lowercase().as_str()) {
+                "True".to_string()
+            } else {
+                "False".to_string()
+            }
+        }
+        crate::ast::ArgType::String => {
+            format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+        }
+    }
+}
+
+fn convert_python_value(expr: &str, arg_type: &crate::ast::ArgType) -> String {
+    match arg_type {
+        crate::ast::ArgType::Integer => format!("int({expr})"),
+        crate::ast::ArgType::Boolean => {
+            format!("{expr}.lower() in ('true', '1', 'yes')")
+        }
+        crate::ast::ArgType::String => expr.to_string(),
+    }
+}
+
+fn convert_python_list(expr: &str, arg_type: &crate::ast::ArgType) -> String {
+    match arg_type {
+        crate::ast::ArgType::Integer => format!("[int(x) for x in {expr}]"),
+        crate::ast::ArgType::Boolean => {
+            format!("[x.lower() in ('true', '1', 'yes') for x in {expr}]")
+        }
+        crate::ast::ArgType::String => expr.to_string(),
+    }
+}
+
+// --- Node.js helpers ---
+
+fn node_literal(value: &str, arg_type: &crate::ast::ArgType) -> String {
+    match arg_type {
+        crate::ast::ArgType::Integer => value.to_string(),
+        crate::ast::ArgType::Boolean => {
+            if ["true", "1", "yes"].contains(&value.to_lowercase().as_str()) {
+                "true".to_string()
+            } else {
+                "false".to_string()
+            }
+        }
+        crate::ast::ArgType::String => {
+            format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+        }
+    }
+}
+
+fn convert_node_value(expr: &str, arg_type: &crate::ast::ArgType) -> String {
+    match arg_type {
+        crate::ast::ArgType::Integer => format!("parseInt({expr}, 10)"),
+        crate::ast::ArgType::Boolean => {
+            format!("!['false', '0', ''].includes({expr}.toLowerCase())")
+        }
+        crate::ast::ArgType::String => expr.to_string(),
+    }
+}
+
+fn convert_node_list(expr: &str, arg_type: &crate::ast::ArgType) -> String {
+    match arg_type {
+        crate::ast::ArgType::Integer => format!("{expr}.map(x => parseInt(x, 10))"),
+        crate::ast::ArgType::Boolean => {
+            format!("{expr}.map(x => !['false', '0', ''].includes(x.toLowerCase()))")
+        }
+        crate::ast::ArgType::String => expr.to_string(),
+    }
+}
+
+// --- Ruby helpers ---
+
+fn ruby_literal(value: &str, arg_type: &crate::ast::ArgType) -> String {
+    match arg_type {
+        crate::ast::ArgType::Integer => value.to_string(),
+        crate::ast::ArgType::Boolean => {
+            if ["true", "1", "yes"].contains(&value.to_lowercase().as_str()) {
+                "true".to_string()
+            } else {
+                "false".to_string()
+            }
+        }
+        crate::ast::ArgType::String => {
+            format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+        }
+    }
+}
+
+fn convert_ruby_value(expr: &str, arg_type: &crate::ast::ArgType) -> String {
+    match arg_type {
+        crate::ast::ArgType::Integer => format!("{expr}.to_i"),
+        crate::ast::ArgType::Boolean => {
+            format!("!['false', '0', ''].include?({expr}.downcase)")
+        }
+        crate::ast::ArgType::String => expr.to_string(),
+    }
+}
+
+fn convert_ruby_list(expr: &str, arg_type: &crate::ast::ArgType) -> String {
+    match arg_type {
+        crate::ast::ArgType::Integer => format!("{expr}.map(&:to_i)"),
+        crate::ast::ArgType::Boolean => {
+            format!("{expr}.map {{ |x| !['false', '0', ''].include?(x.downcase) }}")
+        }
+        crate::ast::ArgType::String => expr.to_string(),
+    }
+}
+
 /// Build a preamble of variable assignments
 pub(super) fn build_variable_preamble(
     variables: &HashMap<String, String>,
@@ -538,5 +803,195 @@ mod tests {
             &resolve,
         );
         assert!(result.contains("function helper"));
+    }
+
+    // --- Polyglot arg preamble tests ---
+
+    fn make_param(name: &str, default: Option<&str>, is_rest: bool) -> crate::ast::Parameter {
+        crate::ast::Parameter {
+            name: name.to_string(),
+            param_type: crate::ast::ArgType::String,
+            default_value: default.map(String::from),
+            is_rest,
+        }
+    }
+
+    fn make_typed_param(
+        name: &str,
+        arg_type: crate::ast::ArgType,
+        default: Option<&str>,
+    ) -> crate::ast::Parameter {
+        crate::ast::Parameter {
+            name: name.to_string(),
+            param_type: arg_type,
+            default_value: default.map(String::from),
+            is_rest: false,
+        }
+    }
+
+    #[test]
+    fn test_polyglot_preamble_empty_params() {
+        let result = build_polyglot_arg_preamble(&[], &TranspilerInterpreter::Python);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_polyglot_preamble_non_polyglot() {
+        let params = vec![make_param("name", None, false)];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Sh);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_python_preamble_required_param() {
+        let params = vec![make_param("name", None, false)];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Python);
+        assert!(result.contains("import sys"));
+        assert!(result.contains("name = sys.argv[1]"));
+    }
+
+    #[test]
+    fn test_python_preamble_default_param() {
+        let params = vec![
+            make_param("name", None, false),
+            make_param("greeting", Some("Hello"), false),
+        ];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Python);
+        assert!(result.contains("name = sys.argv[1]"));
+        assert!(result.contains("greeting = sys.argv[2] if len(sys.argv) > 2 else \"Hello\""));
+    }
+
+    #[test]
+    fn test_python_preamble_rest_param() {
+        let params = vec![
+            make_param("name", None, false),
+            make_param("extra", None, true),
+        ];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Python);
+        assert!(result.contains("name = sys.argv[1]"));
+        assert!(result.contains("extra = sys.argv[2:]"));
+    }
+
+    #[test]
+    fn test_python_preamble_integer_type() {
+        let params = vec![make_typed_param(
+            "count",
+            crate::ast::ArgType::Integer,
+            None,
+        )];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Python);
+        assert!(result.contains("count = int(sys.argv[1])"));
+    }
+
+    #[test]
+    fn test_python_preamble_boolean_type() {
+        let params = vec![make_typed_param(
+            "verbose",
+            crate::ast::ArgType::Boolean,
+            None,
+        )];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Python);
+        assert!(result.contains("verbose = sys.argv[1].lower() in ('true', '1', 'yes')"));
+    }
+
+    #[test]
+    fn test_node_preamble_required_param() {
+        let params = vec![make_param("name", None, false)];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Node);
+        assert!(result.contains("const name = process.argv[1];"));
+    }
+
+    #[test]
+    fn test_node_preamble_default_param() {
+        let params = vec![
+            make_param("name", None, false),
+            make_param("greeting", Some("Hello"), false),
+        ];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Node);
+        assert!(result.contains("const name = process.argv[1];"));
+        assert!(
+            result.contains(
+                "const greeting = process.argv.length > 2 ? process.argv[2] : \"Hello\";"
+            )
+        );
+    }
+
+    #[test]
+    fn test_node_preamble_rest_param() {
+        let params = vec![
+            make_param("name", None, false),
+            make_param("extra", None, true),
+        ];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Node);
+        assert!(result.contains("const extra = process.argv.slice(2);"));
+    }
+
+    #[test]
+    fn test_node_preamble_integer_type() {
+        let params = vec![make_typed_param(
+            "count",
+            crate::ast::ArgType::Integer,
+            None,
+        )];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Node);
+        assert!(result.contains("const count = parseInt(process.argv[1], 10);"));
+    }
+
+    #[test]
+    fn test_ruby_preamble_required_param() {
+        let params = vec![make_param("name", None, false)];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Ruby);
+        assert!(result.contains("name = ARGV[0]"));
+    }
+
+    #[test]
+    fn test_ruby_preamble_default_param() {
+        let params = vec![
+            make_param("name", None, false),
+            make_param("greeting", Some("Hello"), false),
+        ];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Ruby);
+        assert!(result.contains("name = ARGV[0]"));
+        assert!(result.contains("greeting = ARGV.length > 1 ? ARGV[1] : \"Hello\""));
+    }
+
+    #[test]
+    fn test_ruby_preamble_rest_param() {
+        let params = vec![
+            make_param("name", None, false),
+            make_param("extra", None, true),
+        ];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Ruby);
+        assert!(result.contains("extra = ARGV[1..]"));
+    }
+
+    #[test]
+    fn test_python3_preamble_works() {
+        let params = vec![make_param("name", None, false)];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Python3);
+        assert!(result.contains("import sys"));
+        assert!(result.contains("name = sys.argv[1]"));
+    }
+
+    #[test]
+    fn test_python_preamble_integer_default() {
+        let params = vec![make_typed_param(
+            "count",
+            crate::ast::ArgType::Integer,
+            Some("42"),
+        )];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Python);
+        assert!(result.contains("int(sys.argv[1]) if len(sys.argv) > 1 else 42"));
+    }
+
+    #[test]
+    fn test_node_preamble_boolean_default() {
+        let params = vec![make_typed_param(
+            "verbose",
+            crate::ast::ArgType::Boolean,
+            Some("false"),
+        )];
+        let result = build_polyglot_arg_preamble(&params, &TranspilerInterpreter::Node);
+        assert!(result.contains("const verbose = process.argv.length > 1 ? !['false', '0', ''].includes(process.argv[1].toLowerCase()) : false;"));
     }
 }

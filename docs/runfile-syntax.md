@@ -37,6 +37,7 @@ deploy(env: str, version = "latest") {
   ```
   - When forwarding `...args`, use `cmd $args` to expand into separate tokens; `cmd "$args"` collapses them into a single argument. If you need to preserve the original token boundaries (including spaces) safely, prefer `cmd "$@"` instead—for example, `cargo test --package run "$@"`.
 - You can still reference legacy positional tokens (`$1`, `$2`) alongside named params.
+- Named parameters work in polyglot functions too (Python, Node.js, Ruby). `run` auto-injects variables so you can use `name` directly instead of `sys.argv[1]`. See [Polyglot commands](./polyglot-commands.md).
 
 See [Arguments](./arguments.md) for mapping/defaults and [Variables](./variables.md) for scope and environment details.
 
