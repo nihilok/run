@@ -271,3 +271,274 @@ pub(super) fn build_variable_preamble(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_variable_preamble_empty() {
+        let vars = HashMap::new();
+        assert_eq!(
+            build_variable_preamble(&vars, &TranspilerInterpreter::Sh),
+            ""
+        );
+    }
+
+    #[test]
+    fn test_build_variable_preamble_shell() {
+        let mut vars = HashMap::new();
+        vars.insert("MY_VAR".to_string(), "hello".to_string());
+        let result = build_variable_preamble(&vars, &TranspilerInterpreter::Sh);
+        assert_eq!(result, "MY_VAR=\"hello\"");
+    }
+
+    #[test]
+    fn test_build_variable_preamble_shell_with_special_chars() {
+        let mut vars = HashMap::new();
+        vars.insert("VAR".to_string(), "say \"hi\"".to_string());
+        let result = build_variable_preamble(&vars, &TranspilerInterpreter::Bash);
+        assert_eq!(result, "VAR=\"say \\\"hi\\\"\"");
+    }
+
+    #[test]
+    fn test_build_variable_preamble_pwsh() {
+        let mut vars = HashMap::new();
+        vars.insert("MY_VAR".to_string(), "hello".to_string());
+        let result = build_variable_preamble(&vars, &TranspilerInterpreter::Pwsh);
+        assert_eq!(result, "$MY_VAR = \"hello\"");
+    }
+
+    #[test]
+    fn test_build_variable_preamble_pwsh_with_special_chars() {
+        let mut vars = HashMap::new();
+        vars.insert("VAR".to_string(), "$env:PATH".to_string());
+        let result = build_variable_preamble(&vars, &TranspilerInterpreter::Pwsh);
+        assert_eq!(result, "$VAR = \"`$env:PATH\"");
+    }
+
+    #[test]
+    fn test_collect_compatible_siblings_empty() {
+        let simple = HashMap::new();
+        let block = HashMap::new();
+        let metadata = HashMap::new();
+        let resolve =
+            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+
+        let result = collect_compatible_siblings(
+            "target",
+            &TranspilerInterpreter::Sh,
+            &simple,
+            &block,
+            &metadata,
+            &resolve,
+        );
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_collect_compatible_siblings_same_interpreter() {
+        let mut simple = HashMap::new();
+        simple.insert("helper".to_string(), "echo help".to_string());
+        simple.insert("target".to_string(), "echo target".to_string());
+        let block = HashMap::new();
+        let metadata = HashMap::new();
+        let resolve =
+            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+
+        let result = collect_compatible_siblings(
+            "target",
+            &TranspilerInterpreter::Sh,
+            &simple,
+            &block,
+            &metadata,
+            &resolve,
+        );
+        assert!(result.contains(&"helper".to_string()));
+        assert!(!result.contains(&"target".to_string()));
+    }
+
+    #[test]
+    fn test_collect_compatible_siblings_with_blocks() {
+        let simple = HashMap::new();
+        let mut block = HashMap::new();
+        block.insert(
+            "block_helper".to_string(),
+            vec!["echo step1".to_string(), "echo step2".to_string()],
+        );
+        let metadata = HashMap::new();
+        let resolve =
+            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+
+        let result = collect_compatible_siblings(
+            "target",
+            &TranspilerInterpreter::Sh,
+            &simple,
+            &block,
+            &metadata,
+            &resolve,
+        );
+        assert!(result.contains(&"block_helper".to_string()));
+    }
+
+    #[test]
+    fn test_collect_incompatible_colon_siblings_empty() {
+        let simple = HashMap::new();
+        let block = HashMap::new();
+        let metadata = HashMap::new();
+        let resolve =
+            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+
+        let result = collect_incompatible_colon_siblings(
+            "target",
+            &TranspilerInterpreter::Sh,
+            &simple,
+            &block,
+            &metadata,
+            &resolve,
+        );
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_collect_incompatible_colon_siblings_finds_colon_functions() {
+        let mut simple = HashMap::new();
+        simple.insert("node:hello".to_string(), "console.log('hi')".to_string());
+        simple.insert("no_colon".to_string(), "echo hi".to_string());
+        let block = HashMap::new();
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            "node:hello".to_string(),
+            super::super::FunctionMetadata {
+                attributes: vec![Attribute::Shell(crate::ast::ShellType::Node)],
+                shebang: None,
+                params: vec![],
+            },
+        );
+        let resolve = |_name: &str, attrs: &[Attribute], _: Option<&str>| {
+            for attr in attrs {
+                if let Attribute::Shell(st) = attr {
+                    return TranspilerInterpreter::from_shell_type(st);
+                }
+            }
+            TranspilerInterpreter::Sh
+        };
+
+        let result = collect_incompatible_colon_siblings(
+            "target",
+            &TranspilerInterpreter::Sh,
+            &simple,
+            &block,
+            &metadata,
+            &resolve,
+        );
+        assert!(result.contains(&"node:hello".to_string()));
+        assert!(!result.contains(&"no_colon".to_string()));
+    }
+
+    #[test]
+    fn test_build_function_preamble_empty() {
+        let simple = HashMap::new();
+        let block = HashMap::new();
+        let metadata = HashMap::new();
+        let resolve =
+            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+
+        let result = build_function_preamble(
+            "target",
+            &TranspilerInterpreter::Sh,
+            &simple,
+            &block,
+            &metadata,
+            &resolve,
+        );
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_build_function_preamble_with_simple_sibling() {
+        let mut simple = HashMap::new();
+        simple.insert("helper".to_string(), "echo help".to_string());
+        simple.insert("target".to_string(), "helper".to_string());
+        let block = HashMap::new();
+        let metadata = HashMap::new();
+        let resolve =
+            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+
+        let result = build_function_preamble(
+            "target",
+            &TranspilerInterpreter::Sh,
+            &simple,
+            &block,
+            &metadata,
+            &resolve,
+        );
+        assert!(result.contains("helper()"));
+        assert!(result.contains("echo help"));
+    }
+
+    #[test]
+    fn test_build_function_preamble_with_block_sibling() {
+        let simple = HashMap::new();
+        let mut block = HashMap::new();
+        block.insert(
+            "setup".to_string(),
+            vec!["echo step1".to_string(), "echo step2".to_string()],
+        );
+        let metadata = HashMap::new();
+        let resolve =
+            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+
+        let result = build_function_preamble(
+            "target",
+            &TranspilerInterpreter::Sh,
+            &simple,
+            &block,
+            &metadata,
+            &resolve,
+        );
+        assert!(result.contains("setup()"));
+        assert!(result.contains("echo step1"));
+    }
+
+    #[test]
+    fn test_build_function_preamble_excludes_self() {
+        let mut simple = HashMap::new();
+        simple.insert("target".to_string(), "echo target".to_string());
+        let block = HashMap::new();
+        let metadata = HashMap::new();
+        let resolve =
+            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+
+        let result = build_function_preamble(
+            "target",
+            &TranspilerInterpreter::Sh,
+            &simple,
+            &block,
+            &metadata,
+            &resolve,
+        );
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_build_function_preamble_pwsh() {
+        let mut simple = HashMap::new();
+        simple.insert("helper".to_string(), "Write-Host help".to_string());
+        simple.insert("target".to_string(), "helper".to_string());
+        let block = HashMap::new();
+        let metadata = HashMap::new();
+        let resolve =
+            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Pwsh;
+
+        let result = build_function_preamble(
+            "target",
+            &TranspilerInterpreter::Pwsh,
+            &simple,
+            &block,
+            &metadata,
+            &resolve,
+        );
+        assert!(result.contains("function helper"));
+    }
+}

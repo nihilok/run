@@ -429,4 +429,279 @@ mod tests {
         let result = ExecutionContext::extract_ssh_context("echo hello");
         assert!(result.is_none());
     }
+
+    #[test]
+    fn test_output_mode_default() {
+        assert_eq!(OutputMode::default(), OutputMode::Stream);
+    }
+
+    #[test]
+    fn test_structured_result_from_outputs_success() {
+        let outputs = vec![CommandOutput {
+            command: "echo hello".to_string(),
+            stdout: "hello\n".to_string(),
+            stderr: String::new(),
+            exit_code: Some(0),
+            duration_ms: 10,
+            started_at: 1000,
+        }];
+
+        let result = StructuredResult::from_outputs("test_fn", outputs, "sh");
+        assert!(result.success);
+        assert_eq!(result.total_duration_ms, 10);
+        assert_eq!(result.context.function_name, "test_fn");
+        assert_eq!(result.context.interpreter, "sh");
+        assert!(result.context.remote_host.is_none());
+        assert!(result.context.remote_user.is_none());
+        assert!(result.summary.contains("Successfully executed"));
+        assert_eq!(result.outputs.len(), 1);
+    }
+
+    #[test]
+    fn test_structured_result_from_outputs_failure() {
+        let outputs = vec![CommandOutput {
+            command: "false".to_string(),
+            stdout: String::new(),
+            stderr: "error\n".to_string(),
+            exit_code: Some(1),
+            duration_ms: 5,
+            started_at: 1000,
+        }];
+
+        let result = StructuredResult::from_outputs("failing_fn", outputs, "bash");
+        assert!(!result.success);
+        assert!(result.summary.contains("failed"));
+    }
+
+    #[test]
+    fn test_structured_result_from_outputs_with_ssh() {
+        let outputs = vec![CommandOutput {
+            command: "ssh deploy@prod.server.com 'uptime'".to_string(),
+            stdout: "up 10 days\n".to_string(),
+            stderr: String::new(),
+            exit_code: Some(0),
+            duration_ms: 100,
+            started_at: 1000,
+        }];
+
+        let result = StructuredResult::from_outputs("check_uptime", outputs, "sh");
+        assert_eq!(result.context.remote_user.as_deref(), Some("deploy"));
+        assert_eq!(
+            result.context.remote_host.as_deref(),
+            Some("prod.server.com")
+        );
+    }
+
+    #[test]
+    fn test_structured_result_from_outputs_multiple() {
+        let outputs = vec![
+            CommandOutput {
+                command: "echo step1".to_string(),
+                stdout: "step1\n".to_string(),
+                stderr: String::new(),
+                exit_code: Some(0),
+                duration_ms: 5,
+                started_at: 1000,
+            },
+            CommandOutput {
+                command: "echo step2".to_string(),
+                stdout: "step2\n".to_string(),
+                stderr: String::new(),
+                exit_code: Some(0),
+                duration_ms: 10,
+                started_at: 1005,
+            },
+        ];
+
+        let result = StructuredResult::from_outputs("multi", outputs, "sh");
+        assert!(result.success);
+        assert_eq!(result.total_duration_ms, 15);
+        assert_eq!(result.outputs.len(), 2);
+        assert!(result.summary.contains("2 command(s)"));
+    }
+
+    #[test]
+    fn test_structured_result_to_json() {
+        let result = StructuredResult {
+            context: ExecutionContext {
+                function_name: "test".to_string(),
+                remote_host: None,
+                remote_user: None,
+                interpreter: "sh".to_string(),
+                working_directory: None,
+            },
+            outputs: vec![CommandOutput {
+                command: "echo hi".to_string(),
+                stdout: "hi\n".to_string(),
+                stderr: String::new(),
+                exit_code: Some(0),
+                duration_ms: 5,
+                started_at: 1000,
+            }],
+            success: true,
+            total_duration_ms: 5,
+            summary: "ok".to_string(),
+        };
+
+        let json = result.to_json();
+        assert!(json.contains("\"function_name\": \"test\""));
+        assert!(json.contains("\"success\": true"));
+        assert!(json.contains("\"stdout\": \"hi\\n\""));
+        // Verify it's valid JSON
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("Valid JSON");
+        assert_eq!(parsed["success"], true);
+    }
+
+    #[test]
+    fn test_structured_result_to_markdown() {
+        let result = StructuredResult {
+            context: ExecutionContext {
+                function_name: "deploy".to_string(),
+                remote_host: Some("server.com".to_string()),
+                remote_user: Some("admin".to_string()),
+                interpreter: "bash".to_string(),
+                working_directory: None,
+            },
+            outputs: vec![CommandOutput {
+                command: "deploy.sh".to_string(),
+                stdout: "deployed\n".to_string(),
+                stderr: "warning: slow\n".to_string(),
+                exit_code: Some(0),
+                duration_ms: 100,
+                started_at: 1000,
+            }],
+            success: true,
+            total_duration_ms: 100,
+            summary: "ok".to_string(),
+        };
+
+        let md = result.to_markdown();
+        assert!(md.contains("## Execution: `deploy`"));
+        assert!(md.contains("**Host:** admin@server.com"));
+        assert!(md.contains("✓ Success"));
+        assert!(md.contains("**Duration:** 100ms"));
+        assert!(md.contains("### Step 1"));
+        assert!(md.contains("deployed"));
+        assert!(md.contains("warning: slow"));
+    }
+
+    #[test]
+    fn test_structured_result_to_markdown_failed_with_exit_code() {
+        let result = StructuredResult {
+            context: ExecutionContext {
+                function_name: "fail".to_string(),
+                remote_host: None,
+                remote_user: None,
+                interpreter: "sh".to_string(),
+                working_directory: None,
+            },
+            outputs: vec![CommandOutput {
+                command: "exit 42".to_string(),
+                stdout: String::new(),
+                stderr: "error\n".to_string(),
+                exit_code: Some(42),
+                duration_ms: 1,
+                started_at: 1000,
+            }],
+            success: false,
+            total_duration_ms: 1,
+            summary: "failed".to_string(),
+        };
+
+        let md = result.to_markdown();
+        assert!(md.contains("✗ Failed"));
+        assert!(md.contains("**Exit Code:** 42"));
+    }
+
+    #[test]
+    fn test_structured_result_to_mcp_format() {
+        let result = StructuredResult {
+            context: ExecutionContext {
+                function_name: "test".to_string(),
+                remote_host: None,
+                remote_user: None,
+                interpreter: "sh".to_string(),
+                working_directory: None,
+            },
+            outputs: vec![
+                CommandOutput {
+                    command: "echo a".to_string(),
+                    stdout: "a\n".to_string(),
+                    stderr: String::new(),
+                    exit_code: Some(0),
+                    duration_ms: 5,
+                    started_at: 1000,
+                },
+                CommandOutput {
+                    command: "echo b".to_string(),
+                    stdout: "b\n".to_string(),
+                    stderr: String::new(),
+                    exit_code: Some(0),
+                    duration_ms: 5,
+                    started_at: 1005,
+                },
+            ],
+            success: true,
+            total_duration_ms: 10,
+            summary: "ok".to_string(),
+        };
+
+        let mcp = result.to_mcp_format();
+        assert!(mcp.contains("## Execution: `test`"));
+        assert!(mcp.contains("✓ Success"));
+        // MCP format combines all stdout
+        assert!(mcp.contains("a\n"));
+        assert!(mcp.contains("b\n"));
+        // MCP format should NOT show individual steps
+        assert!(!mcp.contains("### Step"));
+    }
+
+    #[test]
+    fn test_structured_result_to_mcp_format_failed() {
+        let result = StructuredResult {
+            context: ExecutionContext {
+                function_name: "fail".to_string(),
+                remote_host: None,
+                remote_user: None,
+                interpreter: "sh".to_string(),
+                working_directory: None,
+            },
+            outputs: vec![CommandOutput {
+                command: "false".to_string(),
+                stdout: String::new(),
+                stderr: "oh no\n".to_string(),
+                exit_code: Some(1),
+                duration_ms: 1,
+                started_at: 1000,
+            }],
+            success: false,
+            total_duration_ms: 1,
+            summary: "failed".to_string(),
+        };
+
+        let mcp = result.to_mcp_format();
+        assert!(mcp.contains("✗ Failed"));
+        assert!(mcp.contains("oh no"));
+        assert!(mcp.contains("**Exit Code:** 1"));
+    }
+
+    #[test]
+    fn test_structured_result_to_markdown_no_host() {
+        let result = StructuredResult {
+            context: ExecutionContext {
+                function_name: "local".to_string(),
+                remote_host: None,
+                remote_user: None,
+                interpreter: "sh".to_string(),
+                working_directory: None,
+            },
+            outputs: vec![],
+            success: true,
+            total_duration_ms: 0,
+            summary: "ok".to_string(),
+        };
+
+        let md = result.to_markdown();
+        assert!(!md.contains("**Host:**"));
+    }
 }

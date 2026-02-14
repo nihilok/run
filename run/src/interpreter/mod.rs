@@ -732,6 +732,21 @@ impl Interpreter {
         Ok(())
     }
 
+    #[cfg(test)]
+    pub(crate) fn get_simple_functions(&self) -> &HashMap<String, String> {
+        &self.simple_functions
+    }
+
+    #[cfg(test)]
+    pub(crate) fn get_block_functions(&self) -> &HashMap<String, Vec<String>> {
+        &self.block_functions
+    }
+
+    #[cfg(test)]
+    pub(crate) fn get_variables(&self) -> &HashMap<String, String> {
+        &self.variables
+    }
+
     /// Execute a polyglot command with arguments (for Python, Node, Ruby)
     /// Arguments are passed as command-line arguments, accessible via sys.argv, process.argv, etc.
     fn execute_with_mode_polyglot(
@@ -789,5 +804,490 @@ impl Interpreter {
                 Ok(())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::{
+        Attribute, CommandOutput, Expression, OutputMode, Parameter, Program, ShellType, Statement,
+    };
+
+    #[test]
+    fn test_shell_quote_args_empty_arg() {
+        let args = vec!["".to_string()];
+        assert_eq!(shell_quote_args(&args), "''");
+    }
+
+    #[test]
+    fn test_shell_quote_args_safe_chars() {
+        let args = vec!["hello".to_string(), "world".to_string()];
+        assert_eq!(shell_quote_args(&args), "hello world");
+    }
+
+    #[test]
+    fn test_shell_quote_args_special_chars() {
+        let args = vec!["hello world".to_string()];
+        assert_eq!(shell_quote_args(&args), "'hello world'");
+    }
+
+    #[test]
+    fn test_shell_quote_args_single_quote() {
+        let args = vec!["it's".to_string()];
+        assert_eq!(shell_quote_args(&args), "'it'\\''s'");
+    }
+
+    #[test]
+    fn test_shell_quote_args_mixed() {
+        let args = vec![
+            "simple".to_string(),
+            "with space".to_string(),
+            "--flag=value".to_string(),
+        ];
+        assert_eq!(shell_quote_args(&args), "simple 'with space' --flag=value");
+    }
+
+    #[test]
+    fn test_shell_quote_args_empty_slice() {
+        let args: Vec<String> = vec![];
+        assert_eq!(shell_quote_args(&args), "");
+    }
+
+    #[test]
+    fn test_interpreter_new_default() {
+        let interp = Interpreter::new();
+        assert_eq!(interp.output_mode(), OutputMode::Stream);
+        assert_eq!(interp.last_interpreter(), "sh");
+        assert!(interp.get_simple_functions().is_empty());
+        assert!(interp.get_block_functions().is_empty());
+        assert!(interp.get_variables().is_empty());
+    }
+
+    #[test]
+    fn test_set_output_mode() {
+        let mut interp = Interpreter::new();
+        interp.set_output_mode(OutputMode::Capture);
+        assert_eq!(interp.output_mode(), OutputMode::Capture);
+
+        interp.set_output_mode(OutputMode::Structured);
+        assert_eq!(interp.output_mode(), OutputMode::Structured);
+    }
+
+    #[test]
+    fn test_take_captured_outputs() {
+        let mut interp = Interpreter::new();
+        let output = CommandOutput {
+            command: "echo hi".to_string(),
+            stdout: "hi\n".to_string(),
+            stderr: String::new(),
+            exit_code: Some(0),
+            duration_ms: 10,
+            started_at: 0,
+        };
+        interp.add_captured_output(output);
+
+        let outputs = interp.take_captured_outputs();
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].command, "echo hi");
+
+        // After take, buffer should be empty
+        let outputs2 = interp.take_captured_outputs();
+        assert!(outputs2.is_empty());
+    }
+
+    #[test]
+    fn test_execute_assignment() {
+        let mut interp = Interpreter::new();
+        let program = Program {
+            statements: vec![Statement::Assignment {
+                name: "MY_VAR".to_string(),
+                value: Expression::String("hello".to_string()),
+            }],
+        };
+        interp.execute(program).unwrap();
+        assert_eq!(interp.get_variables().get("MY_VAR").unwrap(), "hello");
+    }
+
+    #[test]
+    fn test_execute_simple_function_def() {
+        let mut interp = Interpreter::new();
+        let program = Program {
+            statements: vec![Statement::SimpleFunctionDef {
+                name: "greet".to_string(),
+                params: vec![],
+                command_template: "echo hello".to_string(),
+                attributes: vec![],
+            }],
+        };
+        interp.execute(program).unwrap();
+        assert!(interp.get_simple_functions().contains_key("greet"));
+        assert_eq!(
+            interp.get_simple_functions().get("greet").unwrap(),
+            "echo hello"
+        );
+    }
+
+    #[test]
+    fn test_execute_block_function_def() {
+        let mut interp = Interpreter::new();
+        let program = Program {
+            statements: vec![Statement::BlockFunctionDef {
+                name: "build".to_string(),
+                params: vec![],
+                commands: vec!["echo step1".to_string(), "echo step2".to_string()],
+                attributes: vec![],
+                shebang: None,
+            }],
+        };
+        interp.execute(program).unwrap();
+        assert!(interp.get_block_functions().contains_key("build"));
+        assert_eq!(interp.get_block_functions()["build"].len(), 2);
+    }
+
+    #[test]
+    fn test_list_available_functions_empty() {
+        let interp = Interpreter::new();
+        assert!(interp.list_available_functions().is_empty());
+    }
+
+    #[test]
+    fn test_list_available_functions_sorted() {
+        let mut interp = Interpreter::new();
+        let program = Program {
+            statements: vec![
+                Statement::SimpleFunctionDef {
+                    name: "zebra".to_string(),
+                    params: vec![],
+                    command_template: "echo z".to_string(),
+                    attributes: vec![],
+                },
+                Statement::SimpleFunctionDef {
+                    name: "alpha".to_string(),
+                    params: vec![],
+                    command_template: "echo a".to_string(),
+                    attributes: vec![],
+                },
+                Statement::BlockFunctionDef {
+                    name: "middle".to_string(),
+                    params: vec![],
+                    commands: vec!["echo m".to_string()],
+                    attributes: vec![],
+                    shebang: None,
+                },
+            ],
+        };
+        interp.execute(program).unwrap();
+
+        let funcs = interp.list_available_functions();
+        assert_eq!(funcs, vec!["alpha", "middle", "zebra"]);
+    }
+
+    #[test]
+    fn test_call_function_not_found() {
+        let mut interp = Interpreter::new();
+        let result = interp.call_function_without_parens("nonexistent", &[]);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Function 'nonexistent' not found"));
+    }
+
+    #[test]
+    fn test_call_function_with_args_not_found() {
+        let mut interp = Interpreter::new();
+        let result = interp.call_function_with_args("nonexistent", &[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_substitute_args_positional() {
+        let interp = Interpreter::new();
+        let result = interp.substitute_args(
+            "echo $1 $2",
+            &["hello".to_string(), "world".to_string()],
+        );
+        assert_eq!(result, "echo hello world");
+    }
+
+    #[test]
+    fn test_substitute_args_all_args() {
+        let interp = Interpreter::new();
+        let result = interp.substitute_args("echo $@", &["a".to_string(), "b".to_string()]);
+        assert_eq!(result, "echo a b");
+    }
+
+    #[test]
+    fn test_substitute_args_default_value() {
+        let interp = Interpreter::new();
+        let result = interp.substitute_args("echo ${1:-default_val}", &[]);
+        assert_eq!(result, "echo default_val");
+    }
+
+    #[test]
+    fn test_substitute_args_default_value_with_arg() {
+        let interp = Interpreter::new();
+        let result =
+            interp.substitute_args("echo ${1:-default_val}", &["provided".to_string()]);
+        assert_eq!(result, "echo provided");
+    }
+
+    #[test]
+    fn test_substitute_args_braced() {
+        let interp = Interpreter::new();
+        let result = interp.substitute_args("echo ${1} ${2}", &["a".to_string(), "b".to_string()]);
+        assert_eq!(result, "echo a b");
+    }
+
+    #[test]
+    fn test_substitute_args_braced_missing() {
+        let interp = Interpreter::new();
+        let result = interp.substitute_args("echo ${1} ${2}", &["a".to_string()]);
+        assert_eq!(result, "echo a ");
+    }
+
+    #[test]
+    fn test_substitute_args_with_variables() {
+        let mut interp = Interpreter::new();
+        interp.variables.insert("MY_VAR".to_string(), "value".to_string());
+        let result = interp.substitute_args("echo $MY_VAR", &[]);
+        assert_eq!(result, "echo value");
+    }
+
+    #[test]
+    fn test_substitute_args_with_params_named() {
+        let interp = Interpreter::new();
+        let params = vec![
+            Parameter {
+                name: "name".to_string(),
+                param_type: crate::ast::ArgType::String,
+                default_value: None,
+                is_rest: false,
+            },
+            Parameter {
+                name: "greeting".to_string(),
+                param_type: crate::ast::ArgType::String,
+                default_value: Some("hello".to_string()),
+                is_rest: false,
+            },
+        ];
+        let result = interp.substitute_args_with_params(
+            "echo $greeting $name",
+            &["world".to_string()],
+            &params,
+        );
+        assert_eq!(result, "echo hello world");
+    }
+
+    #[test]
+    fn test_substitute_args_with_params_rest() {
+        let interp = Interpreter::new();
+        let params = vec![Parameter {
+            name: "args".to_string(),
+            param_type: crate::ast::ArgType::String,
+            default_value: None,
+            is_rest: true,
+        }];
+        let result = interp.substitute_args_with_params(
+            "echo $args",
+            &["a".to_string(), "b".to_string(), "c".to_string()],
+            &params,
+        );
+        assert_eq!(result, "echo a b c");
+    }
+
+    #[test]
+    fn test_substitute_args_with_params_fallback_positional() {
+        let interp = Interpreter::new();
+        // Empty params should fall back to positional substitution
+        let result = interp.substitute_args_with_params(
+            "echo $1 $2",
+            &["hello".to_string(), "world".to_string()],
+            &[],
+        );
+        assert_eq!(result, "echo hello world");
+    }
+
+    #[test]
+    fn test_resolve_function_interpreter_default() {
+        let interp = Interpreter::new();
+        let result = interp.resolve_function_interpreter("test", &[], None);
+        assert_eq!(result, TranspilerInterpreter::default());
+    }
+
+    #[test]
+    fn test_resolve_function_interpreter_shell_attribute() {
+        let interp = Interpreter::new();
+        let attrs = vec![Attribute::Shell(ShellType::Python)];
+        let result = interp.resolve_function_interpreter("test", &attrs, None);
+        assert_eq!(result, TranspilerInterpreter::Python);
+    }
+
+    #[test]
+    fn test_resolve_function_interpreter_shebang() {
+        let interp = Interpreter::new();
+        let result =
+            interp.resolve_function_interpreter("test", &[], Some("/usr/bin/env node"));
+        assert_eq!(result, TranspilerInterpreter::Node);
+    }
+
+    #[test]
+    fn test_resolve_function_interpreter_attribute_overrides_shebang() {
+        let interp = Interpreter::new();
+        let attrs = vec![Attribute::Shell(ShellType::Ruby)];
+        let result = interp
+            .resolve_function_interpreter("test", &attrs, Some("/usr/bin/env python3"));
+        // Attribute should take precedence
+        assert_eq!(result, TranspilerInterpreter::Ruby);
+    }
+
+    #[test]
+    fn test_execute_simple_function_call() {
+        let mut interp = Interpreter::new();
+        // Define and call a simple function
+        let program = Program {
+            statements: vec![
+                Statement::SimpleFunctionDef {
+                    name: "greet".to_string(),
+                    params: vec![],
+                    command_template: "echo hello".to_string(),
+                    attributes: vec![],
+                },
+                Statement::FunctionCall {
+                    name: "greet".to_string(),
+                    args: vec![],
+                },
+            ],
+        };
+        // This calls shell commands, should work on any Unix system
+        let result = interp.execute(program);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_call_function_double_underscore_resolution() {
+        let mut interp = Interpreter::new();
+        interp
+            .simple_functions
+            .insert("nested:func".to_string(), "echo nested".to_string());
+        interp.function_metadata.insert(
+            "nested:func".to_string(),
+            FunctionMetadata {
+                attributes: vec![],
+                shebang: None,
+                params: vec![],
+            },
+        );
+
+        // Should resolve nested__func -> nested:func
+        let result = interp.call_function_without_parens("nested__func", &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_call_function_underscore_to_colon_resolution() {
+        let mut interp = Interpreter::new();
+        interp
+            .simple_functions
+            .insert("docker:build".to_string(), "echo building".to_string());
+        interp.function_metadata.insert(
+            "docker:build".to_string(),
+            FunctionMetadata {
+                attributes: vec![],
+                shebang: None,
+                params: vec![],
+            },
+        );
+
+        // Should resolve docker_build -> docker:build
+        let result = interp.call_function_without_parens("docker_build", &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_call_function_subcommand_resolution() {
+        let mut interp = Interpreter::new();
+        interp
+            .simple_functions
+            .insert("docker:shell".to_string(), "echo shell".to_string());
+        interp.function_metadata.insert(
+            "docker:shell".to_string(),
+            FunctionMetadata {
+                attributes: vec![],
+                shebang: None,
+                params: vec![],
+            },
+        );
+
+        // Calling "docker" with arg "shell" should resolve to docker:shell
+        let result = interp.call_function_without_parens("docker", &["shell".to_string()]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_execute_os_filtered_function() {
+        let mut interp = Interpreter::new();
+        // Windows function on Linux - should be skipped
+        let program = Program {
+            statements: vec![Statement::SimpleFunctionDef {
+                name: "win_only".to_string(),
+                params: vec![],
+                command_template: "echo windows".to_string(),
+                attributes: vec![Attribute::Os(crate::ast::OsPlatform::Windows)],
+            }],
+        };
+        interp.execute(program).unwrap();
+
+        if cfg!(not(target_os = "windows")) {
+            // Function should not be registered
+            assert!(!interp.get_simple_functions().contains_key("win_only"));
+        }
+    }
+
+    #[test]
+    fn test_get_simple_function_attributes() {
+        let mut interp = Interpreter::new();
+        interp
+            .simple_functions
+            .insert("test".to_string(), "echo test".to_string());
+        interp.function_metadata.insert(
+            "test".to_string(),
+            FunctionMetadata {
+                attributes: vec![Attribute::Shell(ShellType::Bash)],
+                shebang: None,
+                params: vec![],
+            },
+        );
+
+        let attrs = interp.get_simple_function_attributes("test");
+        assert_eq!(attrs.len(), 1);
+        assert!(matches!(attrs[0], Attribute::Shell(ShellType::Bash)));
+
+        // Non-existent function returns empty slice
+        let attrs = interp.get_simple_function_attributes("nonexistent");
+        assert!(attrs.is_empty());
+    }
+
+    #[test]
+    fn test_get_block_function_metadata() {
+        let mut interp = Interpreter::new();
+        interp.function_metadata.insert(
+            "build".to_string(),
+            FunctionMetadata {
+                attributes: vec![Attribute::Shell(ShellType::Bash)],
+                shebang: Some("#!/bin/bash".to_string()),
+                params: vec![],
+            },
+        );
+
+        let (attrs, shebang) = interp.get_block_function_metadata("build");
+        assert_eq!(attrs.len(), 1);
+        assert_eq!(shebang, Some("#!/bin/bash"));
+
+        // Non-existent function
+        let (attrs, shebang) = interp.get_block_function_metadata("nonexistent");
+        assert!(attrs.is_empty());
+        assert!(shebang.is_none());
     }
 }

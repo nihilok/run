@@ -262,3 +262,221 @@ pub(super) fn escape_pwsh_value(value: &str) -> String {
         .replace('"', "`\"") // Double quotes
         .replace('$', "`$") // Dollar signs
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_escape_shell_value_plain() {
+        assert_eq!(escape_shell_value("hello"), "hello");
+    }
+
+    #[test]
+    fn test_escape_shell_value_double_quotes() {
+        assert_eq!(escape_shell_value(r#"say "hi""#), r#"say \"hi\""#);
+    }
+
+    #[test]
+    fn test_escape_shell_value_dollar() {
+        assert_eq!(escape_shell_value("$HOME"), "\\$HOME");
+    }
+
+    #[test]
+    fn test_escape_shell_value_backtick() {
+        assert_eq!(escape_shell_value("echo `date`"), "echo \\`date\\`");
+    }
+
+    #[test]
+    fn test_escape_shell_value_backslash() {
+        assert_eq!(escape_shell_value("path\\to"), "path\\\\to");
+    }
+
+    #[test]
+    fn test_escape_shell_value_bang() {
+        assert_eq!(escape_shell_value("hello!"), "hello\\!");
+    }
+
+    #[test]
+    fn test_escape_shell_value_combined() {
+        assert_eq!(
+            escape_shell_value(r#"$HOME/"dir" `cmd`"#),
+            r#"\$HOME/\"dir\" \`cmd\`"#
+        );
+    }
+
+    #[test]
+    fn test_escape_pwsh_value_plain() {
+        assert_eq!(escape_pwsh_value("hello"), "hello");
+    }
+
+    #[test]
+    fn test_escape_pwsh_value_double_quotes() {
+        assert_eq!(escape_pwsh_value(r#"say "hi""#), "say `\"hi`\"");
+    }
+
+    #[test]
+    fn test_escape_pwsh_value_dollar() {
+        assert_eq!(escape_pwsh_value("$env:PATH"), "`$env:PATH");
+    }
+
+    #[test]
+    fn test_escape_pwsh_value_backtick() {
+        assert_eq!(escape_pwsh_value("hello`world"), "hello``world");
+    }
+
+    #[test]
+    fn test_resolve_shebang_python() {
+        assert_eq!(
+            resolve_shebang_interpreter("/usr/bin/env python"),
+            Some(ShellType::Python)
+        );
+    }
+
+    #[test]
+    fn test_resolve_shebang_python3() {
+        assert_eq!(
+            resolve_shebang_interpreter("/usr/bin/env python3"),
+            Some(ShellType::Python3)
+        );
+    }
+
+    #[test]
+    fn test_resolve_shebang_node() {
+        assert_eq!(
+            resolve_shebang_interpreter("/usr/bin/env node"),
+            Some(ShellType::Node)
+        );
+    }
+
+    #[test]
+    fn test_resolve_shebang_ruby() {
+        assert_eq!(
+            resolve_shebang_interpreter("/usr/bin/env ruby"),
+            Some(ShellType::Ruby)
+        );
+    }
+
+    #[test]
+    fn test_resolve_shebang_bash_direct() {
+        assert_eq!(
+            resolve_shebang_interpreter("/bin/bash"),
+            Some(ShellType::Bash)
+        );
+    }
+
+    #[test]
+    fn test_resolve_shebang_sh_direct() {
+        assert_eq!(
+            resolve_shebang_interpreter("/bin/sh"),
+            Some(ShellType::Sh)
+        );
+    }
+
+    #[test]
+    fn test_resolve_shebang_pwsh() {
+        assert_eq!(
+            resolve_shebang_interpreter("/usr/bin/env pwsh"),
+            Some(ShellType::Pwsh)
+        );
+    }
+
+    #[test]
+    fn test_resolve_shebang_powershell() {
+        assert_eq!(
+            resolve_shebang_interpreter("/usr/bin/env powershell"),
+            Some(ShellType::Pwsh)
+        );
+    }
+
+    #[test]
+    fn test_resolve_shebang_unknown() {
+        assert_eq!(resolve_shebang_interpreter("/usr/bin/env perl"), None);
+    }
+
+    #[test]
+    fn test_resolve_shebang_direct_path_python3() {
+        assert_eq!(
+            resolve_shebang_interpreter("/usr/bin/python3"),
+            Some(ShellType::Python3)
+        );
+    }
+
+    #[test]
+    fn test_strip_shebang_basic() {
+        let body = "#!/usr/bin/env python3\nprint('hello')";
+        assert_eq!(strip_shebang(body), "print('hello')");
+    }
+
+    #[test]
+    fn test_strip_shebang_with_comment_before() {
+        let body = "# comment\n#!/usr/bin/env python3\nprint('hello')";
+        assert_eq!(strip_shebang(body), "# comment\nprint('hello')");
+    }
+
+    #[test]
+    fn test_strip_shebang_no_shebang() {
+        let body = "print('hello')\nprint('world')";
+        assert_eq!(strip_shebang(body), "print('hello')\nprint('world')");
+    }
+
+    #[test]
+    fn test_strip_shebang_only_shebang() {
+        let body = "#!/bin/bash";
+        assert_eq!(strip_shebang(body), "");
+    }
+
+    #[test]
+    fn test_interpreter_to_shell_args_sh() {
+        let (cmd, arg, name) = interpreter_to_shell_args(&TranspilerInterpreter::Sh);
+        assert_eq!(cmd, "sh");
+        assert_eq!(arg, "-c");
+        assert_eq!(name, "sh");
+    }
+
+    #[test]
+    fn test_interpreter_to_shell_args_bash() {
+        let (cmd, arg, name) = interpreter_to_shell_args(&TranspilerInterpreter::Bash);
+        assert_eq!(cmd, "bash");
+        assert_eq!(arg, "-c");
+        assert_eq!(name, "bash");
+    }
+
+    #[test]
+    fn test_interpreter_to_shell_args_pwsh() {
+        let (cmd, arg, name) = interpreter_to_shell_args(&TranspilerInterpreter::Pwsh);
+        assert_eq!(cmd, "pwsh");
+        assert_eq!(arg, "-Command");
+        assert_eq!(name, "pwsh");
+    }
+
+    #[test]
+    fn test_interpreter_to_shell_args_node() {
+        let (cmd, arg, name) = interpreter_to_shell_args(&TranspilerInterpreter::Node);
+        assert_eq!(cmd, "node");
+        assert_eq!(arg, "-e");
+        assert_eq!(name, "node");
+    }
+
+    #[test]
+    fn test_interpreter_to_shell_args_ruby() {
+        let (cmd, arg, name) = interpreter_to_shell_args(&TranspilerInterpreter::Ruby);
+        assert_eq!(cmd, "ruby");
+        assert_eq!(arg, "-e");
+        assert_eq!(name, "ruby");
+    }
+
+    #[test]
+    fn test_interpreter_to_shell_args_python3() {
+        let (cmd, arg, name) = interpreter_to_shell_args(&TranspilerInterpreter::Python3);
+        assert_eq!(cmd, "python3");
+        assert_eq!(arg, "-c");
+        assert_eq!(name, "python3");
+    }
+
+    #[test]
+    fn test_get_python_executable_returns_valid() {
+        let result = get_python_executable();
+        assert!(result == "python3" || result == "python");
+    }
+}
