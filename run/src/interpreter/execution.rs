@@ -58,6 +58,7 @@ pub(super) fn build_combined_script(
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
 

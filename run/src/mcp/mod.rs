@@ -156,7 +156,7 @@ pub fn serve_mcp() {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::ast::{ArgMetadata, ArgType, Attribute};

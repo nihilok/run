@@ -255,6 +255,7 @@ fn install_powershell_completion(home: &Path) {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
 

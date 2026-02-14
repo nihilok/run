@@ -264,6 +264,7 @@ pub(super) fn escape_pwsh_value(value: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
 

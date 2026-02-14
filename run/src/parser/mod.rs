@@ -304,7 +304,7 @@ fn parse_param(pair: pest::iterators::Pair<Rule>) -> Option<crate::ast::Paramete
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::ast::{ArgType, Attribute};

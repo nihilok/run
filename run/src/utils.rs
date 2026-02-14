@@ -49,6 +49,7 @@ fn platform_matches_current(platform: &OsPlatform) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::ast::Attribute;

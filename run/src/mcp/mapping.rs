@@ -209,6 +209,7 @@ fn value_to_string(value: &serde_json::Value) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
     use serde_json::json;
