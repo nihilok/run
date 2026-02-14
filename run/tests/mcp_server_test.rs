@@ -742,4 +742,4 @@ shared_tool() {
 }
 
 // Note: Tests that manipulate ~/.runfile may need to run serially to avoid race conditions
-// Run with: cargo test --test rfc003_mcp_test -- --test-threads=1
+// Run with: cargo test --test mcp_server_test -- --test-threads=1
