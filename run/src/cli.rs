@@ -3,6 +3,7 @@
 //! This module is separated from main.rs to allow the runtool wrapper crate to reuse it.
 
 use crate::{completion, config, executor, mcp, repl};
+use clap::ValueEnum;
 use clap::Parser as ClapParser;
 use std::path::PathBuf;
 
@@ -31,8 +32,14 @@ struct Cli {
     generate_completion: Option<completion::Shell>,
 
     /// Install shell completion (automatically detects shell and updates config)
-    #[arg(long, value_name = "SHELL")]
-    install_completion: Option<Option<completion::Shell>>,
+    #[arg(
+        long,
+        value_name = "SHELL",
+        num_args = 0..=1,
+        default_missing_value = "auto",
+        value_enum
+    )]
+    install_completion: Option<InstallCompletionArg>,
 
     /// Inspect and output JSON schema for all functions
     #[arg(long)]
@@ -51,6 +58,29 @@ struct Cli {
     working_dir: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum InstallCompletionArg {
+    Auto,
+    Bash,
+    Zsh,
+    Fish,
+    #[value(name = "powershell", alias = "pwsh")]
+    PowerShell,
+}
+
+impl InstallCompletionArg {
+    #[must_use]
+    fn into_shell_option(self) -> Option<completion::Shell> {
+        match self {
+            Self::Auto => None,
+            Self::Bash => Some(completion::Shell::Bash),
+            Self::Zsh => Some(completion::Shell::Zsh),
+            Self::Fish => Some(completion::Shell::Fish),
+            Self::PowerShell => Some(completion::Shell::PowerShell),
+        }
+    }
+}
+
 /// Output format for command execution
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub enum OutputFormatArg {
@@ -64,6 +94,7 @@ pub enum OutputFormatArg {
 
 impl OutputFormatArg {
     /// Get the output mode for this format
+    #[must_use]
     pub fn mode(self) -> crate::ast::OutputMode {
         match self {
             Self::Stream => crate::ast::OutputMode::Stream,
@@ -73,6 +104,7 @@ impl OutputFormatArg {
 
     /// Format a structured result according to this format
     /// Returns None for Stream mode (no structured output)
+    #[must_use]
     pub fn format_result(self, result: &crate::ast::StructuredResult) -> Option<String> {
         match self {
             Self::Stream => None,
@@ -94,8 +126,8 @@ pub fn run_cli() {
     }
 
     // Handle --install-completion flag
-    if let Some(shell_opt) = cli.install_completion {
-        completion::install_completion_interactive(shell_opt, config::get_home_dir);
+    if let Some(shell_arg) = cli.install_completion {
+        completion::install_completion_interactive(shell_arg.into_shell_option(), config::get_home_dir);
         return;
     }
 

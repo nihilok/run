@@ -7,6 +7,7 @@ use super::shell::{escape_pwsh_value, escape_shell_value};
 use crate::ast::Attribute;
 use crate::transpiler::{self, Interpreter as TranspilerInterpreter};
 use std::collections::HashMap;
+type InterpreterResolver<'a> = dyn Fn(&str, &[Attribute], Option<&str>) -> TranspilerInterpreter + 'a;
 
 /// Collect compatible sibling function names for call site rewriting
 pub(super) fn collect_compatible_siblings(
@@ -15,7 +16,7 @@ pub(super) fn collect_compatible_siblings(
     simple_functions: &HashMap<String, String>,
     block_functions: &HashMap<String, Vec<String>>,
     function_metadata: &HashMap<String, super::FunctionMetadata>,
-    resolve_interpreter: &dyn Fn(&str, &[Attribute], Option<&str>) -> TranspilerInterpreter,
+    resolve_interpreter: &InterpreterResolver<'_>,
 ) -> Vec<String> {
     let mut compatible = Vec::new();
 
@@ -25,7 +26,8 @@ pub(super) fn collect_compatible_siblings(
             continue;
         }
         let metadata = function_metadata.get(name);
-        let attributes = metadata.map(|m| m.attributes.as_slice()).unwrap_or(&[]);
+        let attributes: &[Attribute] =
+            metadata.map_or(&[] as &[Attribute], |m| m.attributes.as_slice());
         let func_interpreter = resolve_interpreter(name, attributes, None);
 
         if target_interpreter.is_compatible_with(&func_interpreter) {
@@ -45,10 +47,10 @@ pub(super) fn collect_compatible_siblings(
         );
         let func_interpreter = resolve_interpreter(name, &attributes, shebang);
 
-        if target_interpreter.is_compatible_with(&func_interpreter) {
-            if !compatible.contains(name) {
-                compatible.push(name.clone());
-            }
+        if target_interpreter.is_compatible_with(&func_interpreter)
+            && !compatible.contains(name)
+        {
+            compatible.push(name.clone());
         }
     }
 
@@ -62,7 +64,7 @@ pub(super) fn collect_incompatible_colon_siblings(
     simple_functions: &HashMap<String, String>,
     block_functions: &HashMap<String, Vec<String>>,
     function_metadata: &HashMap<String, super::FunctionMetadata>,
-    resolve_interpreter: &dyn Fn(&str, &[Attribute], Option<&str>) -> TranspilerInterpreter,
+    resolve_interpreter: &InterpreterResolver<'_>,
 ) -> Vec<String> {
     let mut incompatible = Vec::new();
 
@@ -72,7 +74,8 @@ pub(super) fn collect_incompatible_colon_siblings(
             continue;
         }
         let metadata = function_metadata.get(name);
-        let attributes = metadata.map(|m| m.attributes.as_slice()).unwrap_or(&[]);
+        let attributes: &[Attribute] =
+            metadata.map_or(&[] as &[Attribute], |m| m.attributes.as_slice());
         let func_interpreter = resolve_interpreter(name, attributes, None);
 
         if !target_interpreter.is_compatible_with(&func_interpreter) {
@@ -92,10 +95,10 @@ pub(super) fn collect_incompatible_colon_siblings(
         );
         let func_interpreter = resolve_interpreter(name, &attributes, shebang);
 
-        if !target_interpreter.is_compatible_with(&func_interpreter) {
-            if !incompatible.contains(name) {
-                incompatible.push(name.clone());
-            }
+        if !target_interpreter.is_compatible_with(&func_interpreter)
+            && !incompatible.contains(name)
+        {
+            incompatible.push(name.clone());
         }
     }
 
@@ -142,7 +145,7 @@ pub(super) fn build_function_preamble(
     simple_functions: &HashMap<String, String>,
     block_functions: &HashMap<String, Vec<String>>,
     function_metadata: &HashMap<String, super::FunctionMetadata>,
-    resolve_interpreter: &dyn Fn(&str, &[Attribute], Option<&str>) -> TranspilerInterpreter,
+    resolve_interpreter: &InterpreterResolver<'_>,
 ) -> String {
     let mut preamble = String::new();
 
@@ -171,7 +174,7 @@ pub(super) fn build_function_preamble(
     let all_rewritable: Vec<&str> = compatible_siblings
         .iter()
         .chain(incompatible_colon_siblings.iter())
-        .map(|s| s.as_str())
+        .map(String::as_str)
         .collect();
 
     // Transpile simple functions
@@ -181,7 +184,8 @@ pub(super) fn build_function_preamble(
         }
 
         let metadata = function_metadata.get(name);
-        let attributes = metadata.map(|m| m.attributes.as_slice()).unwrap_or(&[]);
+        let attributes: &[Attribute] =
+            metadata.map_or(&[] as &[Attribute], |m| m.attributes.as_slice());
         let func_interpreter = resolve_interpreter(name, attributes, None);
 
         if !target_interpreter.is_compatible_with(&func_interpreter) {
@@ -220,7 +224,11 @@ pub(super) fn build_function_preamble(
         }
 
         // Join commands and rewrite call sites
-        let body = commands.join("\n");
+        let body = commands
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join("\n");
         let rewritten_body = transpiler::rewrite_call_sites(&body, &all_rewritable);
 
         let transpiled = match target_interpreter {
@@ -275,6 +283,7 @@ pub(super) fn build_variable_preamble(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn test_build_variable_preamble_empty() {

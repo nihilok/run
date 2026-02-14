@@ -32,27 +32,26 @@ pub fn parse_script(input: &str) -> Result<Program, Box<pest::error::Error<Rule>
     let mut statements = Vec::new();
 
     for pair in pairs {
-        match pair.as_rule() {
-            Rule::program => {
-                for inner_pair in pair.into_inner() {
-                    if inner_pair.as_rule() == Rule::item {
-                        // Item wraps the actual content
-                        if let Some(content) = inner_pair.into_inner().next() {
-                            match content.as_rule() {
-                                Rule::comment => {
-                                    // Skip comments - attributes are collected in parse_statement
-                                }
-                                _ => {
-                                    if let Some(stmt) = parse_statement(content, &preprocessed) {
-                                        statements.push(stmt);
-                                    }
-                                }
+        if pair.as_rule() != Rule::program {
+            continue;
+        }
+
+        for inner_pair in pair.into_inner() {
+            if inner_pair.as_rule() == Rule::item {
+                // Item wraps the actual content
+                if let Some(content) = inner_pair.into_inner().next() {
+                    match content.as_rule() {
+                        Rule::comment => {
+                            // Skip comments - attributes are collected in parse_statement
+                        }
+                        _ => {
+                            if let Some(stmt) = parse_statement(content, &preprocessed) {
+                                statements.push(stmt);
                             }
                         }
                     }
                 }
             }
-            Rule::EOI | _ => {}
         }
     }
 

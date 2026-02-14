@@ -187,9 +187,9 @@ pub(super) fn extract_function_metadata(
 /// - The Runfile cannot be parsed (syntax errors)
 /// - The parser encounters an unexpected error
 pub fn inspect() -> Result<InspectOutput, String> {
-    let config_content = match config::load_merged_config() {
-        Some((content, _metadata)) => content,
-        None => return Ok(InspectOutput { tools: Vec::new() }), // No Runfile = no tools
+    let Some((config_content, _metadata)) = config::load_merged_config() else {
+        // No Runfile = no tools
+        return Ok(InspectOutput { tools: Vec::new() });
     };
 
     let program = parser::parse_script(&config_content).map_err(|e| format!("Parse error: {e}"))?;

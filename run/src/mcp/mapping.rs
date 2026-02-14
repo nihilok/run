@@ -1,7 +1,9 @@
 //! Argument mapping and tool name resolution
 
+#![allow(clippy::manual_let_else)]
+
 use super::handlers::JsonRpcError;
-use crate::ast::{Attribute, Statement};
+use crate::ast::{Attribute, Program, Statement};
 use crate::{config, parser};
 use std::collections::HashMap;
 
@@ -53,66 +55,74 @@ pub(super) fn resolve_tool_name(sanitised_name: &str) -> Result<String, JsonRpcE
     })
 }
 
-/// Map JSON arguments to positional shell arguments
-/// Uses merged global+project config with project taking precedence
-pub(super) fn map_arguments_to_positional(
-    tool_name: &str,
-    json_args: &serde_json::Value,
-) -> Result<Vec<String>, JsonRpcError> {
-    // Load merged Runfile to get function metadata
+fn load_merged_program() -> Result<Program, JsonRpcError> {
     let (config_content, _metadata) = config::load_merged_config().ok_or_else(|| JsonRpcError {
         code: -32603,
         message: "No Runfile found".to_string(),
         data: None,
     })?;
 
-    let program = parser::parse_script(&config_content).map_err(|e| JsonRpcError {
+    parser::parse_script(&config_content).map_err(|e| JsonRpcError {
         code: -32603,
         message: format!("Parse error: {e}"),
         data: None,
-    })?;
+    })
+}
 
-    // Find the function and get its @arg attributes and parameters
-    // Process in reverse order to give precedence to project definitions
+fn collect_arg_metadata(
+    program: &Program,
+    tool_name: &str,
+) -> (HashMap<usize, String>, Vec<crate::ast::Parameter>, HashMap<String, usize>) {
     let mut arg_mapping: HashMap<usize, String> = HashMap::new();
     let mut params_vec: Vec<crate::ast::Parameter> = Vec::new();
     let mut arg_metadata_by_name: HashMap<String, usize> = HashMap::new();
 
-    // Process in reverse order (project overrides global)
     for statement in program.statements.iter().rev() {
-        let (name, attributes, params) = match statement {
-            Statement::SimpleFunctionDef {
-                name,
-                attributes,
-                params,
-                ..
-            }
-            | Statement::BlockFunctionDef {
-                name,
-                attributes,
-                params,
-                ..
-            } => (name, attributes, params),
-            _ => continue,
+        let (Statement::SimpleFunctionDef {
+            name,
+            attributes,
+            params,
+            ..
+        }
+        | Statement::BlockFunctionDef {
+            name,
+            attributes,
+            params,
+            ..
+        }) = statement
+        else {
+            continue;
         };
 
-        if name == tool_name {
-            // Extract argument metadata from @arg attributes
-            for attr in attributes {
-                if let Attribute::Arg(arg_meta) = attr {
-                    // Legacy mode: explicit position like @arg 1:name
-                    if arg_meta.position > 0 {
-                        arg_mapping.insert(arg_meta.position, arg_meta.name.clone());
-                    } else {
-                        // New mode: position 0 means match by name later
-                        arg_metadata_by_name.insert(arg_meta.name.clone(), 0);
-                    }
+        if name != tool_name {
+            continue;
+        }
+
+        for attr in attributes {
+            if let Attribute::Arg(arg_meta) = attr {
+                if arg_meta.position > 0 {
+                    arg_mapping.insert(arg_meta.position, arg_meta.name.clone());
+                } else {
+                    arg_metadata_by_name.insert(arg_meta.name.clone(), 0);
                 }
             }
-            params_vec = params.clone();
-            break; // Take the first match (which is project due to reverse order)
         }
+        params_vec.clone_from(params);
+        break;
     }
+
+    (arg_mapping, params_vec, arg_metadata_by_name)
+}
+
+/// Map JSON arguments to positional shell arguments
+/// Uses merged global+project config with project taking precedence
+pub(super) fn map_arguments_to_positional(
+    tool_name: &str,
+    json_args: &serde_json::Value,
+) -> Result<Vec<String>, JsonRpcError> {
+    let program = load_merged_program()?;
+    let (mut arg_mapping, params_vec, arg_metadata_by_name) =
+        collect_arg_metadata(&program, tool_name);
 
     // Smart matching: match parameters with @arg by name, or use parameter order
     if !params_vec.is_empty() {
@@ -131,10 +141,7 @@ pub(super) fn map_arguments_to_positional(
             // Check if there's an @arg with matching name (new mode)
             if arg_metadata_by_name.contains_key(&param.name) {
                 arg_mapping.insert(position, param.name.clone());
-            } else if arg_mapping.values().any(|v| v == &param.name) {
-                // Already mapped by legacy @arg with explicit position
-                continue;
-            } else {
+            } else if !arg_mapping.values().any(|v| v == &param.name) {
                 // No @arg metadata for this param, just use parameter order
                 arg_mapping.insert(position, param.name.clone());
             }
@@ -226,7 +233,7 @@ mod tests {
 
     #[test]
     fn test_value_to_string_float() {
-        assert_eq!(value_to_string(&json!(3.14)), "3.14");
+        assert_eq!(value_to_string(&json!(1.23)), "1.23");
     }
 
     #[test]

@@ -31,7 +31,7 @@ pub struct Interpreter {
     /// Captured outputs when in Capture/Structured mode
     captured_outputs: Vec<CommandOutput>,
     /// Last interpreter used (for structured output context)
-    last_interpreter: String,
+    last_interpreter_name: String,
 }
 
 impl Default for Interpreter {
@@ -44,7 +44,7 @@ impl Default for Interpreter {
             function_metadata: HashMap::new(),
             output_mode: OutputMode::default(),
             captured_outputs: Vec::new(),
-            last_interpreter: "sh".to_string(),
+            last_interpreter_name: "sh".to_string(),
         }
     }
 }
@@ -78,6 +78,7 @@ impl Interpreter {
     }
 
     /// Get the current output mode
+    #[must_use]
     pub fn output_mode(&self) -> OutputMode {
         self.output_mode
     }
@@ -88,8 +89,9 @@ impl Interpreter {
     }
 
     /// Get the last interpreter used
+    #[must_use]
     pub fn last_interpreter(&self) -> &str {
-        &self.last_interpreter
+        &self.last_interpreter_name
     }
 
     /// Add a captured output
@@ -101,8 +103,7 @@ impl Interpreter {
     fn get_simple_function_attributes(&self, name: &str) -> &[Attribute] {
         self.function_metadata
             .get(name)
-            .map(|m| m.attributes.as_slice())
-            .unwrap_or(&[])
+            .map_or(&[], |m| m.attributes.as_slice())
     }
 
     // Helper to get attributes and shebang for block functions
@@ -128,6 +129,7 @@ impl Interpreter {
         Ok(())
     }
 
+    #[must_use]
     pub fn list_available_functions(&self) -> Vec<String> {
         let mut functions = Vec::new();
 
@@ -253,7 +255,7 @@ impl Interpreter {
         }
 
         // Try replacing underscores with colons
-        let with_colons = function_name.replace("_", ":");
+        let with_colons = function_name.replace('_', ":");
         if with_colons != function_name {
             if let Some(command_template) = self.simple_functions.get(&with_colons).cloned() {
                 let attributes = self.get_simple_function_attributes(&with_colons).to_vec();
@@ -405,42 +407,40 @@ impl Interpreter {
         args: &[String],
         params: &[crate::ast::Parameter],
     ) -> String {
+        if params.is_empty() {
+            return self.substitute_args(template, args);
+        }
+
         let mut result = template.to_string();
 
-        // If we have params, do named substitution
-        if !params.is_empty() {
-            for (i, param) in params.iter().enumerate() {
-                if param.is_rest {
-                    // Rest parameter: shell-quote all remaining args individually
-                    let rest_args = if i < args.len() {
-                        shell_quote_args(&args[i..])
-                    } else {
-                        String::new()
-                    };
-                    result = result.replace(&format!("${}", param.name), &rest_args);
-                    result = result.replace(&format!("${{{}}}", param.name), &rest_args);
-                    // Also support "$@" and $@ for rest parameters
-                    result = result.replace("\"$@\"", &rest_args);
-                    result = result.replace("$@", &rest_args);
+        for (i, param) in params.iter().enumerate() {
+            if param.is_rest {
+                // Rest parameter: shell-quote all remaining args individually
+                let rest_args = if i < args.len() {
+                    shell_quote_args(&args[i..])
                 } else {
-                    let value = if i < args.len() {
-                        &args[i]
-                    } else if let Some(default) = &param.default_value {
-                        default
-                    } else {
-                        eprintln!("Warning: Missing required argument: {}", param.name);
-                        ""
-                    };
+                    String::new()
+                };
+                result = result.replace(&format!("${}", param.name), &rest_args);
+                result = result.replace(&format!("${{{}}}", param.name), &rest_args);
+                // Also support "$@" and $@ for rest parameters
+                result = result.replace("\"$@\"", &rest_args);
+                result = result.replace("$@", &rest_args);
+            } else {
+                let value = if i < args.len() {
+                    &args[i]
+                } else if let Some(default) = &param.default_value {
+                    default
+                } else {
+                    eprintln!("Warning: Missing required argument: {}", param.name);
+                    ""
+                };
 
-                    // Replace both $name and ${name} and $N (for backward compatibility)
-                    result = result.replace(&format!("${}", param.name), value);
-                    result = result.replace(&format!("${{{}}}", param.name), value);
-                    result = result.replace(&format!("${}", i + 1), value); // Also support positional
-                }
+                // Replace both $name and ${name} and $N (for backward compatibility)
+                result = result.replace(&format!("${}", param.name), value);
+                result = result.replace(&format!("${{{}}}", param.name), value);
+                result = result.replace(&format!("${}", i + 1), value); // Also support positional
             }
-        } else {
-            // Fall back to positional substitution
-            result = self.substitute_args(template, args);
         }
 
         result
@@ -509,8 +509,6 @@ impl Interpreter {
 
     /// Resolve the interpreter for a given function
     fn resolve_function_interpreter(
-        &self,
-        _name: &str,
         attributes: &[Attribute],
         shebang: Option<&str>,
     ) -> TranspilerInterpreter {
@@ -522,10 +520,10 @@ impl Interpreter {
         }
 
         // Check for shebang
-        if let Some(shebang_str) = shebang {
-            if let Some(shell_type) = shell::resolve_shebang_interpreter(shebang_str) {
-                return TranspilerInterpreter::from_shell_type(&shell_type);
-            }
+        if let Some(shebang_str) = shebang
+            && let Some(shell_type) = shell::resolve_shebang_interpreter(shebang_str)
+        {
+            return TranspilerInterpreter::from_shell_type(&shell_type);
         }
 
         // Default to platform default
@@ -541,11 +539,12 @@ impl Interpreter {
         attributes: &[Attribute],
     ) -> Result<(), Box<dyn std::error::Error>> {
         // Determine the target interpreter
-        let target_interpreter = self.resolve_function_interpreter(target_name, attributes, None);
+        let target_interpreter = Self::resolve_function_interpreter(attributes, None);
 
         // Create closure for resolve_interpreter
         let resolve_interpreter = |name: &str, attrs: &[Attribute], shebang: Option<&str>| {
-            self.resolve_function_interpreter(name, attrs, shebang)
+            let _ = name;
+            Self::resolve_function_interpreter(attrs, shebang)
         };
 
         // Collect all rewritable sibling names
@@ -557,7 +556,7 @@ impl Interpreter {
             &self.function_metadata,
             &resolve_interpreter,
         );
-        let sibling_names: Vec<&str> = rewritable_names.iter().map(|s| s.as_str()).collect();
+        let sibling_names: Vec<&str> = rewritable_names.iter().map(String::as_str).collect();
 
         // Rewrite call sites in the command template
         let rewritten_body = transpiler::rewrite_call_sites(command_template, &sibling_names);
@@ -581,8 +580,7 @@ impl Interpreter {
         let params = self
             .function_metadata
             .get(target_name)
-            .map(|m| m.params.as_slice())
-            .unwrap_or(&[]);
+            .map_or(&[] as &[crate::ast::Parameter], |m| m.params.as_slice());
 
         // Substitute args in both the combined script (for execution) and the original command (for display)
         let substituted = self.substitute_args_with_params(&combined_script, args, params);
@@ -599,15 +597,13 @@ impl Interpreter {
         shebang: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // Determine the target interpreter
-        let target_interpreter =
-            self.resolve_function_interpreter(target_name, attributes, shebang);
+        let target_interpreter = Self::resolve_function_interpreter(attributes, shebang);
 
         // Get params from metadata for substitution
-        let params = self
+        let params: &[crate::ast::Parameter] = self
             .function_metadata
             .get(target_name)
-            .map(|m| m.params.as_slice())
-            .unwrap_or(&[]);
+            .map_or(&[] as &[crate::ast::Parameter], |m| m.params.as_slice());
 
         // Check if this is a polyglot language (Python, Node, Ruby)
         let is_polyglot = matches!(
@@ -636,7 +632,8 @@ impl Interpreter {
 
         // For shell-compatible languages, build preamble and compose
         let resolve_interpreter = |name: &str, attrs: &[Attribute], shebang: Option<&str>| {
-            self.resolve_function_interpreter(name, attrs, shebang)
+            let _ = name;
+            Self::resolve_function_interpreter(attrs, shebang)
         };
 
         // Collect all rewritable sibling names
@@ -648,7 +645,7 @@ impl Interpreter {
             &self.function_metadata,
             &resolve_interpreter,
         );
-        let sibling_names: Vec<&str> = rewritable_names.iter().map(|s| s.as_str()).collect();
+        let sibling_names: Vec<&str> = rewritable_names.iter().map(String::as_str).collect();
 
         // Rewrite call sites and build preambles
         let rewritten_body = transpiler::rewrite_call_sites(&full_script, &sibling_names);
@@ -685,7 +682,7 @@ impl Interpreter {
         // Track the interpreter for structured output context
         let (shell_cmd, shell_arg, interpreter_name) =
             shell::interpreter_to_shell_args(interpreter);
-        self.last_interpreter = interpreter_name.to_string();
+        self.last_interpreter_name = interpreter_name.to_string();
 
         match self.output_mode {
             OutputMode::Stream => {
@@ -720,11 +717,11 @@ impl Interpreter {
         }
 
         // Check for errors
-        if let Some(code) = output.exit_code {
-            if code != 0 {
-                self.add_captured_output(output);
-                return Err(format!("Command failed with exit code: {code}").into());
-            }
+        if let Some(code) = output.exit_code
+            && code != 0
+        {
+            self.add_captured_output(output);
+            return Err(format!("Command failed with exit code: {code}").into());
         }
 
         // Store the captured output
@@ -760,7 +757,7 @@ impl Interpreter {
         // Track the interpreter for structured output context
         let (shell_cmd, shell_arg, interpreter_name) =
             shell::interpreter_to_shell_args(interpreter);
-        self.last_interpreter = interpreter_name.to_string();
+        self.last_interpreter_name = interpreter_name.to_string();
 
         match self.output_mode {
             OutputMode::Stream => {
@@ -792,11 +789,11 @@ impl Interpreter {
                 }
 
                 // Check for errors
-                if let Some(code) = output.exit_code {
-                    if code != 0 {
-                        self.add_captured_output(output);
-                        return Err(format!("Command failed with exit code: {code}").into());
-                    }
+                if let Some(code) = output.exit_code
+                    && code != 0
+                {
+                    self.add_captured_output(output);
+                    return Err(format!("Command failed with exit code: {code}").into());
                 }
 
                 // Store the captured output
@@ -817,7 +814,7 @@ mod tests {
 
     #[test]
     fn test_shell_quote_args_empty_arg() {
-        let args = vec!["".to_string()];
+        let args = vec![String::new()];
         assert_eq!(shell_quote_args(&args), "''");
     }
 
@@ -1113,32 +1110,28 @@ mod tests {
 
     #[test]
     fn test_resolve_function_interpreter_default() {
-        let interp = Interpreter::new();
-        let result = interp.resolve_function_interpreter("test", &[], None);
+        let result = Interpreter::resolve_function_interpreter(&[], None);
         assert_eq!(result, TranspilerInterpreter::default());
     }
 
     #[test]
     fn test_resolve_function_interpreter_shell_attribute() {
-        let interp = Interpreter::new();
         let attrs = vec![Attribute::Shell(ShellType::Python)];
-        let result = interp.resolve_function_interpreter("test", &attrs, None);
+        let result = Interpreter::resolve_function_interpreter(&attrs, None);
         assert_eq!(result, TranspilerInterpreter::Python);
     }
 
     #[test]
     fn test_resolve_function_interpreter_shebang() {
-        let interp = Interpreter::new();
-        let result = interp.resolve_function_interpreter("test", &[], Some("/usr/bin/env node"));
+        let result = Interpreter::resolve_function_interpreter(&[], Some("/usr/bin/env node"));
         assert_eq!(result, TranspilerInterpreter::Node);
     }
 
     #[test]
     fn test_resolve_function_interpreter_attribute_overrides_shebang() {
-        let interp = Interpreter::new();
         let attrs = vec![Attribute::Shell(ShellType::Ruby)];
         let result =
-            interp.resolve_function_interpreter("test", &attrs, Some("/usr/bin/env python3"));
+            Interpreter::resolve_function_interpreter(&attrs, Some("/usr/bin/env python3"));
         // Attribute should take precedence
         assert_eq!(result, TranspilerInterpreter::Ruby);
     }

@@ -28,9 +28,16 @@ pub struct ProcessedOutput {
     pub total_lines: usize,
 }
 
-/// Process command output for MCP mode
+/// Process command output for MCP mode.
 /// If output is longer than the truncate threshold, writes to file and returns truncated output
 /// with file path and line count. Otherwise returns original output.
+///
+/// # Errors
+///
+/// Returns `Err` if:
+/// - System time cannot be determined
+/// - The output directory cannot be created
+/// - The output file cannot be written
 pub fn process_output_for_mcp(
     output: &str,
     stream_label: &str,

@@ -146,12 +146,9 @@ pub fn load_config() -> Option<String> {
     }
 
     // Start from the current directory and search upwards
-    let mut current_dir = match std::env::current_dir() {
-        Ok(dir) => dir,
-        Err(_) => {
-            // If we can't get current dir, fall back to home directory only
-            return load_home_runfile();
-        }
+    let Ok(mut current_dir) = std::env::current_dir() else {
+        // If we can't get current dir, fall back to home directory only
+        return load_home_runfile();
     };
 
     // Get home directory for boundary check
@@ -233,12 +230,9 @@ pub fn find_runfile_path() -> Option<PathBuf> {
     }
 
     // Start from the current directory and search upwards
-    let mut current_dir = match std::env::current_dir() {
-        Ok(dir) => dir,
-        Err(_) => {
-            // If we can't get current dir, fall back to home directory only
-            return find_home_runfile_path();
-        }
+    let Ok(mut current_dir) = std::env::current_dir() else {
+        // If we can't get current dir, fall back to home directory only
+        return find_home_runfile_path();
     };
 
     // Get home directory for boundary check
@@ -302,9 +296,8 @@ pub fn find_project_runfile_path() -> Option<PathBuf> {
     }
 
     // Start from the current directory and search upwards
-    let mut current_dir = match std::env::current_dir() {
-        Ok(dir) => dir,
-        Err(_) => return None,
+    let Ok(mut current_dir) = std::env::current_dir() else {
+        return None;
     };
 
     // Get home directory for boundary check

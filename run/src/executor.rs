@@ -67,12 +67,12 @@ pub fn print_parse_error(error: &dyn std::error::Error, source: &str, filename: 
 /// # Arguments
 /// * `script` - The script source code to parse and execute.
 /// * `filename` - Optional filename for better error messages.
-pub fn execute_script(script: &str, filename: Option<String>) {
+pub fn execute_script(script: &str, filename: Option<&str>) {
     // Parse the script
     let program = match parser::parse_script(script) {
         Ok(prog) => prog,
         Err(e) => {
-            print_parse_error(&e, script, filename.as_deref());
+            print_parse_error(&e, script, filename);
             std::process::exit(1);
         }
     };
@@ -95,7 +95,7 @@ pub fn execute_file(path: &PathBuf) {
         }
     };
 
-    execute_script(&script, Some(path.to_string_lossy().to_string()));
+    execute_script(&script, Some(&path.to_string_lossy()));
 }
 
 /// Load function definitions from config and call a function with arguments.
@@ -106,9 +106,7 @@ pub fn execute_file(path: &PathBuf) {
 /// * `output_format` - How to format the output.
 pub fn run_function_call(function_name: &str, args: &[String], output_format: OutputFormatArg) {
     // Load and merge config files from both ~/.runfile and ./Runfile
-    let config_content = if let Some((content, _metadata)) = config::load_merged_config() {
-        content
-    } else {
+    let Some((config_content, _metadata)) = config::load_merged_config() else {
         eprintln!("{}", config::NO_RUNFILE_ERROR);
         std::process::exit(1);
     };
@@ -163,17 +161,9 @@ pub fn run_function_call(function_name: &str, args: &[String], output_format: Ou
 /// List all available functions from the Runfile.
 pub fn list_functions() {
     // Try to load both global and project runfiles
-    let merge_result = config::load_merged_config();
-
-    if merge_result.is_none() {
+    let Some((merged_content, metadata)) = config::load_merged_config() else {
         eprintln!("{}", config::NO_RUNFILE_ERROR);
         std::process::exit(1);
-    }
-
-    // SAFETY: We just checked that merge_result is Some above
-    let (merged_content, metadata) = match merge_result {
-        Some(result) => result,
-        None => unreachable!("merge_result is Some after is_none check"),
     };
 
     // If we have both files, parse them separately to show sources
@@ -217,56 +207,6 @@ pub fn list_functions() {
                 std::process::exit(1);
             }
         }
-    }
-}
-
-#[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_extract_line_from_error_with_arrow() {
-        let error = "some error --> 42:10 more text";
-        let result = extract_line_from_error(error);
-        assert!(result.is_some());
-        let info = result.unwrap();
-        assert_eq!(info.line, 42);
-    }
-
-    #[test]
-    fn test_extract_line_from_error_no_arrow() {
-        let error = "just a plain error message";
-        let result = extract_line_from_error(error);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_extract_line_from_error_invalid_line() {
-        let error = "error --> abc:10";
-        let result = extract_line_from_error(error);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_get_line_valid() {
-        let source = "line one\nline two\nline three";
-        assert_eq!(get_line(source, 1), Some("line one".to_string()));
-        assert_eq!(get_line(source, 2), Some("line two".to_string()));
-        assert_eq!(get_line(source, 3), Some("line three".to_string()));
-    }
-
-    #[test]
-    fn test_get_line_out_of_bounds() {
-        let source = "line one\nline two";
-        assert_eq!(get_line(source, 5), None);
-    }
-
-    #[test]
-    fn test_get_line_zero() {
-        let source = "line one\nline two";
-        // saturating_sub(1) on 0 gives 0, so nth(0) should return first line
-        assert_eq!(get_line(source, 0), Some("line one".to_string()));
     }
 }
 
@@ -352,5 +292,55 @@ fn list_functions_with_sources() {
         for func in &global_only {
             println!("    {func}");
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_line_from_error_with_arrow() {
+        let error = "some error --> 42:10 more text";
+        let result = extract_line_from_error(error);
+        assert!(result.is_some());
+        let info = result.unwrap();
+        assert_eq!(info.line, 42);
+    }
+
+    #[test]
+    fn test_extract_line_from_error_no_arrow() {
+        let error = "just a plain error message";
+        let result = extract_line_from_error(error);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_line_from_error_invalid_line() {
+        let error = "error --> abc:10";
+        let result = extract_line_from_error(error);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_get_line_valid() {
+        let source = "line one\nline two\nline three";
+        assert_eq!(get_line(source, 1), Some("line one".to_string()));
+        assert_eq!(get_line(source, 2), Some("line two".to_string()));
+        assert_eq!(get_line(source, 3), Some("line three".to_string()));
+    }
+
+    #[test]
+    fn test_get_line_out_of_bounds() {
+        let source = "line one\nline two";
+        assert_eq!(get_line(source, 5), None);
+    }
+
+    #[test]
+    fn test_get_line_zero() {
+        let source = "line one\nline two";
+        // saturating_sub(1) on 0 gives 0, so nth(0) should return first line
+        assert_eq!(get_line(source, 0), Some("line one".to_string()));
     }
 }

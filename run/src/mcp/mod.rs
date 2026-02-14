@@ -50,14 +50,10 @@ fn process_request(request: JsonRpcRequest) -> Option<JsonRpcResponse> {
     }
 
     // Handle notifications (requests without an id)
-    if request.id.is_none() {
-        // Process notification but don't send a response
-        // Acknowledged, no response needed for any notification
-        return None;
-    }
+    request.id.as_ref()?;
 
     let result = match request.method.as_str() {
-        "initialize" => handle_initialize(request.params),
+        "initialize" => Ok(handle_initialize(request.params)),
         "tools/list" => handle_tools_list(request.params),
         "tools/call" => handle_tools_call(request.params),
         _ => Err(JsonRpcError {

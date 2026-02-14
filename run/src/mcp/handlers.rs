@@ -4,6 +4,8 @@ use super::mapping::map_arguments_to_positional;
 use super::mapping::resolve_tool_name;
 use super::tools::inspect;
 use serde::Serialize;
+use crate::config;
+use std::process::Command;
 
 /// JSON-RPC 2.0 error structure
 #[derive(Debug, Serialize)]
@@ -33,7 +35,7 @@ struct ServerInfo {
 /// Handle initialize request
 pub(super) fn handle_initialize(
     _params: Option<serde_json::Value>,
-) -> Result<serde_json::Value, JsonRpcError> {
+) -> serde_json::Value {
     let response = serde_json::json!({
         "protocolVersion": "2024-11-05",
         "capabilities": ServerCapabilities {
@@ -44,7 +46,7 @@ pub(super) fn handle_initialize(
             version: env!("CARGO_PKG_VERSION").to_string(),
         }
     });
-    Ok(response)
+    response
 }
 
 /// Handle tools/list request
@@ -144,8 +146,6 @@ pub(super) fn handle_tools_call(
     let positional_args = map_arguments_to_positional(&actual_function_name, arguments)?;
 
     // Execute the function with structured markdown output
-    use crate::config;
-    use std::process::Command;
 
     // Get the run binary path (we're already running as run, but we need to call ourselves)
     // Security: We validate that the binary path is a canonical path to ensure it hasn't been manipulated
@@ -343,9 +343,7 @@ mod tests {
 
     #[test]
     fn test_handle_initialize() {
-        let result = handle_initialize(None);
-        assert!(result.is_ok());
-        let value = result.expect("Should succeed");
+        let value = handle_initialize(None);
 
         assert_eq!(value["protocolVersion"], "2024-11-05");
         assert!(value.get("capabilities").is_some());
@@ -367,8 +365,8 @@ mod tests {
                 "version": "1.0"
             }
         });
-        let result = handle_initialize(Some(params));
-        assert!(result.is_ok());
+        let value = handle_initialize(Some(params));
+        assert_eq!(value["protocolVersion"], "2024-11-05");
     }
 
     #[test]

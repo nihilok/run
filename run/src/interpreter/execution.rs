@@ -7,6 +7,7 @@ use crate::transpiler::Interpreter as TranspilerInterpreter;
 use std::collections::HashMap;
 
 /// Collect all rewritable sibling names (compatible + incompatible colon siblings)
+#[allow(clippy::type_complexity)]
 pub(super) fn collect_rewritable_siblings(
     target_name: &str,
     target_interpreter: &TranspilerInterpreter,

@@ -13,11 +13,5 @@ pub(super) fn parse_shebang(body: &str) -> Option<String> {
             // Find the first line that is either a shebang or not a comment
             !line.starts_with('#') || line.starts_with("#!")
         })
-        .and_then(|line| {
-            if line.starts_with("#!") {
-                Some(line[2..].trim().to_string())
-            } else {
-                None
-            }
-        })
+        .and_then(|line| line.strip_prefix("#!").map(|l| l.trim().to_string()))
 }
