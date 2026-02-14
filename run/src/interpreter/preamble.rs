@@ -7,7 +7,8 @@ use super::shell::{escape_pwsh_value, escape_shell_value};
 use crate::ast::Attribute;
 use crate::transpiler::{self, Interpreter as TranspilerInterpreter};
 use std::collections::HashMap;
-type InterpreterResolver<'a> = dyn Fn(&str, &[Attribute], Option<&str>) -> TranspilerInterpreter + 'a;
+type InterpreterResolver<'a> =
+    dyn Fn(&str, &[Attribute], Option<&str>) -> TranspilerInterpreter + 'a;
 
 /// Collect compatible sibling function names for call site rewriting
 pub(super) fn collect_compatible_siblings(
@@ -47,9 +48,7 @@ pub(super) fn collect_compatible_siblings(
         );
         let func_interpreter = resolve_interpreter(name, &attributes, shebang);
 
-        if target_interpreter.is_compatible_with(&func_interpreter)
-            && !compatible.contains(name)
-        {
+        if target_interpreter.is_compatible_with(&func_interpreter) && !compatible.contains(name) {
             compatible.push(name.clone());
         }
     }
@@ -95,8 +94,7 @@ pub(super) fn collect_incompatible_colon_siblings(
         );
         let func_interpreter = resolve_interpreter(name, &attributes, shebang);
 
-        if !target_interpreter.is_compatible_with(&func_interpreter)
-            && !incompatible.contains(name)
+        if !target_interpreter.is_compatible_with(&func_interpreter) && !incompatible.contains(name)
         {
             incompatible.push(name.clone());
         }

@@ -3,8 +3,8 @@
 //! This module is separated from main.rs to allow the runtool wrapper crate to reuse it.
 
 use crate::{completion, config, executor, mcp, repl};
-use clap::ValueEnum;
 use clap::Parser as ClapParser;
+use clap::ValueEnum;
 use std::path::PathBuf;
 
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -127,7 +127,10 @@ pub fn run_cli() {
 
     // Handle --install-completion flag
     if let Some(shell_arg) = cli.install_completion {
-        completion::install_completion_interactive(shell_arg.into_shell_option(), config::get_home_dir);
+        completion::install_completion_interactive(
+            shell_arg.into_shell_option(),
+            config::get_home_dir,
+        );
         return;
     }
 

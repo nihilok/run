@@ -3,8 +3,8 @@
 use super::mapping::map_arguments_to_positional;
 use super::mapping::resolve_tool_name;
 use super::tools::inspect;
-use serde::Serialize;
 use crate::config;
+use serde::Serialize;
 use std::process::Command;
 
 /// JSON-RPC 2.0 error structure
@@ -33,9 +33,7 @@ struct ServerInfo {
 }
 
 /// Handle initialize request
-pub(super) fn handle_initialize(
-    _params: Option<serde_json::Value>,
-) -> serde_json::Value {
+pub(super) fn handle_initialize(_params: Option<serde_json::Value>) -> serde_json::Value {
     let response = serde_json::json!({
         "protocolVersion": "2024-11-05",
         "capabilities": ServerCapabilities {

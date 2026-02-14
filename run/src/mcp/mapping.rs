@@ -72,7 +72,11 @@ fn load_merged_program() -> Result<Program, JsonRpcError> {
 fn collect_arg_metadata(
     program: &Program,
     tool_name: &str,
-) -> (HashMap<usize, String>, Vec<crate::ast::Parameter>, HashMap<String, usize>) {
+) -> (
+    HashMap<usize, String>,
+    Vec<crate::ast::Parameter>,
+    HashMap<String, usize>,
+) {
     let mut arg_mapping: HashMap<usize, String> = HashMap::new();
     let mut params_vec: Vec<crate::ast::Parameter> = Vec::new();
     let mut arg_metadata_by_name: HashMap<String, usize> = HashMap::new();
