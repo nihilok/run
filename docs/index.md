@@ -20,5 +20,3 @@ The `run` tool executes functions defined in a `Runfile`, exposing them both to 
 - [Recipes](./recipes.md) — ready-made Runfile snippets.
 - [Reference](./reference.md) — attribute and environment variable quick lookups.
 - [FAQ](./faq.md) — fast answers to common questions.
-
-If you plan to publish these docs, this structure is ready for static site generators (mdBook, Docusaurus, etc.) without further changes.
