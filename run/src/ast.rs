@@ -88,7 +88,7 @@ pub struct StructuredResult {
 
 impl StructuredResult {
     /// Create from a collection of command outputs
-    #[must_use] 
+    #[must_use]
     pub fn from_outputs(
         function_name: &str,
         outputs: Vec<CommandOutput>,
@@ -131,22 +131,18 @@ impl StructuredResult {
     }
 
     /// Format as JSON for programmatic consumption
-    #[must_use] 
+    #[must_use]
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).unwrap_or_default()
     }
 
     /// Format as Markdown for LLM readability
-    #[must_use] 
+    #[must_use]
     pub fn to_markdown(&self) -> String {
         let mut md = String::new();
 
         // Header with context
-        let _ = write!(
-            md,
-            "## Execution: `{}`\n\n",
-            self.context.function_name
-        );
+        let _ = write!(md, "## Execution: `{}`\n\n", self.context.function_name);
 
         if let Some(host) = &self.context.remote_host {
             let _ = writeln!(
@@ -186,9 +182,10 @@ impl StructuredResult {
             }
 
             if let Some(code) = output.exit_code
-                && code != 0 {
-                    let _ = writeln!(md, "**Exit Code:** {code}");
-                }
+                && code != 0
+            {
+                let _ = writeln!(md, "**Exit Code:** {code}");
+            }
         }
 
         md
@@ -197,16 +194,12 @@ impl StructuredResult {
     /// Format optimized for MCP tool response (clean markdown, no implementation details)
     /// This intentionally hides the command source code to protect sensitive information
     /// like database connection strings, API keys, etc.
-    #[must_use] 
+    #[must_use]
     pub fn to_mcp_format(&self) -> String {
         let mut md = String::new();
 
         // Header with context
-        let _ = write!(
-            md,
-            "## Execution: `{}`\n\n",
-            self.context.function_name
-        );
+        let _ = write!(md, "## Execution: `{}`\n\n", self.context.function_name);
 
         if let Some(host) = &self.context.remote_host {
             let _ = writeln!(
@@ -267,10 +260,11 @@ impl StructuredResult {
         // Show exit code if failed
         if !self.success
             && let Some(output) = self.outputs.last()
-                && let Some(code) = output.exit_code
-                    && code != 0 {
-                        let _ = writeln!(md, "**Exit Code:** {code}");
-                    }
+            && let Some(code) = output.exit_code
+            && code != 0
+        {
+            let _ = writeln!(md, "**Exit Code:** {code}");
+        }
 
         md
     }

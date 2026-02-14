@@ -63,11 +63,7 @@ mod tests {
 
     #[test]
     fn test_build_combined_script_no_preambles() {
-        let result = build_combined_script(
-            String::new(),
-            String::new(),
-            "echo hello".to_string(),
-        );
+        let result = build_combined_script(String::new(), String::new(), "echo hello".to_string());
         assert_eq!(result, "echo hello");
     }
 
@@ -106,8 +102,7 @@ mod tests {
         let simple = HashMap::new();
         let block = HashMap::new();
         let metadata = HashMap::new();
-        let resolve =
-            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::default();
+        let resolve = |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::default();
 
         let result = collect_rewritable_siblings(
             "target",
@@ -135,8 +130,7 @@ mod tests {
                 params: vec![],
             },
         );
-        let resolve =
-            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+        let resolve = |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
 
         let result = collect_rewritable_siblings(
             "target",

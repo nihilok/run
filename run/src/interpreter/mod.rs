@@ -988,10 +988,12 @@ mod tests {
         let mut interp = Interpreter::new();
         let result = interp.call_function_without_parens("nonexistent", &[]);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Function 'nonexistent' not found"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Function 'nonexistent' not found")
+        );
     }
 
     #[test]
@@ -1004,10 +1006,8 @@ mod tests {
     #[test]
     fn test_substitute_args_positional() {
         let interp = Interpreter::new();
-        let result = interp.substitute_args(
-            "echo $1 $2",
-            &["hello".to_string(), "world".to_string()],
-        );
+        let result =
+            interp.substitute_args("echo $1 $2", &["hello".to_string(), "world".to_string()]);
         assert_eq!(result, "echo hello world");
     }
 
@@ -1028,8 +1028,7 @@ mod tests {
     #[test]
     fn test_substitute_args_default_value_with_arg() {
         let interp = Interpreter::new();
-        let result =
-            interp.substitute_args("echo ${1:-default_val}", &["provided".to_string()]);
+        let result = interp.substitute_args("echo ${1:-default_val}", &["provided".to_string()]);
         assert_eq!(result, "echo provided");
     }
 
@@ -1050,7 +1049,9 @@ mod tests {
     #[test]
     fn test_substitute_args_with_variables() {
         let mut interp = Interpreter::new();
-        interp.variables.insert("MY_VAR".to_string(), "value".to_string());
+        interp
+            .variables
+            .insert("MY_VAR".to_string(), "value".to_string());
         let result = interp.substitute_args("echo $MY_VAR", &[]);
         assert_eq!(result, "echo value");
     }
@@ -1127,8 +1128,7 @@ mod tests {
     #[test]
     fn test_resolve_function_interpreter_shebang() {
         let interp = Interpreter::new();
-        let result =
-            interp.resolve_function_interpreter("test", &[], Some("/usr/bin/env node"));
+        let result = interp.resolve_function_interpreter("test", &[], Some("/usr/bin/env node"));
         assert_eq!(result, TranspilerInterpreter::Node);
     }
 
@@ -1136,8 +1136,8 @@ mod tests {
     fn test_resolve_function_interpreter_attribute_overrides_shebang() {
         let interp = Interpreter::new();
         let attrs = vec![Attribute::Shell(ShellType::Ruby)];
-        let result = interp
-            .resolve_function_interpreter("test", &attrs, Some("/usr/bin/env python3"));
+        let result =
+            interp.resolve_function_interpreter("test", &attrs, Some("/usr/bin/env python3"));
         // Attribute should take precedence
         assert_eq!(result, TranspilerInterpreter::Ruby);
     }

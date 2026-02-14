@@ -30,7 +30,8 @@ pub fn get_binary_path() -> PathBuf {
             .output()
             .expect("Failed to build binary");
 
-        assert!(build_output.status.success(), 
+        assert!(
+            build_output.status.success(),
             "Failed to build run binary: {}",
             String::from_utf8_lossy(&build_output.stderr)
         );

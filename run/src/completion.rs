@@ -21,7 +21,7 @@ pub enum Shell {
 
 impl Shell {
     /// Returns the lowercase name of the shell.
-    #[must_use] 
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Shell::Bash => "bash",
@@ -32,7 +32,7 @@ impl Shell {
     }
 
     /// Returns the completion script content for this shell.
-    #[must_use] 
+    #[must_use]
     pub fn completion_script(self) -> &'static str {
         match self {
             Shell::Bash => BASH_COMPLETION,
@@ -43,7 +43,7 @@ impl Shell {
     }
 
     /// Detect shell from the SHELL environment variable.
-    #[must_use] 
+    #[must_use]
     pub fn detect() -> Option<Shell> {
         let shell_var = std::env::var("SHELL").ok()?;
         if shell_var.contains("bash") {
@@ -308,11 +308,7 @@ mod tests {
     fn test_write_completion_file() {
         let temp = tempfile::tempdir().unwrap();
         let comp_dir = temp.path().join("completions");
-        let comp_file = super::write_completion_file(
-            &comp_dir,
-            "test.sh",
-            "# test completion",
-        );
+        let comp_file = super::write_completion_file(&comp_dir, "test.sh", "# test completion");
         assert!(comp_file.exists());
         assert_eq!(
             std::fs::read_to_string(&comp_file).unwrap(),

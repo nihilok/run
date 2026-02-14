@@ -90,7 +90,7 @@ pub fn process_output_for_mcp(
 }
 
 /// Check if MCP output directory is configured (indicating MCP mode)
-#[must_use] 
+#[must_use]
 pub fn is_mcp_output_enabled() -> bool {
     crate::config::is_mcp_output_configured()
 }
@@ -103,8 +103,7 @@ mod tests {
     #[test]
     fn test_short_output_unchanged() {
         let output = "line1\nline2\nline3";
-        let result =
-            process_output_for_mcp(output, "stdout").expect("Processing should succeed");
+        let result = process_output_for_mcp(output, "stdout").expect("Processing should succeed");
 
         assert_eq!(result.display_output, output);
         assert_eq!(result.total_lines, 3);
@@ -117,8 +116,7 @@ mod tests {
             .map(|i| format!("line{i}"))
             .collect::<Vec<_>>()
             .join("\n");
-        let result =
-            process_output_for_mcp(&output, "stdout").expect("Processing should succeed");
+        let result = process_output_for_mcp(&output, "stdout").expect("Processing should succeed");
 
         assert_eq!(result.display_output, output);
         assert_eq!(result.total_lines, OUTPUT_TRUNCATE_LINES);
@@ -132,8 +130,7 @@ mod tests {
             .collect();
         let output = lines.join("\n");
 
-        let result =
-            process_output_for_mcp(&output, "stdout").expect("Processing should succeed");
+        let result = process_output_for_mcp(&output, "stdout").expect("Processing should succeed");
 
         assert_eq!(result.total_lines, OUTPUT_TRUNCATE_LINES + 5);
         assert!(result.file_path.is_some());
@@ -141,9 +138,11 @@ mod tests {
             "Output truncated: {} total lines",
             OUTPUT_TRUNCATE_LINES + 5
         )));
-        assert!(result
-            .display_output
-            .contains(&format!("showing last {OUTPUT_TRUNCATE_LINES}")));
+        assert!(
+            result
+                .display_output
+                .contains(&format!("showing last {OUTPUT_TRUNCATE_LINES}"))
+        );
 
         // Check that the tail contains the last OUTPUT_TRUNCATE_LINES lines
         let tail_part = result

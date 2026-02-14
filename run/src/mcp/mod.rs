@@ -147,10 +147,11 @@ pub fn serve_mcp() {
 
         // Only send response if one was returned (not a notification)
         if let Some(response) = response
-            && let Ok(json) = serde_json::to_string(&response) {
-                let _ = writeln!(stdout, "{json}");
-                let _ = stdout.flush();
-            }
+            && let Ok(json) = serde_json::to_string(&response)
+        {
+            let _ = writeln!(stdout, "{json}");
+            let _ = stdout.flush();
+        }
     }
 }
 

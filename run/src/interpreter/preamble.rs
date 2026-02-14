@@ -322,8 +322,7 @@ mod tests {
         let simple = HashMap::new();
         let block = HashMap::new();
         let metadata = HashMap::new();
-        let resolve =
-            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+        let resolve = |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
 
         let result = collect_compatible_siblings(
             "target",
@@ -343,8 +342,7 @@ mod tests {
         simple.insert("target".to_string(), "echo target".to_string());
         let block = HashMap::new();
         let metadata = HashMap::new();
-        let resolve =
-            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+        let resolve = |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
 
         let result = collect_compatible_siblings(
             "target",
@@ -367,8 +365,7 @@ mod tests {
             vec!["echo step1".to_string(), "echo step2".to_string()],
         );
         let metadata = HashMap::new();
-        let resolve =
-            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+        let resolve = |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
 
         let result = collect_compatible_siblings(
             "target",
@@ -386,8 +383,7 @@ mod tests {
         let simple = HashMap::new();
         let block = HashMap::new();
         let metadata = HashMap::new();
-        let resolve =
-            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+        let resolve = |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
 
         let result = collect_incompatible_colon_siblings(
             "target",
@@ -441,8 +437,7 @@ mod tests {
         let simple = HashMap::new();
         let block = HashMap::new();
         let metadata = HashMap::new();
-        let resolve =
-            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+        let resolve = |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
 
         let result = build_function_preamble(
             "target",
@@ -462,8 +457,7 @@ mod tests {
         simple.insert("target".to_string(), "helper".to_string());
         let block = HashMap::new();
         let metadata = HashMap::new();
-        let resolve =
-            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+        let resolve = |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
 
         let result = build_function_preamble(
             "target",
@@ -486,8 +480,7 @@ mod tests {
             vec!["echo step1".to_string(), "echo step2".to_string()],
         );
         let metadata = HashMap::new();
-        let resolve =
-            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+        let resolve = |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
 
         let result = build_function_preamble(
             "target",
@@ -507,8 +500,7 @@ mod tests {
         simple.insert("target".to_string(), "echo target".to_string());
         let block = HashMap::new();
         let metadata = HashMap::new();
-        let resolve =
-            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
+        let resolve = |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Sh;
 
         let result = build_function_preamble(
             "target",
@@ -528,8 +520,7 @@ mod tests {
         simple.insert("target".to_string(), "helper".to_string());
         let block = HashMap::new();
         let metadata = HashMap::new();
-        let resolve =
-            |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Pwsh;
+        let resolve = |_: &str, _: &[Attribute], _: Option<&str>| TranspilerInterpreter::Pwsh;
 
         let result = build_function_preamble(
             "target",
