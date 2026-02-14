@@ -425,3 +425,176 @@ pub struct MergeMetadata {
     pub has_global: bool,
     pub has_project: bool,
 }
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[test]
+    fn test_get_home_dir_returns_some() {
+        // On any system with HOME or USERPROFILE set, should return Some
+        let result = get_home_dir();
+        assert!(result.is_some());
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_and_get_custom_runfile_path() {
+        let original = get_custom_runfile_path();
+
+        set_custom_runfile_path(Some(PathBuf::from("/tmp/test_runfile")));
+        assert_eq!(
+            get_custom_runfile_path(),
+            Some(PathBuf::from("/tmp/test_runfile"))
+        );
+
+        set_custom_runfile_path(None);
+        assert_eq!(get_custom_runfile_path(), None);
+
+        // Restore
+        set_custom_runfile_path(original);
+    }
+
+    #[test]
+    fn test_load_from_path_file_exists() {
+        let temp = tempfile::tempdir().expect("Failed to create temp dir");
+        let runfile = temp.path().join("Runfile");
+        fs::write(&runfile, "greet = echo hello").expect("Failed to write");
+
+        let result = load_from_path(&runfile);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), "greet = echo hello");
+    }
+
+    #[test]
+    fn test_load_from_path_directory() {
+        let temp = tempfile::tempdir().expect("Failed to create temp dir");
+        let runfile = temp.path().join("Runfile");
+        fs::write(&runfile, "build = cargo build").expect("Failed to write");
+
+        let result = load_from_path(temp.path());
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), "build = cargo build");
+    }
+
+    #[test]
+    fn test_load_from_path_nonexistent() {
+        let result = load_from_path(Path::new("/nonexistent/path/Runfile"));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_load_from_path_dir_without_runfile() {
+        let temp = tempfile::tempdir().expect("Failed to create temp dir");
+        let result = load_from_path(temp.path());
+        assert!(result.is_none());
+    }
+
+    #[test]
+    #[serial]
+    fn test_set_and_get_mcp_output_dir() {
+        // Reset thread-local state
+        set_mcp_output_dir(None);
+
+        set_mcp_output_dir(Some(PathBuf::from("/tmp/mcp_test")));
+        let dir = ensure_mcp_output_dir();
+        assert_eq!(dir, PathBuf::from("/tmp/mcp_test"));
+
+        // Clean up
+        set_mcp_output_dir(None);
+    }
+
+    #[test]
+    #[serial]
+    fn test_ensure_mcp_output_dir_fallback() {
+        // Reset to force re-computation
+        set_mcp_output_dir(None);
+        set_custom_runfile_path(None);
+
+        let dir = ensure_mcp_output_dir();
+        // Should end with .run-output
+        assert!(
+            dir.to_string_lossy().contains(".run-output"),
+            "MCP output dir should contain .run-output, got: {}",
+            dir.display()
+        );
+
+        // Clean up
+        set_mcp_output_dir(None);
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_config_with_custom_path() {
+        let temp = tempfile::tempdir().expect("Failed to create temp dir");
+        let runfile = temp.path().join("Runfile");
+        fs::write(&runfile, "custom = echo custom").expect("Failed to write");
+
+        let original = get_custom_runfile_path();
+        set_custom_runfile_path(Some(runfile));
+
+        let result = load_config();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), "custom = echo custom");
+
+        // Restore
+        set_custom_runfile_path(original);
+    }
+
+    #[test]
+    #[serial]
+    fn test_find_runfile_path_with_custom_path() {
+        let temp = tempfile::tempdir().expect("Failed to create temp dir");
+        let runfile = temp.path().join("Runfile");
+        fs::write(&runfile, "test = echo test").expect("Failed to write");
+
+        let original = get_custom_runfile_path();
+        set_custom_runfile_path(Some(runfile.clone()));
+
+        let result = find_runfile_path();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), runfile);
+
+        // Restore
+        set_custom_runfile_path(original);
+    }
+
+    #[test]
+    #[serial]
+    fn test_find_runfile_path_custom_nonexistent() {
+        let original = get_custom_runfile_path();
+        set_custom_runfile_path(Some(PathBuf::from("/nonexistent/Runfile")));
+
+        let result = find_runfile_path();
+        assert!(result.is_none());
+
+        set_custom_runfile_path(original);
+    }
+
+    #[test]
+    #[serial]
+    fn test_load_merged_config_custom_path() {
+        let temp = tempfile::tempdir().expect("Failed to create temp dir");
+        let runfile = temp.path().join("Runfile");
+        fs::write(&runfile, "merged = echo merged").expect("Failed to write");
+
+        let original = get_custom_runfile_path();
+        set_custom_runfile_path(Some(runfile));
+
+        let result = load_merged_config();
+        assert!(result.is_some());
+        let (content, metadata) = result.unwrap();
+        assert_eq!(content, "merged = echo merged");
+        assert!(!metadata.has_global);
+        assert!(metadata.has_project);
+
+        set_custom_runfile_path(original);
+    }
+
+    #[test]
+    fn test_no_runfile_error_message() {
+        assert!(NO_RUNFILE_ERROR.contains("No Runfile found"));
+    }
+}

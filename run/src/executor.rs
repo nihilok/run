@@ -218,6 +218,55 @@ pub fn list_functions() {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_line_from_error_with_arrow() {
+        let error = "some error --> 42:10 more text";
+        let result = extract_line_from_error(error);
+        assert!(result.is_some());
+        let info = result.unwrap();
+        assert_eq!(info.line, 42);
+    }
+
+    #[test]
+    fn test_extract_line_from_error_no_arrow() {
+        let error = "just a plain error message";
+        let result = extract_line_from_error(error);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_extract_line_from_error_invalid_line() {
+        let error = "error --> abc:10";
+        let result = extract_line_from_error(error);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_get_line_valid() {
+        let source = "line one\nline two\nline three";
+        assert_eq!(get_line(source, 1), Some("line one".to_string()));
+        assert_eq!(get_line(source, 2), Some("line two".to_string()));
+        assert_eq!(get_line(source, 3), Some("line three".to_string()));
+    }
+
+    #[test]
+    fn test_get_line_out_of_bounds() {
+        let source = "line one\nline two";
+        assert_eq!(get_line(source, 5), None);
+    }
+
+    #[test]
+    fn test_get_line_zero() {
+        let source = "line one\nline two";
+        // saturating_sub(1) on 0 gives 0, so nth(0) should return first line
+        assert_eq!(get_line(source, 0), Some("line one".to_string()));
+    }
+}
+
 /// List functions with source information when both global and project runfiles exist.
 fn list_functions_with_sources() {
     use std::collections::HashSet;

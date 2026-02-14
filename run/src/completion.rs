@@ -253,3 +253,70 @@ fn install_powershell_completion(home: &Path) {
     println!("\nTo activate completions, restart PowerShell or run:");
     println!("  . $PROFILE");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_shell_name_bash() {
+        assert_eq!(Shell::Bash.name(), "bash");
+    }
+
+    #[test]
+    fn test_shell_name_zsh() {
+        assert_eq!(Shell::Zsh.name(), "zsh");
+    }
+
+    #[test]
+    fn test_shell_name_fish() {
+        assert_eq!(Shell::Fish.name(), "fish");
+    }
+
+    #[test]
+    fn test_shell_name_powershell() {
+        assert_eq!(Shell::PowerShell.name(), "powershell");
+    }
+
+    #[test]
+    fn test_shell_completion_script_not_empty() {
+        assert!(!Shell::Bash.completion_script().is_empty());
+        assert!(!Shell::Zsh.completion_script().is_empty());
+        assert!(!Shell::Fish.completion_script().is_empty());
+        assert!(!Shell::PowerShell.completion_script().is_empty());
+    }
+
+    #[test]
+    fn test_shell_completion_scripts_are_different() {
+        let bash = Shell::Bash.completion_script();
+        let zsh = Shell::Zsh.completion_script();
+        let fish = Shell::Fish.completion_script();
+        let pwsh = Shell::PowerShell.completion_script();
+        assert_ne!(bash, zsh);
+        assert_ne!(bash, fish);
+        assert_ne!(bash, pwsh);
+        assert_ne!(zsh, fish);
+    }
+
+    #[test]
+    fn test_shell_detect_returns_option() {
+        // Shell::detect() depends on SHELL env var; just verify it doesn't panic
+        let _result = Shell::detect();
+    }
+
+    #[test]
+    fn test_write_completion_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let comp_dir = temp.path().join("completions");
+        let comp_file = super::write_completion_file(
+            &comp_dir,
+            "test.sh",
+            "# test completion",
+        );
+        assert!(comp_file.exists());
+        assert_eq!(
+            std::fs::read_to_string(&comp_file).unwrap(),
+            "# test completion"
+        );
+    }
+}

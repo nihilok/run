@@ -340,4 +340,85 @@ mod tests {
             // Given the current structure, inspect() likely returns an error if no Runfile.
         }
     }
+
+    #[test]
+    fn test_handle_initialize() {
+        let result = handle_initialize(None);
+        assert!(result.is_ok());
+        let value = result.expect("Should succeed");
+
+        assert_eq!(value["protocolVersion"], "2024-11-05");
+        assert!(value.get("capabilities").is_some());
+        assert!(value.get("serverInfo").is_some());
+
+        let server_info = &value["serverInfo"];
+        assert_eq!(server_info["name"], "run");
+        // Version should be non-empty
+        assert!(!server_info["version"].as_str().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_handle_initialize_with_params() {
+        let params = json!({
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {
+                "name": "test",
+                "version": "1.0"
+            }
+        });
+        let result = handle_initialize(Some(params));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_handle_tools_call_missing_params() {
+        let result = handle_tools_call(None);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.code, -32602);
+        assert!(err.message.contains("Missing params"));
+    }
+
+    #[test]
+    fn test_handle_tools_call_missing_tool_name() {
+        let params = json!({
+            "arguments": {}
+        });
+        let result = handle_tools_call(Some(params));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.code, -32602);
+        assert!(err.message.contains("Missing tool name"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_handle_tools_call_get_cwd_value() {
+        let original_cwd = env::current_dir().expect("Should get cwd");
+
+        let params = json!({
+            "name": "get_cwd",
+            "arguments": {}
+        });
+        let result = handle_tools_call(Some(params)).expect("Should succeed");
+        assert!(!result["isError"].as_bool().unwrap());
+
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(!text.is_empty());
+
+        env::set_current_dir(original_cwd).ok();
+    }
+
+    #[test]
+    fn test_handle_tools_call_set_cwd_nonexistent() {
+        let params = json!({
+            "name": "set_cwd",
+            "arguments": {
+                "path": "/this/path/should/not/exist/ever"
+            }
+        });
+        let result = handle_tools_call(Some(params));
+        assert!(result.is_err());
+    }
 }

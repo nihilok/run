@@ -206,3 +206,57 @@ fn value_to_string(value: &serde_json::Value) -> String {
         _ => value.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_value_to_string_string() {
+        assert_eq!(
+            value_to_string(&json!("hello")),
+            "hello"
+        );
+    }
+
+    #[test]
+    fn test_value_to_string_number() {
+        assert_eq!(value_to_string(&json!(42)), "42");
+    }
+
+    #[test]
+    fn test_value_to_string_float() {
+        assert_eq!(value_to_string(&json!(3.14)), "3.14");
+    }
+
+    #[test]
+    fn test_value_to_string_bool_true() {
+        assert_eq!(value_to_string(&json!(true)), "true");
+    }
+
+    #[test]
+    fn test_value_to_string_bool_false() {
+        assert_eq!(value_to_string(&json!(false)), "false");
+    }
+
+    #[test]
+    fn test_value_to_string_null() {
+        assert_eq!(value_to_string(&json!(null)), "");
+    }
+
+    #[test]
+    fn test_value_to_string_array() {
+        let val = json!([1, 2, 3]);
+        let result = value_to_string(&val);
+        assert_eq!(result, "[1,2,3]");
+    }
+
+    #[test]
+    fn test_value_to_string_object() {
+        let val = json!({"key": "value"});
+        let result = value_to_string(&val);
+        assert!(result.contains("key"));
+        assert!(result.contains("value"));
+    }
+}

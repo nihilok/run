@@ -141,3 +141,92 @@ pub fn run_cli() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_output_format_stream_mode() {
+        assert_eq!(
+            OutputFormatArg::Stream.mode(),
+            crate::ast::OutputMode::Stream
+        );
+    }
+
+    #[test]
+    fn test_output_format_json_mode() {
+        assert_eq!(
+            OutputFormatArg::Json.mode(),
+            crate::ast::OutputMode::Structured
+        );
+    }
+
+    #[test]
+    fn test_output_format_markdown_mode() {
+        assert_eq!(
+            OutputFormatArg::Markdown.mode(),
+            crate::ast::OutputMode::Structured
+        );
+    }
+
+    #[test]
+    fn test_format_result_stream_returns_none() {
+        let result = crate::ast::StructuredResult {
+            context: crate::ast::ExecutionContext {
+                function_name: "test".to_string(),
+                remote_host: None,
+                remote_user: None,
+                interpreter: "sh".to_string(),
+                working_directory: None,
+            },
+            outputs: vec![],
+            success: true,
+            total_duration_ms: 0,
+            summary: "test".to_string(),
+        };
+        assert!(OutputFormatArg::Stream.format_result(&result).is_none());
+    }
+
+    #[test]
+    fn test_format_result_json_returns_json() {
+        let result = crate::ast::StructuredResult {
+            context: crate::ast::ExecutionContext {
+                function_name: "test".to_string(),
+                remote_host: None,
+                remote_user: None,
+                interpreter: "sh".to_string(),
+                working_directory: None,
+            },
+            outputs: vec![],
+            success: true,
+            total_duration_ms: 0,
+            summary: "test".to_string(),
+        };
+        let formatted = OutputFormatArg::Json.format_result(&result);
+        assert!(formatted.is_some());
+        let json_str = formatted.unwrap();
+        assert!(json_str.contains("\"function_name\": \"test\""));
+    }
+
+    #[test]
+    fn test_format_result_markdown_returns_markdown() {
+        let result = crate::ast::StructuredResult {
+            context: crate::ast::ExecutionContext {
+                function_name: "test".to_string(),
+                remote_host: None,
+                remote_user: None,
+                interpreter: "sh".to_string(),
+                working_directory: None,
+            },
+            outputs: vec![],
+            success: true,
+            total_duration_ms: 0,
+            summary: "test".to_string(),
+        };
+        let formatted = OutputFormatArg::Markdown.format_result(&result);
+        assert!(formatted.is_some());
+        let md = formatted.unwrap();
+        assert!(md.contains("## Execution: `test`"));
+    }
+}
