@@ -93,6 +93,28 @@ deploy:scoop(version = "") {
     echo "✓ Scoop manifest updated and pushed"
 }
 
+# @desc Update AUR PKGBUILD with latest release
+# @arg version Optional version (defaults to latest git tag)
+deploy:aur(version = "") {
+    echo "Updating AUR PKGBUILD..."
+    if [ -z "$version" ]; then
+        ./scripts/update_aur.sh
+    else
+        ./scripts/update_aur.sh "$version"
+    fi
+
+    echo ""
+    echo "Committing and pushing changes..."
+    cd aur-pkgbuild
+    git add PKGBUILD .SRCINFO
+    git commit -m "Update to v${version:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
+    git push
+    git push aur HEAD:master
+    cd ..
+
+    echo "✓ AUR PKGBUILD updated and pushed"
+}
+
 # Windows specific command (will not be listed on non-Windows systems)
 # @os windows
 deploy:example() {
