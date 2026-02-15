@@ -142,11 +142,12 @@ pub fn serve_mcp() {
         let response = process_request(request);
 
         // Only send response if one was returned (not a notification)
-        if let Some(response) = response
-            && let Ok(json) = serde_json::to_string(&response)
-        {
-            let _ = writeln!(stdout, "{json}");
-            let _ = stdout.flush();
+        #[allow(clippy::collapsible_if)]
+        if let Some(response) = response {
+            if let Ok(json) = serde_json::to_string(&response) {
+                let _ = writeln!(stdout, "{json}");
+                let _ = stdout.flush();
+            }
         }
     }
 }
