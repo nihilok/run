@@ -61,11 +61,12 @@ deploy:homebrew(version = "") {
         ./scripts/update_homebrew.sh "$version"
     fi
     
+    local ver="${version:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
     echo ""
     echo "Committing and pushing changes..."
     cd homebrew-tap
     git add Formula/runtool.rb
-    git commit -m "Update to v${version:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
+    git commit -m "Update to v${ver}"
     git push
     cd ..
     
@@ -82,11 +83,12 @@ deploy:scoop(version = "") {
         ./scripts/update_scoop.sh "$version"
     fi
     
+    local ver="${version:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
     echo ""
     echo "Committing and pushing changes..."
     cd scoop-bucket
     git add bucket/runtool.json
-    git commit -m "Update to v${version:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
+    git commit -m "Update to v${ver}"
     git push
     cd ..
     
@@ -103,11 +105,12 @@ deploy:aur(version = "") {
         ./scripts/update_aur.sh "$version"
     fi
 
+    local ver="${version:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
     echo ""
     echo "Committing and pushing changes..."
     cd aur-pkgbuild
     git add PKGBUILD .SRCINFO
-    git commit -m "Update to v${version:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
+    git commit -m "Update to v${ver}"
     git push
     git push aur HEAD:master
     cd ..
