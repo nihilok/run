@@ -232,7 +232,7 @@ mixed_output() {
     assert!(stdout.contains("**Output:**"));
     assert!(stdout.contains("stdout message"));
 
-    // Stderr should be in separate "Errors:" section
-    assert!(stdout.contains("**Errors:**"));
-    assert!(stdout.contains("stderr message"));
+    // Stderr should be omitted on success
+    assert!(!stdout.contains("**Stderr:**"));
+    assert!(!stdout.contains("stderr message"));
 }

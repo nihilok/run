@@ -175,8 +175,8 @@ impl StructuredResult {
                 md.push_str("```\n\n");
             }
 
-            if !output.stderr.is_empty() {
-                md.push_str("**Errors:**\n```\n");
+            if !self.success && !output.stderr.is_empty() {
+                md.push_str("**Stderr:**\n```\n");
                 md.push_str(&output.stderr);
                 md.push_str("```\n\n");
             }
@@ -248,8 +248,9 @@ impl StructuredResult {
             md.push_str("```\n\n");
         }
 
-        if !all_stderr.is_empty() {
-            md.push_str("**Errors:**\n```\n");
+        // Only show stderr when the command failed
+        if !self.success && !all_stderr.is_empty() {
+            md.push_str("**Stderr:**\n```\n");
             md.push_str(&all_stderr);
             if !all_stderr.ends_with('\n') {
                 md.push('\n');
@@ -578,7 +579,8 @@ mod tests {
         assert!(md.contains("**Duration:** 100ms"));
         assert!(md.contains("### Step 1"));
         assert!(md.contains("deployed"));
-        assert!(md.contains("warning: slow"));
+        // Stderr is omitted on success
+        assert!(!md.contains("warning: slow"));
     }
 
     #[test]
