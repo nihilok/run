@@ -166,9 +166,9 @@ pub fn load_config() -> Option<String> {
 
         // Check if we've reached the home directory or root
         let reached_boundary = if let Some(ref home) = home_dir {
-            current_dir == *home || *current_dir == *"/" || *current_dir == *"\\"
+            current_dir == *home || current_dir == Path::new("/") || current_dir == Path::new("\\")
         } else {
-            *current_dir == *"/" || *current_dir == *"\\"
+            current_dir == Path::new("/") || current_dir == Path::new("\\")
         };
 
         if reached_boundary {
@@ -247,9 +247,9 @@ pub fn find_runfile_path() -> Option<PathBuf> {
 
         // Check if we've reached the home directory or root
         let reached_boundary = if let Some(ref home) = home_dir {
-            current_dir == *home || *current_dir == *"/" || *current_dir == *"\\"
+            current_dir == *home || current_dir == Path::new("/") || current_dir == Path::new("\\")
         } else {
-            *current_dir == *"/" || *current_dir == *"\\"
+            current_dir == Path::new("/") || current_dir == Path::new("\\")
         };
 
         if reached_boundary {
@@ -312,9 +312,9 @@ pub fn find_project_runfile_path() -> Option<PathBuf> {
 
         // Check if we've reached the home directory or root
         let reached_boundary = if let Some(ref home) = home_dir {
-            current_dir == *home || *current_dir == *"/" || *current_dir == *"\\"
+            current_dir == *home || current_dir == Path::new("/") || current_dir == Path::new("\\")
         } else {
-            *current_dir == *"/" || *current_dir == *"\\"
+            current_dir == Path::new("/") || current_dir == Path::new("\\")
         };
 
         if reached_boundary {
