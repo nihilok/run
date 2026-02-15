@@ -1,40 +1,4 @@
-# Example Runfile with simple function definitions
-
-# Simple function with argument substitution
-# @desc Open a shell in the specified Docker container
-# @arg 1:container The name of the container to open a shell in
-docker_shell(container) docker compose exec $container bash
-
-# Nested command with colon notation
-# @desc "Open a shell in the specified Docker container (default: app)"
-# @arg 1:container "The name of the container to open a shell in"
-docker:shell() docker compose exec ${1:-app} bash
-
-# Another nested command example
-# @desc "Follow logs for the specified Docker container"
-# @arg 1:container "The name of the container to follow logs for"
-docker:logs() docker compose logs -f $1
-
-# Function using $@ for all arguments
-echo_all() echo "All args: $@"
-
-# Function that ignores arguments
-echo_no_args() echo "No args function called" \
-    && echo "This function does not use its arguments" \
-    && echo "It just prints a fixed message"
-
-# Deploy with multiple steps
-docker:deploy() {
-    echo "Building image..."
-    docker build -t myapp:$1 .
-    echo "Pushing to registry..."
-    docker push myapp:$1
-    echo "Restarting containers..."
-    docker compose up -d
-    echo "✓ Deployed version $1"
-}
-
-# Deploy commands:
+# Deploy commands
 
 # @desc Increment patch version and deploy
 deploy:patch() {
@@ -51,6 +15,64 @@ deploy:major() {
     ./scripts/deploy.sh major --yes
 }
 
+# @desc Full release: patch bump, publish, deploy homebrew + AUR, wait for CI, deploy scoop
+deploy:all() {
+    # 1. Bump patch version and publish to crates.io
+    echo "=== Step 1/4: Bumping patch version and publishing ==="
+    deploy:patch
+
+    local ver=$(git describe --tags --abbrev=0 | sed 's/^v//')
+    echo ""
+    echo "=== Step 2/4: Deploying Homebrew and AUR (source-based, no CI wait) ==="
+    deploy:homebrew "$ver"
+    deploy:aur "$ver"
+
+    # 3. Wait for the GitHub Actions release workflow to finish
+    echo ""
+    echo "=== Step 3/4: Waiting for GitHub Actions release workflow ==="
+    echo "Waiting for release workflow to start..."
+    sleep 10
+
+    local max_wait=600
+    local waited=0
+    local interval=15
+    while [ $waited -lt $max_wait ]; do
+        status=$(gh run list --workflow=release.yml --limit=1 --json status,headBranch --jq '.[0].status')
+        if [ "$status" = "completed" ]; then
+            conclusion=$(gh run list --workflow=release.yml --limit=1 --json conclusion --jq '.[0].conclusion')
+            if [ "$conclusion" = "success" ]; then
+                echo "✓ Release workflow completed successfully"
+                break
+            else
+                echo "✗ Release workflow failed with conclusion: $conclusion"
+                echo "Skipping scoop deploy. Run 'deploy:scoop $ver' manually after fixing."
+                return 1
+            fi
+        fi
+        echo "  Workflow status: ${status:-pending}... (${waited}s / ${max_wait}s)"
+        sleep $interval
+        waited=$((waited + interval))
+    done
+
+    if [ $waited -ge $max_wait ]; then
+        echo "✗ Timed out waiting for release workflow after ${max_wait}s"
+        echo "Run 'deploy:scoop $ver' manually once the workflow completes."
+        return 1
+    fi
+
+    # 4. Deploy scoop (needs the Windows zip from the release)
+    echo ""
+    echo "=== Step 4/4: Deploying Scoop manifest ==="
+    deploy:scoop "$ver"
+
+    echo ""
+    echo "✓ Full release v${ver} complete!"
+    echo "  - crates.io: published"
+    echo "  - Homebrew: updated"
+    echo "  - AUR: updated"
+    echo "  - Scoop: updated"
+}
+
 # @desc Update Homebrew formula with latest release
 # @arg version Optional version (defaults to latest git tag)
 deploy:homebrew(version = "") {
@@ -60,7 +82,7 @@ deploy:homebrew(version = "") {
     else
         ./scripts/update_homebrew.sh "$version"
     fi
-    
+
     local ver="${version:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
     echo ""
     echo "Committing and pushing changes..."
@@ -69,7 +91,7 @@ deploy:homebrew(version = "") {
     git commit -m "Update to v${ver}"
     git push
     cd ..
-    
+
     echo "✓ Homebrew formula updated and pushed"
 }
 
@@ -82,7 +104,7 @@ deploy:scoop(version = "") {
     else
         ./scripts/update_scoop.sh "$version"
     fi
-    
+
     local ver="${version:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
     echo ""
     echo "Committing and pushing changes..."
@@ -91,7 +113,7 @@ deploy:scoop(version = "") {
     git commit -m "Update to v${ver}"
     git push
     cd ..
-    
+
     echo "✓ Scoop manifest updated and pushed"
 }
 
@@ -118,87 +140,18 @@ deploy:aur(version = "") {
     echo "✓ AUR PKGBUILD updated and pushed"
 }
 
-# Windows specific command (will not be listed on non-Windows systems)
-# @os windows
-deploy:example() {
-    echo "Running Windows-specific deployment steps..."
-    ./scripts/deploy_windows.bat
-}
+# Development commands
 
-# Will run on unix systems only as windows version is defined above
-deploy:example() {
-    echo "Running Unix-specific deployment steps..."
-    ./scripts/deploy_unix.sh
-}
-
-# Will only run on unix systems
-# @os unix
-incompatible_with_pwsh() echo "" | grep
-
-# Will run in pwsh even on unix systems
-# @shell pwsh
-pwsh_example() {
-    Write-Host "This runs in PowerShell!"
-}
-
-# Inline Python
-# @shell python
-python:hello() {
-    print("Hello from inline Python!")
-    for i in range(3):
-        print(f"Count: {i}")
-}
-
-# Inline Node.js
-# @shell node
-node:hello() {
-    console.log("Hello from inline Node.js!");
-    for (let i = 0; i < 3; i++) {
-        console.log(`Count: ${i}`);
-    }
-}
-
-# Inline semicolon block
-function test_inline() { echo "a"; echo "b"; echo "c" }
-
-# Inline Python using Shebang notation
-# @desc Count from 0 to 4 using Python
-python:count() {
-    #!/usr/bin/env python3
-    for i in range(5):
-        print(f"Number: {i}")
-}
-
-nested() {
-    incompatible_with_pwsh
-    node:hello
-}
-
-# @desc Example function using new signature notation
-# @arg some_arg "An example argument"
-new_signature_notation(some_arg: int) {
-    echo "Argument received: $1"
-}
-
-
-# @desc Function with very long output to test truncation in help
-# @arg count "Number of lines to print"
-long_output(count) {
-    for i in $(seq 1 $count); do
-        echo "Line $i: This is a long output example to test truncation in help."
-    done
-}
-
-# @desc Function that runs tests using Cargo; optionally accepts additional arguments to pass to cargo test (always provides "--package run" by default and captures both stdout and stderr); example:  `run_tests --test some_test.rs`
-run_tests(...args) {
+# @desc Run tests with summary; optionally pass extra args to cargo test
+test(...args) {
     output=$(cargo test --package run "$@")
     echo "$output"
-    
+
     # Parse and display totals
     passed=$(echo "$output" | grep -o '[0-9]\+ passed' | awk '{sum += $1} END {print sum}')
     failed=$(echo "$output" | grep -o '[0-9]\+ failed' | awk '{sum += $1} END {print sum}')
     ignored=$(echo "$output" | grep -o '[0-9]\+ ignored' | awk '{sum += $1} END {print sum}')
-    
+
     echo ""
     echo "==== TEST SUMMARY ===="
     echo "Total passed:  ${passed:-0}"
@@ -206,19 +159,8 @@ run_tests(...args) {
     echo "Total ignored: ${ignored:-0}"
 }
 
-# @desc Runs clippy linter on the entire workspace, including all targets
+# @desc Run clippy linter on the entire workspace
 clippy() {
     cargo clippy --workspace --all-targets || true
 }
 
-# @desc Test function that produces large output on both stdout and stderr
-# @arg stdout_lines Number of lines to output to stdout
-# @arg stderr_lines Number of lines to output to stderr
-test_both_streams(stdout_lines, stderr_lines) {
-    for i in $(seq 1 $1); do
-        echo "STDOUT Line $i"
-    done
-    for i in $(seq 1 $2); do
-        echo "STDERR Line $i" >&2
-    done
-}
