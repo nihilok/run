@@ -38,7 +38,7 @@ Alongside your Runfile functions, two helpers are always available:
 - `get_cwd()` — report the current working directory.
 
 ## Output files and truncation
-- Long outputs are truncated in the MCP response after 32 lines; the full text is saved to `.run-output/` next to your Runfile.
+- Long outputs are truncated in the MCP response to ~1200 characters (~300 tokens); the full text is saved to `.run-output/` next to your Runfile.
 - Override the output location with `RUN_MCP_OUTPUT_DIR` if you need a different directory.
 
 ## Describing tools for agents
