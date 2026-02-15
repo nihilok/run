@@ -520,11 +520,10 @@ impl Interpreter {
         }
 
         // Check for shebang
-        #[allow(clippy::collapsible_if)]
-        if let Some(shebang_str) = shebang {
-            if let Some(shell_type) = shell::resolve_shebang_interpreter(shebang_str) {
-                return TranspilerInterpreter::from_shell_type(&shell_type);
-            }
+        if let Some(shebang_str) = shebang
+            && let Some(shell_type) = shell::resolve_shebang_interpreter(shebang_str)
+        {
+            return TranspilerInterpreter::from_shell_type(&shell_type);
         }
 
         // Default to platform default
@@ -725,12 +724,11 @@ impl Interpreter {
         }
 
         // Check for errors
-        #[allow(clippy::collapsible_if)]
-        if let Some(code) = output.exit_code {
-            if code != 0 {
-                self.add_captured_output(output);
-                return Err(format!("Command failed with exit code: {code}").into());
-            }
+        if let Some(code) = output.exit_code
+            && code != 0
+        {
+            self.add_captured_output(output);
+            return Err(format!("Command failed with exit code: {code}").into());
         }
 
         // Store the captured output
@@ -798,12 +796,11 @@ impl Interpreter {
                 }
 
                 // Check for errors
-                #[allow(clippy::collapsible_if)]
-                if let Some(code) = output.exit_code {
-                    if code != 0 {
-                        self.add_captured_output(output);
-                        return Err(format!("Command failed with exit code: {code}").into());
-                    }
+                if let Some(code) = output.exit_code
+                    && code != 0
+                {
+                    self.add_captured_output(output);
+                    return Err(format!("Command failed with exit code: {code}").into());
                 }
 
                 // Store the captured output

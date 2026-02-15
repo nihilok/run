@@ -128,29 +128,28 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
             let mut inner = pair.into_inner();
             let name = inner.next()?.as_str().to_string();
             let mut args = Vec::new();
-            #[allow(clippy::collapsible_if)]
-            if let Some(arg_list_pair) = inner.next() {
-                if arg_list_pair.as_rule() == Rule::argument_list {
-                    for arg_pair in arg_list_pair.into_inner() {
-                        if arg_pair.as_rule() == Rule::argument {
-                            // Extract the actual argument value
-                            let arg_value =
-                                if let Some(inner_arg) = arg_pair.clone().into_inner().next() {
-                                    match inner_arg.as_rule() {
-                                        Rule::quoted_string => {
-                                            // Remove quotes from quoted strings
-                                            inner_arg.as_str().trim_matches('"').to_string()
-                                        }
-                                        Rule::variable | Rule::argument_word => {
-                                            inner_arg.as_str().to_string()
-                                        }
-                                        _ => inner_arg.as_str().to_string(),
+            if let Some(arg_list_pair) = inner.next()
+                && arg_list_pair.as_rule() == Rule::argument_list
+            {
+                for arg_pair in arg_list_pair.into_inner() {
+                    if arg_pair.as_rule() == Rule::argument {
+                        // Extract the actual argument value
+                        let arg_value =
+                            if let Some(inner_arg) = arg_pair.clone().into_inner().next() {
+                                match inner_arg.as_rule() {
+                                    Rule::quoted_string => {
+                                        // Remove quotes from quoted strings
+                                        inner_arg.as_str().trim_matches('"').to_string()
                                     }
-                                } else {
-                                    arg_pair.as_str().to_string()
-                                };
-                            args.push(arg_value);
-                        }
+                                    Rule::variable | Rule::argument_word => {
+                                        inner_arg.as_str().to_string()
+                                    }
+                                    _ => inner_arg.as_str().to_string(),
+                                }
+                            } else {
+                                arg_pair.as_str().to_string()
+                            };
+                        args.push(arg_value);
                     }
                 }
             }

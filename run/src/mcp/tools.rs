@@ -212,14 +212,13 @@ pub fn inspect() -> Result<InspectOutput, String> {
                 params,
                 attributes,
                 ..
-            } =>
-            {
-                #[allow(clippy::collapsible_if)]
-                if utils::matches_current_platform(attributes) && !seen_names.contains(name) {
-                    if let Some(tool) = extract_function_metadata(name, attributes, params) {
-                        tools.push(tool);
-                        seen_names.insert(name.clone());
-                    }
+            } => {
+                if utils::matches_current_platform(attributes)
+                    && !seen_names.contains(name)
+                    && let Some(tool) = extract_function_metadata(name, attributes, params)
+                {
+                    tools.push(tool);
+                    seen_names.insert(name.clone());
                 }
             }
             _ => {}
