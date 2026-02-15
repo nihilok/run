@@ -28,17 +28,18 @@ run deploy prod v2.1.0
 ## Install
 - Homebrew: `brew install nihilok/tap/runtool`
 - Scoop: `scoop bucket add nihilok https://github.com/nihilok/scoop-bucket` then `scoop install runtool`
+- AUR: `yay -S runtool` (or `paru -S runtool`)
 - Cargo: `cargo install run` (or `runtool`)
 
 ## Documentation
-- [Getting started](https://github.com/nihilok/run-rust/blob/main/docs/getting-started.md)
-- [Runfile syntax](https://github.com/nihilok/run-rust/blob/main/docs/runfile-syntax.md), [arguments](https://github.com/nihilok/run-rust/blob/main/docs/arguments.md), and [variables](https://github.com/nihilok/run-rust/blob/main/docs/variables.md)
-- [Attributes and interpreters](https://github.com/nihilok/run-rust/blob/main/docs/attributes-and-interpreters.md)
-- [Polyglot commands](https://github.com/nihilok/run-rust/blob/main/docs/polyglot-commands.md) and [command composition](https://github.com/nihilok/run-rust/blob/main/docs/command-composition.md)
-- [CLI usage](https://github.com/nihilok/run-rust/blob/main/docs/cli.md)
-- [MCP integration](https://github.com/nihilok/run-rust/blob/main/docs/mcp.md)
-- [Recipes](https://github.com/nihilok/run-rust/blob/main/docs/recipes.md)
-- [Reference](https://github.com/nihilok/run-rust/blob/main/docs/reference.md) and [FAQ](https://github.com/nihilok/run-rust/blob/main/docs/faq.md)
+- [Getting started](https://runtool.dev/docs/getting-started.html)
+- [Runfile syntax](https://runtool.dev/docs/runfile-syntax.html), [arguments](https://runtool.dev/docs/arguments.html), and [variables](https://runtool.dev/docs/variables.html)
+- [Attributes and interpreters](https://runtool.dev/docs/attributes-and-interpreters.html)
+- [Polyglot commands](https://runtool.dev/docs/polyglot-commands.html) and [command composition](https://runtool.dev/docs/command-composition.html)
+- [CLI usage](https://runtool.dev/docs/cli.html)
+- [MCP integration](https://runtool.dev/docs/mcp.html)
+- [Recipes](https://runtool.dev/docs/recipes.html)
+- [Reference](https://runtool.dev/docs/reference.html) and [FAQ](https://runtool.dev/docs/faq.html)
 
 ## License
 MIT
