@@ -7,7 +7,7 @@ description = "a.k.a. run: the bridge between human and AI tooling"
 license.workspace = true
 repository.workspace = true
 [dependencies]
-run = { path = "../run", version = "0.3.18" }
+run = { path = "../run", version = "0.3.19" }
 [lints]
 workspace = true
 [[bin]]
