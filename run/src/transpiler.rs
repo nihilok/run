@@ -112,76 +112,142 @@ fn indent(text: &str, prefix: &str) -> String {
 /// Rewrite call sites in function body to use sanitised names
 ///
 /// This replaces function names containing colons with their sanitised versions
-/// (colons replaced with double underscores). Only replaces whole-word matches.
+/// (colons replaced with double underscores). Only replaces names in command
+/// position — at the start of a line (after optional whitespace) or after shell
+/// command separators (`&&`, `||`, `;`, `|`, `(`). Names appearing as arguments
+/// to other commands (e.g. `pnpm test:unit`) are left untouched.
 #[must_use]
 pub fn rewrite_call_sites(body: &str, sibling_names: &[&str]) -> String {
-    let mut result = body.to_string();
+    let colon_siblings: Vec<&str> = sibling_names
+        .iter()
+        .filter(|s| s.contains(':'))
+        .copied()
+        .collect();
 
-    for sibling in sibling_names {
-        if sibling.contains(':') {
-            let sanitised = sanitise_name(sibling);
-            result = replace_word(&result, sibling, &sanitised);
+    if colon_siblings.is_empty() {
+        return body.to_string();
+    }
+
+    body.lines()
+        .map(|line| rewrite_line(line, &colon_siblings))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Rewrite sibling call sites within a single line.
+///
+/// Scans for command positions (start of line, after `&&`, `||`, `;`, `|`, `(`)
+/// and only rewrites sibling names found there.
+fn rewrite_line(line: &str, colon_siblings: &[&str]) -> String {
+    let mut result = String::new();
+    let chars: Vec<char> = line.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        // Detect command position: start of line or just after a separator
+        if is_command_position(&result) {
+            // Skip whitespace
+            let ws_start = i;
+            while i < len && (chars[i] == ' ' || chars[i] == '\t') {
+                i += 1;
+            }
+
+            // Try to match a sibling name at this position
+            if let Some((sibling, end)) = match_sibling_at(&chars, i, colon_siblings) {
+                // Check word boundary after the match
+                let after_ok = end >= len || !is_word_char(chars[end]);
+                if after_ok {
+                    // Push the whitespace, then the sanitised name
+                    result.push_str(&chars[ws_start..i].iter().collect::<String>());
+                    result.push_str(&sanitise_name(sibling));
+                    i = end;
+                    continue;
+                }
+            }
+
+            // No match — rewind to before whitespace skip and fall through
+            i = ws_start;
+        }
+
+        // Check for command separators that introduce a new command position
+        if i < len {
+            // Check for two-char separators: && ||
+            if i + 1 < len {
+                let two = [chars[i], chars[i + 1]];
+                if two == ['&', '&'] || two == ['|', '|'] {
+                    result.push(chars[i]);
+                    result.push(chars[i + 1]);
+                    i += 2;
+                    continue;
+                }
+            }
+            // Single-char separators: ; | (
+            if chars[i] == ';' || chars[i] == '|' || chars[i] == '(' {
+                result.push(chars[i]);
+                i += 1;
+                continue;
+            }
+
+            result.push(chars[i]);
+            i += 1;
         }
     }
 
     result
 }
 
-/// Replace whole-word occurrences of a pattern in text
-///
-/// This ensures we only replace actual function calls, not partial matches
-/// within other words.
-fn replace_word(text: &str, pattern: &str, replacement: &str) -> String {
-    let mut result = String::new();
-    let mut chars = text.chars().peekable();
-    let pattern_chars: Vec<char> = pattern.chars().collect();
+/// Check whether `result` (the output so far for the current line) indicates
+/// that the next token would be in command position.
+fn is_command_position(result: &str) -> bool {
+    // Empty → start of line
+    if result.is_empty() {
+        return true;
+    }
+    // Check the last non-whitespace character
+    let trimmed = result.trim_end();
+    if trimmed.is_empty() {
+        return true;
+    }
+    let Some(last) = trimmed.chars().last() else {
+        return true;
+    };
+    // After these characters the next token is a new command
+    matches!(last, '&' | '|' | ';' | '(')
+}
 
-    'outer: while let Some(ch) = chars.next() {
-        // Try to match pattern
-        if ch == pattern_chars[0] {
-            // Look ahead to match the rest of the pattern
-            let mut matched = vec![ch];
-            let mut peek_ahead: Vec<char> = Vec::new();
+/// Try to match any sibling name at position `start` in `chars`.
+/// Returns the matched sibling name and the end index if found.
+fn match_sibling_at<'a>(
+    chars: &[char],
+    start: usize,
+    colon_siblings: &[&'a str],
+) -> Option<(&'a str, usize)> {
+    // Try longest match first to avoid prefix conflicts
+    let mut best: Option<(&'a str, usize)> = None;
 
-            for &pattern_ch in &pattern_chars[1..] {
-                if let Some(&next_ch) = chars.peek() {
-                    peek_ahead.push(next_ch);
-                    if next_ch == pattern_ch {
-                        // We know next() will return Some because peek() just returned Some
-                        if let Some(consumed) = chars.next() {
-                            matched.push(consumed);
-                        }
-                    } else {
-                        // No match, output what we collected and continue
-                        result.push_str(&matched.iter().collect::<String>());
-                        continue 'outer;
-                    }
-                } else {
-                    // End of string, no match
-                    result.push_str(&matched.iter().collect::<String>());
-                    continue 'outer;
-                }
+    for &sibling in colon_siblings {
+        let sib_chars: Vec<char> = sibling.chars().collect();
+        let end = start + sib_chars.len();
+
+        if end > chars.len() {
+            continue;
+        }
+
+        if chars[start..end]
+            .iter()
+            .zip(sib_chars.iter())
+            .all(|(a, b)| a == b)
+        {
+            // Check that character before is not a word char (for word boundary)
+            let before_ok = start == 0 || !is_word_char(chars[start - 1]);
+            if before_ok && best.is_none_or(|(prev, _)| sibling.len() > prev.len()) {
+                best = Some((sibling, end));
             }
-
-            // We matched the pattern, now check word boundaries
-            // Check if there's a non-word character (or start/end) before and after
-            let before_ok =
-                result.is_empty() || result.chars().last().is_none_or(|c| !is_word_char(c));
-            let after_ok = chars.peek().is_none_or(|&c| !is_word_char(c));
-
-            if before_ok && after_ok {
-                // Valid word boundary, replace
-                result.push_str(replacement);
-            } else {
-                // Not a word boundary, keep original
-                result.push_str(&matched.iter().collect::<String>());
-            }
-        } else {
-            result.push(ch);
         }
     }
 
-    result
+    best
 }
 
 /// Check if a character is a word character (alphanumeric, underscore, or colon)
@@ -333,27 +399,104 @@ mod tests {
     }
 
     #[test]
-    fn test_replace_word_boundaries() {
-        // Test that we only replace whole words
-        assert_eq!(
-            replace_word("docker:build", "docker:build", "docker__build"),
-            "docker__build"
+    fn test_rewrite_word_boundaries() {
+        // Whole-word match in command position → rewrite
+        let result = rewrite_call_sites("docker:build", &["docker:build"]);
+        assert_eq!(result, "docker__build");
+
+        // In command position on each line → rewrite
+        let result = rewrite_call_sites(
+            "docker:build\ndocker:push",
+            &["docker:build", "docker:push"],
         );
-        assert_eq!(
-            replace_word("call docker:build here", "docker:build", "docker__build"),
-            "call docker__build here"
-        );
-        assert_eq!(
-            replace_word("docker:build\ndocker:push", "docker:build", "docker__build"),
-            "docker__build\ndocker:push"
-        );
+        assert_eq!(result, "docker__build\ndocker__push");
     }
 
     #[test]
-    fn test_replace_word_no_partial_match() {
+    fn test_rewrite_no_partial_match() {
         // Should not replace if it's part of another word
-        let text = "my_docker:build_func";
-        let result = replace_word(text, "docker:build", "docker__build");
+        let result = rewrite_call_sites("my_docker:build_func", &["docker:build"]);
         assert_eq!(result, "my_docker:build_func");
+    }
+
+    #[test]
+    fn test_rewrite_call_sites_should_not_rewrite_arguments() {
+        // When a sibling name appears as an argument to another command (not in
+        // command position), it should NOT be rewritten. This is the bug that
+        // causes `pnpm test:unit` to become `pnpm test__unit`.
+        let body = "pnpm test:unit \"$@\"";
+        let siblings = vec!["test:unit"];
+        let result = rewrite_call_sites(body, &siblings);
+        assert_eq!(result, "pnpm test:unit \"$@\"");
+    }
+
+    #[test]
+    fn test_rewrite_call_sites_command_position_vs_argument() {
+        // test:unit at the start of a line IS a function call → rewrite
+        // test:unit as an argument to pnpm is NOT a function call → don't rewrite
+        let body = "test:unit\npnpm test:unit \"$@\"";
+        let siblings = vec!["test:unit"];
+        let result = rewrite_call_sites(body, &siblings);
+        assert_eq!(result, "test__unit\npnpm test:unit \"$@\"");
+    }
+
+    #[test]
+    fn test_rewrite_call_sites_sibling_name_as_argument_to_echo() {
+        // echo test:build should not rewrite the argument
+        let body = "echo \"running test:build\"\ntest:build";
+        let siblings = vec!["test:build"];
+        let result = rewrite_call_sites(body, &siblings);
+        assert_eq!(result, "echo \"running test:build\"\ntest__build");
+    }
+
+    #[test]
+    fn test_rewrite_call_sites_pnpm_wrapper_pattern() {
+        // Real-world pattern: a task wraps pnpm and the aggregate task calls siblings.
+        // The preamble function bodies should keep `pnpm test:unit` intact,
+        // while the aggregate body should rewrite direct calls.
+        let unit_body = "pnpm test:unit \"$@\"";
+        let integration_body = "pnpm test:integration \"$@\"";
+        let all_body = "test:unit\ntest:integration";
+        let siblings = vec!["test:unit", "test:integration"];
+
+        // The aggregate task's body: direct calls should be rewritten
+        let result = rewrite_call_sites(all_body, &siblings);
+        assert_eq!(result, "test__unit\ntest__integration");
+
+        // The sibling bodies (used in preamble): args should NOT be rewritten
+        let result = rewrite_call_sites(unit_body, &siblings);
+        assert_eq!(result, "pnpm test:unit \"$@\"");
+
+        let result = rewrite_call_sites(integration_body, &siblings);
+        assert_eq!(result, "pnpm test:integration \"$@\"");
+    }
+
+    #[test]
+    fn test_rewrite_call_sites_after_command_separators() {
+        // Sibling names after && || ; | ( should be rewritten (command position)
+        let siblings = vec!["test:unit", "test:lint"];
+
+        assert_eq!(
+            rewrite_call_sites("test:unit && test:lint", &siblings),
+            "test__unit && test__lint"
+        );
+        assert_eq!(
+            rewrite_call_sites("test:unit || test:lint", &siblings),
+            "test__unit || test__lint"
+        );
+        assert_eq!(
+            rewrite_call_sites("test:unit; test:lint", &siblings),
+            "test__unit; test__lint"
+        );
+        assert_eq!(rewrite_call_sites("(test:unit)", &siblings), "(test__unit)");
+    }
+
+    #[test]
+    fn test_rewrite_call_sites_indented() {
+        // Indented calls (e.g. inside if/then blocks) should still be rewritten
+        let body = "    test:unit\n    test:lint";
+        let siblings = vec!["test:unit", "test:lint"];
+        let result = rewrite_call_sites(body, &siblings);
+        assert_eq!(result, "    test__unit\n    test__lint");
     }
 }
