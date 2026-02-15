@@ -42,7 +42,7 @@ fi
 echo -e "${GREEN}✓ Updated Scoop manifest${NC}"
 echo ""
 echo -e "${YELLOW}Changes:${NC}"
-git -C scoop-bucket diff bucket/runtool.json
+git --no-pager -C scoop-bucket diff bucket/runtool.json
 
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"

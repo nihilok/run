@@ -37,7 +37,7 @@ rm "${FORMULA_FILE}.bak"
 echo -e "${GREEN}✓ Updated Homebrew formula${NC}"
 echo ""
 echo -e "${YELLOW}Changes:${NC}"
-git -C homebrew-tap diff Formula/runtool.rb
+git --no-pager -C homebrew-tap diff Formula/runtool.rb
 
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"

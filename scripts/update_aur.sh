@@ -57,7 +57,7 @@ EOF
 echo -e "${GREEN}✓ Updated AUR PKGBUILD${NC}"
 echo ""
 echo -e "${YELLOW}Changes:${NC}"
-git -C aur-pkgbuild diff
+git --no-pager -C aur-pkgbuild diff
 
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
