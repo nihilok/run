@@ -5,8 +5,11 @@
 
 mod attributes;
 mod block;
+pub mod error;
 mod preprocessing;
 mod shebang;
+
+pub use error::ParseError;
 
 use crate::ast::{Expression, Program, Statement};
 use pest::Parser;
