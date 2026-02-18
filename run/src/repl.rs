@@ -80,7 +80,7 @@ pub fn run_repl() {
                         }
                     }
                     Err(e) => {
-                        crate::executor::print_parse_error(&e, input, None);
+                        eprintln!("{}", parser::ParseError::from_pest(&e, input, None));
                     }
                 }
             }
