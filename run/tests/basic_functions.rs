@@ -445,3 +445,76 @@ server() echo "Starting server on port ${1:-8080}"
     let stdout2 = String::from_utf8_lossy(&output2.stdout);
     assert!(stdout2.contains("port"));
 }
+
+#[test]
+fn test_return_in_block_function_propagates_exit_code() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+check() {
+    if [ "$1" = "fail" ]; then
+        return 1
+    fi
+    echo "ok"
+}
+"#,
+    );
+
+    // With "fail" arg, should exit with non-zero code (return 1 in function body)
+    let output = test_command(&binary)
+        .args(["check", "fail"])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(!output.status.success());
+    // `return` should work cleanly — no shell error about "can only return from a function"
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("can only"),
+        "return should work inside function body, got: {stderr}"
+    );
+
+    // Without "fail" arg, should succeed
+    let output = test_command(&binary)
+        .arg("check")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("ok"));
+}
+
+#[test]
+fn test_return_in_simple_function_with_siblings() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // When there are siblings, a preamble is generated and the body gets wrapped
+    create_runfile(
+        temp_dir.path(),
+        r#"
+helper() echo "helped"
+
+check() {
+    if [ "$1" = "bail" ]; then
+        return 42
+    fi
+    helper
+}
+"#,
+    );
+
+    let output = test_command(&binary)
+        .args(["check", "bail"])
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(!output.status.success());
+}

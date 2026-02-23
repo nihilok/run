@@ -572,9 +572,14 @@ impl Interpreter {
             &resolve_interpreter,
         );
 
-        // Combine preambles and body
+        // Combine preambles and body — wrap in function for shell interpreters
+        // so `return` works in the body
+        let is_shell = matches!(
+            target_interpreter,
+            TranspilerInterpreter::Sh | TranspilerInterpreter::Bash | TranspilerInterpreter::Pwsh
+        );
         let combined_script =
-            execution::build_combined_script(var_preamble, func_preamble, rewritten_body);
+            execution::build_combined_script(var_preamble, func_preamble, rewritten_body, is_shell);
 
         // Get params from metadata for substitution
         let params = self
@@ -666,9 +671,9 @@ impl Interpreter {
             &resolve_interpreter,
         );
 
-        // Combine preambles and body
+        // Combine preambles and body — always wrap for shell (polyglot returns early above)
         let combined_script =
-            execution::build_combined_script(var_preamble, func_preamble, rewritten_body);
+            execution::build_combined_script(var_preamble, func_preamble, rewritten_body, true);
 
         // Substitute args in both the combined script (for execution) and the original body (for display)
         let substituted = self.substitute_args_with_params(&combined_script, args, params);
