@@ -5,6 +5,7 @@ use super::mapping::resolve_tool_name;
 use super::tools::inspect;
 use crate::config;
 use serde::Serialize;
+use std::path::PathBuf;
 use std::process::Command;
 
 /// JSON-RPC 2.0 error structure
@@ -69,6 +70,42 @@ pub(super) fn handle_tools_list(
             message: format!("Internal error: {e}"),
             data: None,
         }),
+    }
+}
+
+/// Resolve the runfile path to pass to the MCP subprocess.
+///
+/// When both `~/.runfile` and a project `Runfile` exist, the merged content is written
+/// to a temporary file so the subprocess can access functions from both sources.
+/// Returns `(runfile_path, temp_path_to_clean_up)`.  `temp_path_to_clean_up` is `Some`
+/// only when a temp file was created and must be removed after the subprocess exits.
+fn resolve_subprocess_runfile() -> Result<(PathBuf, Option<PathBuf>), JsonRpcError> {
+    let (merged_content, merge_metadata) =
+        config::load_merged_config().ok_or_else(|| JsonRpcError {
+            code: -32603,
+            message: "No Runfile found".to_string(),
+            data: None,
+        })?;
+
+    if merge_metadata.has_global && merge_metadata.has_project {
+        // Both sources present: write merged content to a temp file so the subprocess
+        // sees every function.  Using --runfile <project_path> alone would cause
+        // load_merged_config to skip the merge and miss global functions.
+        let temp_path =
+            std::env::temp_dir().join(format!("runfile_merged_{}.run", std::process::id()));
+        std::fs::write(&temp_path, &merged_content).map_err(|e| JsonRpcError {
+            code: -32603,
+            message: format!("Failed to write merged runfile: {e}"),
+            data: None,
+        })?;
+        Ok((temp_path.clone(), Some(temp_path)))
+    } else {
+        let runfile_path = config::find_runfile_path().ok_or_else(|| JsonRpcError {
+            code: -32603,
+            message: "No Runfile found".to_string(),
+            data: None,
+        })?;
+        Ok((runfile_path, None))
     }
 }
 
@@ -155,16 +192,17 @@ pub(super) fn handle_tools_call(
             data: None,
         })?;
 
-    // Get the Runfile path so the subprocess can find the functions
-    // This is necessary because the subprocess may run in a different working directory
-    let runfile_path = config::find_runfile_path().ok_or_else(|| JsonRpcError {
-        code: -32603,
-        message: "No Runfile found".to_string(),
-        data: None,
-    })?;
+    // Get the merged config so the subprocess can find all functions (global + project).
+    // When both ~/.runfile and a project Runfile exist, passing --runfile <project_path>
+    // causes the subprocess to skip the merge and miss global functions.  Instead we
+    // write the already-merged content to a temp file so the subprocess sees everything.
+    let (runfile_path, temp_merged_path) = resolve_subprocess_runfile()?;
 
     let mut cmd = Command::new(run_binary);
-    // Pass the Runfile path explicitly so the subprocess can find the functions
+
+    // Pass the Runfile path explicitly so the subprocess can find the functions.
+    // This is necessary because the subprocess may run in a different working directory
+    // (e.g. after set_cwd was called).
     cmd.arg("--runfile");
     cmd.arg(&runfile_path);
     // Use structured markdown output for better LLM readability
@@ -185,6 +223,13 @@ pub(super) fn handle_tools_call(
         message: format!("Failed to execute tool: {e}"),
         data: None,
     })?;
+
+    // Clean up temp file if we created one.
+    // Cleanup failure is non-critical — the OS will eventually reclaim the temp file —
+    // so we intentionally ignore the result here.
+    if let Some(ref tp) = temp_merged_path {
+        let _ = std::fs::remove_file(tp);
+    }
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();

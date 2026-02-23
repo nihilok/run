@@ -742,3 +742,112 @@ shared_tool() {
 
 // Note: Tests that manipulate ~/.runfile may need to run serially to avoid race conditions
 // Run with: cargo test --test mcp_server_test -- --test-threads=1
+
+/// Test that global ~/.runfile functions can be invoked via MCP when a project Runfile also exists.
+/// This is a regression test for the bug where passing `--runfile <project_path>` to the subprocess
+/// caused the global merge to be skipped, making global functions fail silently.
+#[test]
+#[serial]
+fn test_mcp_global_function_invocable_with_project_runfile() {
+    use std::io::Write;
+
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let home_dir = std::env::var("HOME").unwrap();
+    let global_runfile_tmp =
+        std::path::PathBuf::from(&home_dir).join(".runfile.test_mcp_global_invoke");
+    fs::write(
+        &global_runfile_tmp,
+        r#"
+# @desc Simple test function
+ping() {
+    echo "pong"
+}
+"#,
+    )
+    .unwrap();
+
+    // Create a project runfile so both global and project sources exist
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @desc Project function
+check() {
+    echo "ok"
+}
+"#,
+    );
+
+    // Swap in our test global runfile
+    let original_runfile = std::path::PathBuf::from(&home_dir).join(".runfile");
+    let backup_runfile =
+        std::path::PathBuf::from(&home_dir).join(".runfile.backup_mcp_global_invoke");
+    if original_runfile.exists() {
+        fs::rename(&original_runfile, &backup_runfile).ok();
+    }
+    fs::rename(&global_runfile_tmp, &original_runfile).unwrap();
+
+    // Send an MCP tools/call request for the global function "ping"
+    let mut child = Command::new(&binary)
+        .arg("--serve-mcp")
+        .current_dir(temp_dir.path())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn process");
+
+    let stdin = child.stdin.as_mut().unwrap();
+
+    let init_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "test", "version": "1.0"}
+        }
+    });
+    writeln!(stdin, "{}", serde_json::to_string(&init_request).unwrap()).unwrap();
+
+    let call_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+            "name": "ping",
+            "arguments": {}
+        }
+    });
+    writeln!(stdin, "{}", serde_json::to_string(&call_request).unwrap()).unwrap();
+    stdin.flush().unwrap();
+
+    // Allow extra time because the MCP server spawns a subprocess to run the function.
+    // Existing tests use 500 ms for requests that don't fork; we need more here.
+    std::thread::sleep(std::time::Duration::from_millis(2000));
+
+    child.kill().expect("Failed to kill process");
+    let output = child.wait_with_output().unwrap();
+
+    // Restore original runfile
+    if original_runfile.exists() {
+        fs::remove_file(&original_runfile).ok();
+    }
+    if backup_runfile.exists() {
+        fs::rename(&backup_runfile, &original_runfile).ok();
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // The tools/call response for "ping" should contain "pong" and isError: false
+    assert!(
+        stdout.contains("pong"),
+        "Expected 'pong' in MCP response for global function, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("\"isError\":true") && !stdout.contains("\"isError\": true"),
+        "Global function call should not be an error, got: {stdout}"
+    );
+}
