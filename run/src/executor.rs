@@ -35,7 +35,9 @@ pub fn execute_file(path: &PathBuf) {
         }
     };
 
-    execute_script(&script, Some(&path.to_string_lossy()));
+    let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
+    let processed = config::expand_source_directives(&script, base_dir);
+    execute_script(&processed, Some(&path.to_string_lossy()));
 }
 
 /// Load function definitions from config and call a function with arguments.
