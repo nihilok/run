@@ -78,6 +78,59 @@ pub fn get_builtin_tools() -> Vec<Tool> {
     tools
 }
 
+/// Sanitise an arg name for use as a JSON schema property key.
+///
+/// - Strips a trailing `?` suffix (treating it as an "optional" marker).
+/// - Validates the remaining name against `^[a-zA-Z0-9_.-]{1,64}$`.
+/// - If invalid characters remain after stripping, replaces them with `_`
+///   and emits a warning to stderr.
+///
+/// Returns `(sanitised_name, is_optional)`.
+fn sanitise_property_key(name: &str) -> (String, bool) {
+    // Check for `?` optional suffix
+    let (stripped, is_optional) = if let Some(s) = name.strip_suffix('?') {
+        (s, true)
+    } else {
+        (name, false)
+    };
+
+    // Validate against MCP property key regex: ^[a-zA-Z0-9_.-]{1,64}$
+    let is_valid = !stripped.is_empty()
+        && stripped.len() <= 64
+        && stripped
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'));
+
+    if is_valid {
+        (stripped.to_string(), is_optional)
+    } else {
+        // Sanitise: replace invalid chars with `_`, truncate to 64
+        let sanitised: String = stripped
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-') {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .take(64)
+            .collect();
+
+        let sanitised = if sanitised.is_empty() {
+            "_".to_string()
+        } else {
+            sanitised
+        };
+
+        eprintln!(
+            "Warning: arg name {name:?} contains characters invalid for a JSON schema property key; using {sanitised:?} instead"
+        );
+
+        (sanitised, is_optional)
+    }
+}
+
 /// Extract metadata from function attributes and parameters
 /// Returns None if the function has no @desc attribute
 pub(super) fn extract_function_metadata(
@@ -89,7 +142,8 @@ pub(super) fn extract_function_metadata(
     let mut properties = HashMap::new();
     let mut required = Vec::new();
 
-    // Build a map of @arg descriptions (name -> description)
+    // Build a map of @arg descriptions (sanitised_name -> description)
+    // Strip `?` from names so hybrid-mode lookups match param names correctly.
     let mut arg_descriptions: HashMap<String, String> = HashMap::new();
 
     // Get description from attributes and collect @arg descriptions
@@ -99,8 +153,9 @@ pub(super) fn extract_function_metadata(
                 description = Some(desc.clone());
             }
             Attribute::Arg(arg_meta) => {
-                // Store description keyed by name for lookup
-                arg_descriptions.insert(arg_meta.name.clone(), arg_meta.description.clone());
+                // Strip `?` when keying descriptions so lookups by param.name work
+                let (key, _) = sanitise_property_key(&arg_meta.name);
+                arg_descriptions.insert(key, arg_meta.description.clone());
             }
             _ => {}
         }
@@ -112,16 +167,20 @@ pub(super) fn extract_function_metadata(
         for attr in attributes {
             if let Attribute::Arg(arg_meta) = attr {
                 let param_type = utils::arg_type_to_json_type(&arg_meta.arg_type);
+                let (sanitised_name, is_optional) = sanitise_property_key(&arg_meta.name);
 
                 properties.insert(
-                    arg_meta.name.clone(),
+                    sanitised_name.clone(),
                     ParameterSchema {
                         param_type: param_type.to_string(),
                         description: arg_meta.description.clone(),
                     },
                 );
 
-                required.push(arg_meta.name.clone());
+                // `?` suffix means the arg is optional — do not add to required
+                if !is_optional {
+                    required.push(sanitised_name);
+                }
             }
         }
     } else {
@@ -252,6 +311,137 @@ pub fn print_inspect() {
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_sanitise_property_key_valid() {
+        let (key, optional) = sanitise_property_key("repo");
+        assert_eq!(key, "repo");
+        assert!(!optional);
+    }
+
+    #[test]
+    fn test_sanitise_property_key_question_mark_optional() {
+        let (key, optional) = sanitise_property_key("repo?");
+        assert_eq!(key, "repo");
+        assert!(optional);
+    }
+
+    #[test]
+    fn test_sanitise_property_key_invalid_chars_replaced() {
+        let (key, optional) = sanitise_property_key("my arg");
+        assert_eq!(key, "my_arg");
+        assert!(!optional);
+    }
+
+    #[test]
+    fn test_sanitise_property_key_invalid_chars_with_question_mark() {
+        let (key, optional) = sanitise_property_key("my arg?");
+        assert_eq!(key, "my_arg");
+        assert!(optional);
+    }
+
+    #[test]
+    fn test_sanitise_property_key_truncated_to_64() {
+        let long_name = "a".repeat(70);
+        let (key, optional) = sanitise_property_key(&long_name);
+        assert_eq!(key.len(), 64);
+        assert!(!optional);
+    }
+
+    #[test]
+    fn test_sanitise_property_key_valid_chars() {
+        // All valid chars: alphanumeric, underscore, dot, hyphen
+        let (key, optional) = sanitise_property_key("my-arg.v2_0");
+        assert_eq!(key, "my-arg.v2_0");
+        assert!(!optional);
+    }
+
+    #[test]
+    fn test_extract_function_metadata_optional_arg() {
+        use crate::ast::{ArgMetadata, ArgType, Attribute};
+
+        let attributes = vec![
+            Attribute::Desc("Get repo info".to_string()),
+            Attribute::Arg(ArgMetadata {
+                position: 1,
+                name: "repo?".to_string(),
+                arg_type: ArgType::String,
+                description: "Optional repo name".to_string(),
+            }),
+        ];
+
+        let tool = extract_function_metadata("get_info", &attributes, &[]).unwrap();
+
+        // Property key should have `?` stripped
+        assert!(tool.input_schema.properties.contains_key("repo"));
+        assert!(!tool.input_schema.properties.contains_key("repo?"));
+
+        // Optional arg must not appear in required
+        assert!(!tool.input_schema.required.contains(&"repo".to_string()));
+        assert!(tool.input_schema.required.is_empty());
+    }
+
+    #[test]
+    fn test_extract_function_metadata_mixed_optional_required() {
+        use crate::ast::{ArgMetadata, ArgType, Attribute};
+
+        let attributes = vec![
+            Attribute::Desc("Clone a repo".to_string()),
+            Attribute::Arg(ArgMetadata {
+                position: 1,
+                name: "url".to_string(),
+                arg_type: ArgType::String,
+                description: "Repository URL".to_string(),
+            }),
+            Attribute::Arg(ArgMetadata {
+                position: 2,
+                name: "branch?".to_string(),
+                arg_type: ArgType::String,
+                description: "Optional branch".to_string(),
+            }),
+        ];
+
+        let tool = extract_function_metadata("clone", &attributes, &[]).unwrap();
+
+        assert_eq!(tool.input_schema.properties.len(), 2);
+        assert!(tool.input_schema.properties.contains_key("url"));
+        assert!(tool.input_schema.properties.contains_key("branch"));
+        assert!(!tool.input_schema.properties.contains_key("branch?"));
+
+        // Only url should be required
+        assert_eq!(tool.input_schema.required.len(), 1);
+        assert!(tool.input_schema.required.contains(&"url".to_string()));
+        assert!(!tool.input_schema.required.contains(&"branch".to_string()));
+    }
+
+    #[test]
+    fn test_extract_function_metadata_optional_arg_description_in_hybrid_mode() {
+        use crate::ast::{ArgMetadata, ArgType, Attribute, Parameter};
+
+        // Hybrid: @arg with `?` suffix providing description for param "repo"
+        let attributes = vec![
+            Attribute::Desc("Get info".to_string()),
+            Attribute::Arg(ArgMetadata {
+                position: 0,
+                name: "repo?".to_string(),
+                arg_type: ArgType::String,
+                description: "Optional repo name".to_string(),
+            }),
+        ];
+
+        let params = vec![Parameter {
+            name: "repo".to_string(),
+            param_type: ArgType::String,
+            default_value: None,
+            is_rest: false,
+        }];
+
+        let tool = extract_function_metadata("get_info", &attributes, &params).unwrap();
+
+        // Description should be picked up even with `?` in @arg name
+        let repo_param = tool.input_schema.properties.get("repo").unwrap();
+        assert_eq!(repo_param.description, "Optional repo name");
+    }
 
     #[test]
     fn test_get_builtin_tools() {

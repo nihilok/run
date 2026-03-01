@@ -230,3 +230,58 @@ build() {
     assert!(names.contains(&"deploy"));
     assert!(names.contains(&"scale"));
 }
+
+#[test]
+fn test_mcp_inspect_optional_arg_suffix() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r"
+# @desc Clone a repository
+# @arg 1:url string Repository URL
+# @arg 2:branch? string Optional branch name
+clone() {
+    git clone $1 ${2:+-b $2}
+}
+",
+    );
+
+    let output = test_command(&binary)
+        .arg("--inspect")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+    let tools = json["tools"].as_array().expect("tools should be array");
+    let tool = &tools[0];
+
+    let properties = &tool["inputSchema"]["properties"];
+
+    // `?` must be stripped from the property key
+    assert!(properties["url"].is_object(), "url property should exist");
+    assert!(
+        properties["branch"].is_object(),
+        "branch property should exist (without ?)"
+    );
+    assert!(
+        properties["branch?"].is_null(),
+        "branch? (with ?) must not appear as a property key"
+    );
+
+    // Only url should be required; branch (optional) must not be required
+    let required = tool["inputSchema"]["required"]
+        .as_array()
+        .expect("required should be array");
+    assert_eq!(required.len(), 1);
+    assert_eq!(required[0], "url");
+    assert!(
+        !required.contains(&serde_json::json!("branch")),
+        "optional arg must not be in required"
+    );
+}
