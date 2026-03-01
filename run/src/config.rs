@@ -1,6 +1,7 @@
 //! Configuration file (Runfile) discovery and loading.
 
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -130,7 +131,12 @@ pub fn load_from_path(path: &Path) -> Option<String> {
     };
 
     if runfile_path.exists() {
-        fs::read_to_string(&runfile_path).ok()
+        if let Ok(content) = fs::read_to_string(&runfile_path) {
+            let base_dir = runfile_path.parent().unwrap_or_else(|| Path::new("."));
+            Some(expand_source_directives(&content, base_dir))
+        } else {
+            None
+        }
     } else {
         None
     }
@@ -157,11 +163,10 @@ pub fn load_config() -> Option<String> {
     // Search upwards from current directory
     loop {
         let runfile_path = current_dir.join("Runfile");
-        if runfile_path.exists() {
-            // File exists, read it (even if empty)
-            if let Ok(content) = fs::read_to_string(&runfile_path) {
-                return Some(content);
-            }
+        if runfile_path.exists()
+            && let Some(content) = load_from_path(&runfile_path)
+        {
+            return Some(content);
         }
 
         // Check if we've reached the home directory or root
@@ -193,12 +198,150 @@ pub fn load_home_runfile() -> Option<String> {
     if let Some(home) = get_home_dir() {
         let runfile_path = home.join(".runfile");
         if runfile_path.exists()
-            && let Ok(content) = fs::read_to_string(runfile_path)
+            && let Ok(content) = fs::read_to_string(&runfile_path)
         {
-            return Some(content);
+            return Some(expand_source_directives(&content, &home));
         }
     }
     None
+}
+
+/// Expand `source <path>` directives found at the top level of Runfile content.
+///
+/// Only lines at brace-depth 0 (outside any function body) that begin with `source ` are
+/// treated as source directives.  All other occurrences of `source` (e.g. inside `{ … }`
+/// blocks) are left untouched so they pass through to the shell interpreter unchanged.
+///
+/// Paths are resolved relative to `base_dir`.  Circular sources are silently skipped.
+#[must_use]
+pub fn expand_source_directives(content: &str, base_dir: &Path) -> String {
+    let mut seen = HashSet::new();
+    expand_sources_inner(content, base_dir, &mut seen)
+}
+
+fn expand_sources_inner(content: &str, base_dir: &Path, seen: &mut HashSet<PathBuf>) -> String {
+    let mut result = String::new();
+    let mut brace_depth: usize = 0;
+
+    for line in content.lines() {
+        if brace_depth == 0
+            && let Some(path_str) = top_level_source_path(line)
+        {
+            let source_path = resolve_source_path(path_str, base_dir);
+            if !seen.contains(&source_path) {
+                seen.insert(source_path.clone());
+                match fs::read_to_string(&source_path) {
+                    Ok(source_content) => {
+                        let source_base = source_path
+                            .parent()
+                            .filter(|p| !p.as_os_str().is_empty())
+                            .unwrap_or(base_dir);
+                        let expanded = expand_sources_inner(&source_content, source_base, seen);
+                        result.push_str(&expanded);
+                        if !expanded.ends_with('\n') {
+                            result.push('\n');
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "run: warning: could not source '{}': {}",
+                            source_path.display(),
+                            e
+                        );
+                    }
+                }
+            }
+            continue; // consume the source line itself
+        }
+
+        let (opens, closes) = count_unquoted_braces(line);
+        brace_depth = brace_depth.saturating_add(opens).saturating_sub(closes);
+        result.push_str(line);
+        result.push('\n');
+    }
+
+    // Preserve original trailing-newline behaviour
+    if !content.ends_with('\n') && result.ends_with('\n') {
+        result.pop();
+    }
+
+    result
+}
+
+/// If `line` is a top-level `source <path>` directive, return the path portion.
+fn top_level_source_path(line: &str) -> Option<&str> {
+    let trimmed = line.trim();
+    let after = trimmed.strip_prefix("source ")?;
+    let path = after.trim();
+    if path.is_empty() {
+        return None;
+    }
+    // Strip surrounding quotes when present (require at least 2 chars for open+close)
+    Some(
+        if path.len() >= 2
+            && ((path.starts_with('"') && path.ends_with('"'))
+                || (path.starts_with('\'') && path.ends_with('\'')))
+        {
+            &path[1..path.len() - 1]
+        } else {
+            path
+        },
+    )
+}
+
+/// Resolve a (possibly relative or `~/`-prefixed) path against a base directory.
+fn resolve_source_path(path_str: &str, base_dir: &Path) -> PathBuf {
+    let expanded = if let Some(suffix) = path_str.strip_prefix("~/") {
+        get_home_dir().map_or_else(|| PathBuf::from(path_str), |home| home.join(suffix))
+    } else {
+        PathBuf::from(path_str)
+    };
+
+    if expanded.is_absolute() {
+        expanded
+    } else {
+        base_dir.join(expanded)
+    }
+}
+
+/// Count `{` and `}` characters in `line` that appear outside quoted strings and comments.
+fn count_unquoted_braces(line: &str) -> (usize, usize) {
+    let mut opens = 0usize;
+    let mut closes = 0usize;
+    let mut in_double = false;
+    let mut in_single = false;
+    let mut chars = line.chars();
+
+    while let Some(ch) = chars.next() {
+        if in_double {
+            match ch {
+                '\\' => {
+                    chars.next();
+                } // skip escaped char
+                '"' => in_double = false,
+                _ => {}
+            }
+        } else if in_single {
+            match ch {
+                '\\' => {
+                    chars.next();
+                } // skip escaped char
+                '\'' => in_single = false,
+                _ => {}
+            }
+        } else {
+            match ch {
+                '#' => break, // rest of line is a comment
+                '"' => in_double = true,
+                '\'' => in_single = true,
+                '{' => opens += 1,
+                '}' => closes += 1,
+                _ => {}
+            }
+        }
+    }
+
+    (opens, closes)
 }
 
 /// Error message when no Runfile is found.
@@ -361,7 +504,7 @@ pub fn load_merged_config() -> Option<(String, MergeMetadata)> {
 
     // Load project runfile
     let project_content = if let Some(project_path) = find_project_runfile_path() {
-        fs::read_to_string(&project_path).ok()
+        load_from_path(&project_path)
     } else {
         None
     };
@@ -583,5 +726,101 @@ mod tests {
     #[test]
     fn test_no_runfile_error_message() {
         assert!(NO_RUNFILE_ERROR.contains("No Runfile found"));
+    }
+
+    // ── source directive unit tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_expand_source_directives_no_directives() {
+        let content = "greet() echo hello\nbuild() cargo build\n";
+        let result = expand_source_directives(content, Path::new("/tmp"));
+        assert_eq!(result, content);
+    }
+
+    #[test]
+    fn test_expand_source_directives_with_source() {
+        let temp = tempfile::tempdir().expect("Failed to create temp dir");
+        let lib = temp.path().join("lib.run");
+        fs::write(&lib, "helper() echo hi\n").expect("Failed to write");
+
+        let content = format!("source {}\nmain() echo main\n", lib.display());
+        let result = expand_source_directives(&content, temp.path());
+
+        assert!(result.contains("helper() echo hi"));
+        assert!(result.contains("main() echo main"));
+        // The `source` line itself should be removed
+        assert!(!result.contains("source "));
+    }
+
+    #[test]
+    fn test_expand_source_directives_skips_inside_block() {
+        let temp = tempfile::tempdir().expect("Failed to create temp dir");
+        let lib = temp.path().join("inner.run");
+        fs::write(&lib, "inner_fn() echo inner\n").expect("Failed to write");
+
+        let content = format!(
+            "outer() {{\n    source {lib}\n    echo inside\n}}\n",
+            lib = lib.display()
+        );
+        let result = expand_source_directives(&content, temp.path());
+
+        // The source line inside the block should remain verbatim
+        assert!(result.contains(&format!("source {}", lib.display())));
+        // inner_fn should NOT have been inlined
+        assert!(!result.contains("inner_fn"));
+    }
+
+    #[test]
+    fn test_expand_source_directives_missing_file_skipped() {
+        let content = "source /no/such/file.run\nok() echo ok\n";
+        let result = expand_source_directives(content, Path::new("/tmp"));
+        // Missing file: source line is consumed but content remains
+        assert!(result.contains("ok() echo ok"));
+        assert!(!result.contains("source "));
+    }
+
+    #[test]
+    fn test_expand_source_directives_circular() {
+        let temp = tempfile::tempdir().expect("Failed to create temp dir");
+        let runfile = temp.path().join("Runfile");
+        let other = temp.path().join("other.run");
+
+        fs::write(
+            &other,
+            format!("source {}\nother_fn() echo other\n", runfile.display()),
+        )
+        .expect("Failed to write");
+        fs::write(
+            &runfile,
+            format!("source {}\nmain_fn() echo main\n", other.display()),
+        )
+        .expect("Failed to write");
+
+        let content = fs::read_to_string(&runfile).expect("Failed to read");
+        // Should not loop infinitely; the circular source is skipped
+        let result = expand_source_directives(&content, temp.path());
+        assert!(result.contains("main_fn"));
+        assert!(result.contains("other_fn"));
+    }
+
+    #[test]
+    fn test_count_unquoted_braces_simple() {
+        assert_eq!(count_unquoted_braces("{"), (1, 0));
+        assert_eq!(count_unquoted_braces("}"), (0, 1));
+        assert_eq!(count_unquoted_braces("{ }"), (1, 1));
+    }
+
+    #[test]
+    fn test_count_unquoted_braces_in_strings() {
+        // Braces inside quoted strings should not be counted
+        assert_eq!(count_unquoted_braces(r#"echo "{""#), (0, 0));
+        assert_eq!(count_unquoted_braces("echo '{'"), (0, 0));
+    }
+
+    #[test]
+    fn test_count_unquoted_braces_after_comment() {
+        // Braces after # are comments and should not be counted
+        assert_eq!(count_unquoted_braces("# {"), (0, 0));
+        assert_eq!(count_unquoted_braces("foo # {"), (0, 0));
     }
 }
