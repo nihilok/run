@@ -9,6 +9,9 @@ Quick lookups for attributes, environment variables, and discovery rules.
 - Platform branching: use separate `# @os` variants or branch inside the shell body (inline `@macos {}` style guards are not supported).
 - `@shell <interpreter>` — force an interpreter (`python3`, `node`, `pwsh`, `bash`, `sh`, etc.). Overrides any shebang.
 
+## Source directive
+- `source <path>` — merge functions from another file into the current Runfile. Paths are relative to the Runfile's directory, absolute, or `~/`-prefixed. Only recognised at the top level (not inside function bodies). See [Runfile syntax](./runfile-syntax.md#sourcing-other-files).
+
 ## Runfile discovery and precedence
 1. `--working-dir / --runfile` if provided (no merging).
 2. Otherwise, project `Runfile` is merged with global `~/.runfile` (project definitions override globals).

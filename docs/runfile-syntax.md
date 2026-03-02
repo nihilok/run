@@ -52,5 +52,30 @@ docker:logs(service = "app") docker compose logs -f $service
 
 Run as `run docker build` or `run docker:build`.
 
+## Sourcing other files
+
+The `source` directive merges functions from another file into the current Runfile:
+
+```bash
+source ./shared.run
+source ~/.runfiles/helpers.run
+```
+
+- Paths can be relative (resolved from the Runfile's directory), absolute, or use `~/` for the home directory.
+- Quoted paths are supported: `source "path with spaces.run"`.
+- Sourced files can themselves contain `source` directives (circular references are detected and skipped).
+- If a sourced file doesn't exist, a warning is printed to stderr and execution continues.
+- Functions defined later in the file override those from sourced files, so you can import a base set and selectively replace individual commands.
+- `source` directives inside function bodies are passed through to the shell interpreter as normal shell `source` commands—only top-level directives are expanded by `run`.
+
+```bash
+# Import shared helpers, override one locally
+source ./team-defaults.run
+
+deploy() {
+    echo "Custom deploy for this project"
+}
+```
+
 ## Comments and attributes
 Lines beginning with `#` can hold human comments or attributes (e.g., `# @desc`). Attributes adjust behavior and metadata; see [Attributes and interpreters](./attributes-and-interpreters.md).
