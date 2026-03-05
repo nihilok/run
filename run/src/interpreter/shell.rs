@@ -145,8 +145,11 @@ pub(super) fn execute_command_with_args(
             } else {
                 "powershell".to_string()
             }
+        } else if which::which("bash").is_ok() {
+            // Prefer bash over sh on Unix-like systems when available
+            "bash".to_string()
         } else {
-            // Default to sh on Unix-like systems
+            // Fall back to sh
             "sh".to_string()
         };
         (shell, "-c".to_string())
