@@ -36,6 +36,9 @@ pub struct Interpreter {
 
 impl Default for Interpreter {
     fn default() -> Self {
+        let (_, _, default_interpreter_name) =
+            // ignored: (shell_command, shell_arg)
+            shell::interpreter_to_shell_args(&TranspilerInterpreter::default());
         Self {
             variables: HashMap::new(),
             functions: HashMap::new(),
@@ -44,7 +47,7 @@ impl Default for Interpreter {
             function_metadata: HashMap::new(),
             output_mode: OutputMode::default(),
             captured_outputs: Vec::new(),
-            last_interpreter_name: "sh".to_string(),
+            last_interpreter_name: default_interpreter_name.to_string(),
         }
     }
 }
@@ -868,7 +871,20 @@ mod tests {
     fn test_interpreter_new_default() {
         let interp = Interpreter::new();
         assert_eq!(interp.output_mode(), OutputMode::Stream);
-        assert_eq!(interp.last_interpreter(), "sh");
+        // The default interpreter name depends on what is available on the current platform;
+        // it should be "bash" if bash is installed, otherwise "sh" (or "pwsh" on Windows).
+        let expected = if cfg!(target_os = "windows") {
+            if which::which("pwsh").is_ok() {
+                "pwsh"
+            } else {
+                "powershell"
+            }
+        } else if which::which("bash").is_ok() {
+            "bash"
+        } else {
+            "sh"
+        };
+        assert_eq!(interp.last_interpreter(), expected);
         assert!(interp.get_simple_functions().is_empty());
         assert!(interp.get_block_functions().is_empty());
         assert!(interp.get_variables().is_empty());

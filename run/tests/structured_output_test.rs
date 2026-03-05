@@ -36,7 +36,13 @@ test_func() {
 
     // Check structure
     assert_eq!(json["context"]["function_name"], "test_func");
-    assert_eq!(json["context"]["interpreter"], "sh");
+    // The default interpreter is bash when available, otherwise sh
+    let expected_interp = if which::which("bash").is_ok() {
+        "bash"
+    } else {
+        "sh"
+    };
+    assert_eq!(json["context"]["interpreter"], expected_interp);
     assert_eq!(json["success"], true);
     assert!(json["outputs"].is_array());
     assert_eq!(json["outputs"].as_array().unwrap().len(), 1);

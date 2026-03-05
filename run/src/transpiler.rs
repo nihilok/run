@@ -1,5 +1,6 @@
 // Transpiler for converting Runfile functions to shell syntax
 use crate::ast::ShellType;
+use which::which;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Interpreter {
@@ -13,15 +14,22 @@ pub enum Interpreter {
 }
 
 impl Interpreter {
-    /// Check if this interpreter is compatible with another for function composition
+    /// Check if this interpreter is compatible with another for function composition.
+    ///
+    /// Compatibility is asymmetric for `sh`/`bash`: bash is a superset of sh and can
+    /// run sh code, but sh (e.g. dash on Ubuntu) cannot run bash-specific syntax.
+    ///
+    /// - `bash.is_compatible_with(sh)` → `true`
+    /// - `sh.is_compatible_with(bash)` → `false`
     #[must_use]
     pub fn is_compatible_with(&self, other: &Interpreter) -> bool {
         matches!(
             (self, other),
-            (
-                Interpreter::Sh | Interpreter::Bash,
-                Interpreter::Sh | Interpreter::Bash
-            ) | (Interpreter::Pwsh, Interpreter::Pwsh)
+            // bash is a superset: it can run both bash and sh code
+            (Interpreter::Bash, Interpreter::Sh | Interpreter::Bash)
+                // sh can only run sh code (not bash-specific syntax)
+                | (Interpreter::Sh, Interpreter::Sh)
+                | (Interpreter::Pwsh, Interpreter::Pwsh)
                 | (
                     Interpreter::Python | Interpreter::Python3,
                     Interpreter::Python | Interpreter::Python3
@@ -50,6 +58,8 @@ impl Default for Interpreter {
     fn default() -> Self {
         if cfg!(target_os = "windows") {
             Interpreter::Pwsh
+        } else if which("bash").is_ok() {
+            Interpreter::Bash
         } else {
             Interpreter::Sh
         }
@@ -341,8 +351,11 @@ mod tests {
         let sh = Interpreter::Sh;
         let bash = Interpreter::Bash;
 
-        assert!(sh.is_compatible_with(&bash));
+        // bash is a superset of sh: it can run sh code
         assert!(bash.is_compatible_with(&sh));
+        // sh cannot run bash-specific syntax
+        assert!(!sh.is_compatible_with(&bash));
+        // same-interpreter pairs are always compatible
         assert!(sh.is_compatible_with(&sh));
         assert!(bash.is_compatible_with(&bash));
     }
