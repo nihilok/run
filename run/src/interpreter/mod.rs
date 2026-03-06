@@ -32,6 +32,8 @@ pub struct Interpreter {
     captured_outputs: Vec<CommandOutput>,
     /// Last interpreter used (for structured output context)
     last_interpreter_name: String,
+    /// When true, print the generated script instead of executing
+    show_script: bool,
 }
 
 impl Default for Interpreter {
@@ -48,8 +50,38 @@ impl Default for Interpreter {
             output_mode: OutputMode::default(),
             captured_outputs: Vec::new(),
             last_interpreter_name: default_interpreter_name.to_string(),
+            show_script: false,
         }
     }
+}
+
+/// Replace `$name` or `$N` in text only when the next character is NOT
+/// a valid identifier character (a-z, A-Z, 0-9, _). This prevents
+/// `$env` from matching inside `$env_config`.
+fn replace_var_word_boundary(text: &str, pattern: &str, replacement: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut remaining = text;
+
+    while let Some(pos) = remaining.find(pattern) {
+        let after = pos + pattern.len();
+        // Check if the next character continues a variable name
+        let next_char = remaining.as_bytes().get(after).copied();
+        let is_word_char = next_char.is_some_and(|c| c.is_ascii_alphanumeric() || c == b'_');
+
+        if is_word_char {
+            // Not a word boundary — skip this match
+            result.push_str(&remaining[..after]);
+            remaining = &remaining[after..];
+        } else {
+            // Word boundary — do the replacement
+            result.push_str(&remaining[..pos]);
+            result.push_str(replacement);
+            remaining = &remaining[after..];
+        }
+    }
+
+    result.push_str(remaining);
+    result
 }
 
 /// Shell-quote a slice of arguments so each remains a separate word when
@@ -78,6 +110,11 @@ impl Interpreter {
     /// Set the output capture mode
     pub fn set_output_mode(&mut self, mode: OutputMode) {
         self.output_mode = mode;
+    }
+
+    /// Enable show-script mode (print script without executing)
+    pub fn set_show_script(&mut self, show: bool) {
+        self.show_script = show;
     }
 
     /// Get the current output mode
@@ -424,7 +461,8 @@ impl Interpreter {
                 } else {
                     String::new()
                 };
-                result = result.replace(&format!("${}", param.name), &rest_args);
+                result =
+                    replace_var_word_boundary(&result, &format!("${}", param.name), &rest_args);
                 result = result.replace(&format!("${{{}}}", param.name), &rest_args);
                 // Also support "$@" and $@ for rest parameters
                 result = result.replace("\"$@\"", &rest_args);
@@ -439,10 +477,11 @@ impl Interpreter {
                     ""
                 };
 
-                // Replace both $name and ${name} and $N (for backward compatibility)
-                result = result.replace(&format!("${}", param.name), value);
+                // Replace $name with word-boundary check (avoids $env matching $env_config)
+                // ${name} is always safe (braces delimit the name)
+                result = replace_var_word_boundary(&result, &format!("${}", param.name), value);
                 result = result.replace(&format!("${{{}}}", param.name), value);
-                result = result.replace(&format!("${}", i + 1), value); // Also support positional
+                result = replace_var_word_boundary(&result, &format!("${}", i + 1), value);
             }
         }
 
@@ -575,25 +614,49 @@ impl Interpreter {
             &resolve_interpreter,
         );
 
+        // Get params from metadata for building locals
+        let params = self
+            .function_metadata
+            .get(target_name)
+            .map_or(&[] as &[crate::ast::Parameter], |m| m.params.as_slice());
+
         // Combine preambles and body — wrap in function for shell interpreters
         // so `return` works in the body
         let is_shell = matches!(
             target_interpreter,
             TranspilerInterpreter::Sh | TranspilerInterpreter::Bash | TranspilerInterpreter::Pwsh
         );
-        let combined_script =
-            execution::build_combined_script(var_preamble, func_preamble, rewritten_body, is_shell);
 
-        // Get params from metadata for substitution
-        let params = self
-            .function_metadata
-            .get(target_name)
-            .map_or(&[] as &[crate::ast::Parameter], |m| m.params.as_slice());
+        // For shell functions with named params, use local variable assignment
+        // instead of textual substitution — lets bash handle expansion natively
+        let param_locals = if is_shell {
+            preamble::build_shell_param_locals(params)
+        } else {
+            String::new()
+        };
 
-        // Substitute args in both the combined script (for execution) and the original command (for display)
-        let substituted = self.substitute_args_with_params(&combined_script, args, params);
-        let display_cmd = self.substitute_args_with_params(command_template, args, params);
-        self.execute_with_mode(&substituted, &target_interpreter, Some(&display_cmd))
+        let combined_script = execution::build_combined_script(
+            var_preamble,
+            func_preamble,
+            rewritten_body,
+            is_shell,
+            &param_locals,
+        );
+
+        if is_shell && !params.is_empty() {
+            // Shell functions with named params: pass args natively via positional parameters
+            self.execute_with_mode_args(
+                &combined_script,
+                &target_interpreter,
+                Some(command_template),
+                args,
+            )
+        } else {
+            // No params or non-shell: use textual substitution as before
+            let substituted = self.substitute_args_with_params(&combined_script, args, params);
+            let display_cmd = self.substitute_args_with_params(command_template, args, params);
+            self.execute_with_mode(&substituted, &target_interpreter, Some(&display_cmd))
+        }
     }
 
     fn execute_block_commands(
@@ -674,25 +737,61 @@ impl Interpreter {
             &resolve_interpreter,
         );
 
-        // Combine preambles and body — always wrap for shell (polyglot returns early above)
-        let combined_script =
-            execution::build_combined_script(var_preamble, func_preamble, rewritten_body, true);
+        // For shell functions with named params, use local variable assignment
+        let param_locals = preamble::build_shell_param_locals(params);
 
-        // Substitute args in both the combined script (for execution) and the original body (for display)
-        let substituted = self.substitute_args_with_params(&combined_script, args, params);
-        let display_cmd = self.substitute_args_with_params(&full_script, args, params);
-        self.execute_with_mode(&substituted, &target_interpreter, Some(&display_cmd))
+        // Combine preambles and body — always wrap for shell (polyglot returns early above)
+        let combined_script = execution::build_combined_script(
+            var_preamble,
+            func_preamble,
+            rewritten_body,
+            true,
+            &param_locals,
+        );
+
+        if params.is_empty() {
+            // No params: use textual substitution as before
+            let substituted = self.substitute_args_with_params(&combined_script, args, params);
+            let display_cmd = self.substitute_args_with_params(&full_script, args, params);
+            self.execute_with_mode(&substituted, &target_interpreter, Some(&display_cmd))
+        } else {
+            // Shell functions with named params: pass args natively via positional parameters
+            self.execute_with_mode_args(
+                &combined_script,
+                &target_interpreter,
+                Some(&full_script),
+                args,
+            )
+        }
     }
 
     /// Execute a command with the current output mode
     /// The `display_command` is shown in structured output instead of the full script (which may include preamble)
+    /// Optional `shell_args` are passed as positional parameters to the shell (for native param handling)
     fn execute_with_mode(
         &mut self,
         script: &str,
         interpreter: &TranspilerInterpreter,
         display_command: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        self.execute_with_mode_args(script, interpreter, display_command, &[])
+    }
+
+    /// Execute a command with positional args passed natively to the shell
+    fn execute_with_mode_args(
+        &mut self,
+        script: &str,
+        interpreter: &TranspilerInterpreter,
+        display_command: Option<&str>,
+        shell_args: &[String],
+    ) -> Result<(), Box<dyn std::error::Error>> {
         use crate::ast::OutputMode;
+
+        // Show-script mode: print and return without executing
+        if self.show_script {
+            println!("{script}");
+            return Ok(());
+        }
 
         // Track the interpreter for structured output context
         let (shell_cmd, shell_arg, interpreter_name) =
@@ -701,25 +800,46 @@ impl Interpreter {
 
         match self.output_mode {
             OutputMode::Stream => {
-                // Stream mode: execute normally without capture
-                shell::execute_single_shell_invocation(script, interpreter)
+                // Stream mode: execute with optional positional args
+                shell::execute_single_shell_invocation_with_args(script, interpreter, shell_args)
             }
             OutputMode::Capture | OutputMode::Structured => {
                 // Capture mode: use the shell args we already have
-                self.execute_with_mode_custom(&shell_cmd, shell_arg, script, display_command)
+                self.execute_with_mode_custom_args(
+                    &shell_cmd,
+                    shell_arg,
+                    script,
+                    display_command,
+                    shell_args,
+                )
             }
         }
     }
 
-    /// Execute a command with custom shell and capture output
-    fn execute_with_mode_custom(
+    /// Execute a command with custom shell and capture output, with optional positional args
+    fn execute_with_mode_custom_args(
         &mut self,
         shell_cmd: &str,
         shell_arg: &str,
         script: &str,
         display_command: Option<&str>,
+        shell_args: &[String],
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let output = shell::execute_with_capture(script, shell_cmd, shell_arg, display_command)?;
+        let output = if shell_args.is_empty() {
+            shell::execute_with_capture(script, shell_cmd, shell_arg, display_command)?
+        } else {
+            // For shell -c with positional args: bash -c "script" bash arg1 arg2
+            // We prepend the interpreter name as $0
+            let mut args_with_dollar0 = vec![shell_cmd.to_string()];
+            args_with_dollar0.extend_from_slice(shell_args);
+            shell::execute_with_capture_and_args(
+                script,
+                shell_cmd,
+                shell_arg,
+                &args_with_dollar0,
+                display_command,
+            )?
+        };
 
         // Only print output in Capture mode (not Structured, where we format it later)
         if matches!(self.output_mode, crate::ast::OutputMode::Capture) {
@@ -768,6 +888,12 @@ impl Interpreter {
         args: &[String],
     ) -> Result<(), Box<dyn std::error::Error>> {
         use crate::ast::OutputMode;
+
+        // Show-script mode: print and return without executing
+        if self.show_script {
+            println!("{script}");
+            return Ok(());
+        }
 
         // Track the interpreter for structured output context
         let (shell_cmd, shell_arg, interpreter_name) =
@@ -826,6 +952,37 @@ mod tests {
     use crate::ast::{
         Attribute, CommandOutput, Expression, OutputMode, Parameter, Program, ShellType, Statement,
     };
+
+    #[test]
+    fn test_replace_var_word_boundary_basic() {
+        let result = replace_var_word_boundary("echo $env done", "$env", "prod");
+        assert_eq!(result, "echo prod done");
+    }
+
+    #[test]
+    fn test_replace_var_word_boundary_prevents_substring() {
+        // $env should NOT match inside $env_config
+        let result = replace_var_word_boundary("echo $env_config", "$env", "prod");
+        assert_eq!(result, "echo $env_config");
+    }
+
+    #[test]
+    fn test_replace_var_word_boundary_both_present() {
+        let result = replace_var_word_boundary("echo $env $env_config", "$env", "prod");
+        assert_eq!(result, "echo prod $env_config");
+    }
+
+    #[test]
+    fn test_replace_var_word_boundary_end_of_string() {
+        let result = replace_var_word_boundary("echo $env", "$env", "prod");
+        assert_eq!(result, "echo prod");
+    }
+
+    #[test]
+    fn test_replace_var_word_boundary_followed_by_punctuation() {
+        let result = replace_var_word_boundary("echo $env/$env.txt", "$env", "prod");
+        assert_eq!(result, "echo prod/prod.txt");
+    }
 
     #[test]
     fn test_shell_quote_args_empty_arg() {

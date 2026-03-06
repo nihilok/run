@@ -47,9 +47,14 @@ pub(super) fn build_combined_script(
     func_preamble: String,
     rewritten_body: String,
     wrap_in_function: bool,
+    param_locals: &str,
 ) -> String {
     let body = if wrap_in_function {
-        format!("__run__() {{\n{rewritten_body}\n}}\n__run__ \"$@\"")
+        if param_locals.is_empty() {
+            format!("__run__() {{\n{rewritten_body}\n}}\n__run__ \"$@\"")
+        } else {
+            format!("__run__() {{\n{param_locals}\n{rewritten_body}\n}}\n__run__ \"$@\"")
+        }
     } else {
         rewritten_body
     };
@@ -76,8 +81,13 @@ mod tests {
 
     #[test]
     fn test_build_combined_script_no_preambles() {
-        let result =
-            build_combined_script(String::new(), String::new(), "echo hello".to_string(), true);
+        let result = build_combined_script(
+            String::new(),
+            String::new(),
+            "echo hello".to_string(),
+            true,
+            "",
+        );
         assert_eq!(result, "__run__() {\necho hello\n}\n__run__ \"$@\"");
     }
 
@@ -88,6 +98,7 @@ mod tests {
             String::new(),
             "echo $MY_VAR".to_string(),
             true,
+            "",
         );
         assert_eq!(
             result,
@@ -102,6 +113,7 @@ mod tests {
             "helper() {\n    echo help\n}".to_string(),
             "helper".to_string(),
             true,
+            "",
         );
         assert_eq!(
             result,
@@ -116,6 +128,7 @@ mod tests {
             "fn() { echo; }".to_string(),
             "fn $VAR".to_string(),
             true,
+            "",
         );
         assert_eq!(
             result,
@@ -130,6 +143,7 @@ mod tests {
             String::new(),
             "if [ \"$1\" = \"fail\" ]; then\n    return 1\nfi\necho ok".to_string(),
             true,
+            "",
         );
         assert!(result.contains("__run__() {"));
         assert!(result.contains("return 1"));
@@ -143,9 +157,39 @@ mod tests {
             String::new(),
             "print(x)".to_string(),
             false,
+            "",
         );
         assert_eq!(result, "x = 42\nprint(x)");
         assert!(!result.contains("__run__"));
+    }
+
+    #[test]
+    fn test_build_combined_script_with_param_locals() {
+        let result = build_combined_script(
+            String::new(),
+            String::new(),
+            "echo $name".to_string(),
+            true,
+            "local name=\"$1\"",
+        );
+        assert_eq!(
+            result,
+            "__run__() {\nlocal name=\"$1\"\necho $name\n}\n__run__ \"$@\""
+        );
+    }
+
+    #[test]
+    fn test_build_combined_script_with_param_locals_and_preambles() {
+        let result = build_combined_script(
+            "VAR=\"x\"".to_string(),
+            String::new(),
+            "echo $name $VAR".to_string(),
+            true,
+            "local name=\"$1\"\nlocal version=\"${2:-latest}\"",
+        );
+        assert!(result.contains("local name=\"$1\""));
+        assert!(result.contains("local version=\"${2:-latest}\""));
+        assert!(result.contains("VAR=\"x\""));
     }
 
     #[test]

@@ -29,6 +29,7 @@ deploy(env: str, version = "latest") {
 }
 ```
 
+- Named parameters become `local` shell variables inside the function. All standard bash variable features (`${var:-default}`, single-quote protection, etc.) work as expected.
 - Parameters are positional; the order in the signature matches CLI arguments.
 - Defaults make parameters optional.
 - A rest parameter captures the remaining arguments:

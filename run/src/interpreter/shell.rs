@@ -89,16 +89,27 @@ pub(super) fn execute_with_capture_and_args(
     })
 }
 
-/// Execute a script in a single shell invocation
-pub(super) fn execute_single_shell_invocation(
+/// Execute a script in a single shell invocation with positional arguments.
+///
+/// For `bash -c "script" bash arg1 arg2`, bash sets `$0=bash`, `$1=arg1`, `$2=arg2`.
+/// This lets shell functions use `local name="$1"` to receive args natively.
+pub(super) fn execute_single_shell_invocation_with_args(
     script: &str,
     interpreter: &TranspilerInterpreter,
+    args: &[String],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let (shell_cmd, shell_arg, _) = interpreter_to_shell_args(interpreter);
+    let (shell_cmd, shell_arg, interpreter_name) = interpreter_to_shell_args(interpreter);
 
-    let status = Command::new(&shell_cmd)
-        .arg(shell_arg)
-        .arg(script)
+    let mut cmd = Command::new(&shell_cmd);
+    cmd.arg(shell_arg).arg(script);
+
+    if !args.is_empty() {
+        // $0 placeholder (convention: use the interpreter name)
+        cmd.arg(interpreter_name);
+        cmd.args(args);
+    }
+
+    let status = cmd
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .status()?;

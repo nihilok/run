@@ -4,7 +4,7 @@ Learn how variables are resolved when functions execute, including environment i
 
 ## Environment variables
 Functions inherit the caller environment. Two key variables affect `run` itself:
-- `RUN_SHELL` — override the default shell for execution. Defaults to `sh` on Unix/macOS, `pwsh` (or `powershell`) on Windows.
+- `RUN_SHELL` — override the default shell for execution. Defaults to `bash` on Unix/macOS (falls back to `sh` if bash is not available), `pwsh` (or `powershell`) on Windows.
 - `RUN_MCP_OUTPUT_DIR` — directory for MCP output files when responses are truncated.
 
 ## Runfile scope

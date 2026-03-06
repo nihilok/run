@@ -14,6 +14,7 @@ const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[command(name = "run")]
 #[command(version = PKG_VERSION)]
 #[command(about = "A simple scripting language for CLI automation", long_about = None)]
+#[allow(clippy::struct_excessive_bools)]
 struct Cli {
     /// Script file to execute, or function name to call
     #[arg(value_name = "FILE_OR_FUNCTION")]
@@ -56,6 +57,10 @@ struct Cli {
     /// Working directory containing the Runfile (alias: --runfile)
     #[arg(long = "working-dir", alias = "runfile", value_name = "PATH")]
     working_dir: Option<PathBuf>,
+
+    /// Show the generated shell script without executing
+    #[arg(long)]
+    show_script: bool,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -167,7 +172,12 @@ pub fn run_cli() {
                 executor::execute_file(&path);
             } else {
                 // Function call mode: load config and call function with args
-                executor::run_function_call(&first_arg, &cli.args, cli.output_format);
+                executor::run_function_call(
+                    &first_arg,
+                    &cli.args,
+                    cli.output_format,
+                    cli.show_script,
+                );
             }
         }
         None => {

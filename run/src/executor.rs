@@ -46,7 +46,12 @@ pub fn execute_file(path: &PathBuf) {
 /// * `function_name` - The function to call (may be nested, e.g. "docker shell").
 /// * `args` - Arguments to pass to the function.
 /// * `output_format` - How to format the output.
-pub fn run_function_call(function_name: &str, args: &[String], output_format: OutputFormatArg) {
+pub fn run_function_call(
+    function_name: &str,
+    args: &[String],
+    output_format: OutputFormatArg,
+    show_script: bool,
+) {
     let Some((config_content, _metadata)) = config::load_merged_config() else {
         eprintln!("{}", config::NO_RUNFILE_ERROR);
         std::process::exit(1);
@@ -54,6 +59,7 @@ pub fn run_function_call(function_name: &str, args: &[String], output_format: Ou
 
     let mut interpreter = interpreter::Interpreter::new();
     interpreter.set_output_mode(output_format.mode());
+    interpreter.set_show_script(show_script);
 
     match parser::parse_script(&config_content) {
         Ok(program) => {

@@ -249,6 +249,51 @@ pub(super) fn build_function_preamble(
     preamble
 }
 
+/// Build `local` declarations for shell function parameters.
+///
+/// For a function `deploy(env, version = "latest", ...args)` called with N args:
+/// ```bash
+/// local env="$1"
+/// local version="${2:-latest}"
+/// shift 2
+/// local args=("$@")
+/// ```
+///
+/// Returns empty string if params is empty (backward compat: `$1`/`$@` still work natively).
+pub(super) fn build_shell_param_locals(params: &[crate::ast::Parameter]) -> String {
+    if params.is_empty() {
+        return String::new();
+    }
+
+    let mut lines = Vec::new();
+    let mut positional_count = 0;
+
+    for (i, param) in params.iter().enumerate() {
+        if param.is_rest {
+            // Rest param: shift past regular params, then capture remaining args
+            if positional_count > 0 {
+                lines.push(format!("shift {positional_count}"));
+            }
+            lines.push(format!("local {}=\"$*\"", param.name));
+        } else {
+            positional_count = i + 1;
+            if let Some(default) = &param.default_value {
+                let escaped = escape_shell_value(default);
+                lines.push(format!(
+                    "local {}=\"${{{}:-{}}}\"",
+                    param.name,
+                    i + 1,
+                    escaped
+                ));
+            } else {
+                lines.push(format!("local {}=\"${}\"", param.name, i + 1));
+            }
+        }
+    }
+
+    lines.join("\n")
+}
+
 /// Build a preamble that declares named variables from function parameters
 /// for polyglot scripts (Python, Node.js, Ruby).
 ///
@@ -896,6 +941,59 @@ mod tests {
             default_value: default.map(String::from),
             is_rest: false,
         }
+    }
+
+    #[test]
+    fn test_shell_param_locals_empty() {
+        assert_eq!(build_shell_param_locals(&[]), "");
+    }
+
+    #[test]
+    fn test_shell_param_locals_required_param() {
+        let params = vec![make_param("name", None, false)];
+        let result = build_shell_param_locals(&params);
+        assert_eq!(result, "local name=\"$1\"");
+    }
+
+    #[test]
+    fn test_shell_param_locals_with_default() {
+        let params = vec![make_param("version", Some("latest"), false)];
+        let result = build_shell_param_locals(&params);
+        assert_eq!(result, "local version=\"${1:-latest}\"");
+    }
+
+    #[test]
+    fn test_shell_param_locals_multiple_params() {
+        let params = vec![
+            make_param("env", None, false),
+            make_param("version", Some("latest"), false),
+        ];
+        let result = build_shell_param_locals(&params);
+        assert_eq!(result, "local env=\"$1\"\nlocal version=\"${2:-latest}\"");
+    }
+
+    #[test]
+    fn test_shell_param_locals_rest_param() {
+        let params = vec![
+            make_param("name", None, false),
+            make_param("args", None, true),
+        ];
+        let result = build_shell_param_locals(&params);
+        assert_eq!(result, "local name=\"$1\"\nshift 1\nlocal args=\"$*\"");
+    }
+
+    #[test]
+    fn test_shell_param_locals_rest_only() {
+        let params = vec![make_param("args", None, true)];
+        let result = build_shell_param_locals(&params);
+        assert_eq!(result, "local args=\"$*\"");
+    }
+
+    #[test]
+    fn test_shell_param_locals_escapes_default() {
+        let params = vec![make_param("msg", Some("hello \"world\""), false)];
+        let result = build_shell_param_locals(&params);
+        assert!(result.contains("hello \\\"world\\\""));
     }
 
     #[test]
