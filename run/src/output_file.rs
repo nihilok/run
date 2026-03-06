@@ -63,7 +63,9 @@ pub fn process_output_for_mcp(
     fs::create_dir_all(&output_dir)?;
 
     // Use function name as prefix when available, fallback to "run-output"
-    let prefix = config::get_mcp_function_name().unwrap_or_else(|| "run-output".to_string());
+    // Replace colons with hyphens for Windows compatibility
+    let prefix = config::get_mcp_function_name()
+        .map_or_else(|| "run-output".to_string(), |n| n.replace(':', "__"));
     let file_path = output_dir.join(format!(
         "{prefix}-{timestamp}-{stream_label}-{sequence}.txt"
     ));
