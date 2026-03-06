@@ -439,6 +439,17 @@ mod tests {
         assert_eq!(server_info["name"], "run");
         // Version should be non-empty
         assert!(!server_info["version"].as_str().unwrap().is_empty());
+
+        // instructions field must be present and mention Runfile
+        let instructions = value["instructions"].as_str().unwrap();
+        assert!(
+            instructions.contains("Runfile"),
+            "instructions should mention Runfile: {instructions}"
+        );
+        assert!(
+            instructions.contains("run_docs"),
+            "instructions should mention run_docs: {instructions}"
+        );
     }
 
     #[test]
