@@ -33,6 +33,68 @@ pub struct Tool {
 
 pub const TOOL_SET_CWD: &str = "set_cwd";
 pub const TOOL_GET_CWD: &str = "get_cwd";
+pub const TOOL_RUN_DOCS: &str = "run_docs";
+
+/// Embedded documentation topics, keyed by slug.
+pub const DOCS: &[(&str, &str, &str)] = &[
+    (
+        "getting-started",
+        "Getting started with run",
+        include_str!("../../../docs/getting-started.md"),
+    ),
+    (
+        "runfile-syntax",
+        "Runfile syntax reference",
+        include_str!("../../../docs/runfile-syntax.md"),
+    ),
+    (
+        "arguments",
+        "Function arguments and parameters",
+        include_str!("../../../docs/arguments.md"),
+    ),
+    (
+        "variables",
+        "Variables",
+        include_str!("../../../docs/variables.md"),
+    ),
+    (
+        "attributes-and-interpreters",
+        "Attributes and interpreters (@shell, @os, @desc)",
+        include_str!("../../../docs/attributes-and-interpreters.md"),
+    ),
+    (
+        "command-composition",
+        "Command composition and piping",
+        include_str!("../../../docs/command-composition.md"),
+    ),
+    (
+        "polyglot-commands",
+        "Polyglot commands (Python, Node, Ruby)",
+        include_str!("../../../docs/polyglot-commands.md"),
+    ),
+    (
+        "mcp",
+        "MCP integration",
+        include_str!("../../../docs/mcp.md"),
+    ),
+    ("cli", "CLI reference", include_str!("../../../docs/cli.md")),
+    (
+        "bash-differences",
+        "Differences from plain bash",
+        include_str!("../../../docs/bash-differences.md"),
+    ),
+    (
+        "recipes",
+        "Recipes and examples",
+        include_str!("../../../docs/recipes.md"),
+    ),
+    ("faq", "FAQ", include_str!("../../../docs/faq.md")),
+    (
+        "reference",
+        "Full reference",
+        include_str!("../../../docs/reference.md"),
+    ),
+];
 
 /// Root structure for inspect output
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,6 +133,32 @@ pub fn get_builtin_tools() -> Vec<Tool> {
         input_schema: InputSchema {
             schema_type: "object".to_string(),
             properties: HashMap::new(),
+            required: Vec::new(),
+        },
+    });
+
+    // run_docs
+    let topic_list: Vec<String> = DOCS.iter().map(|(slug, _, _)| slug.to_string()).collect();
+    let mut run_docs_props = HashMap::new();
+    run_docs_props.insert(
+        "topic".to_string(),
+        ParameterSchema {
+            param_type: "string".to_string(),
+            description: format!(
+                "Documentation topic to fetch. Available topics: {}. \
+                 Omit or pass \"index\" to list all topics.",
+                topic_list.join(", ")
+            ),
+        },
+    );
+    tools.push(Tool {
+        name: TOOL_RUN_DOCS.to_string(),
+        description: "Fetch run/Runfile documentation. Use this to look up Runfile syntax, \
+                      parameter types, attributes (@desc, @arg, @shell, @os), and examples."
+            .to_string(),
+        input_schema: InputSchema {
+            schema_type: "object".to_string(),
+            properties: run_docs_props,
             required: Vec::new(),
         },
     });
@@ -253,7 +341,7 @@ pub fn inspect() -> Result<InspectOutput, String> {
 
     let program = parser::parse_script(&config_content).map_err(|e| {
         format!(
-            "Parse error: {}",
+            "Runfile syntax error: {}",
             parser::ParseError::from_pest(&e, &config_content, Some("Runfile"))
         )
     })?;
@@ -451,7 +539,7 @@ mod tests {
     #[test]
     fn test_get_builtin_tools() {
         let tools = get_builtin_tools();
-        assert_eq!(tools.len(), 2);
+        assert_eq!(tools.len(), 3);
 
         let set_cwd = tools
             .iter()
@@ -474,5 +562,14 @@ mod tests {
         assert_eq!(get_cwd.input_schema.schema_type, "object");
         assert!(get_cwd.input_schema.properties.is_empty());
         assert!(get_cwd.input_schema.required.is_empty());
+
+        let run_docs = tools
+            .iter()
+            .find(|t| t.name == TOOL_RUN_DOCS)
+            .expect("run_docs tool should exist");
+        assert!(run_docs.description.contains("Runfile"));
+        assert_eq!(run_docs.input_schema.schema_type, "object");
+        assert!(run_docs.input_schema.properties.contains_key("topic"));
+        assert!(run_docs.input_schema.required.is_empty());
     }
 }

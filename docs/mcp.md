@@ -33,9 +33,10 @@ Add an entry to your MCP config:
 ```
 
 ## Built-in MCP tools
-Alongside your Runfile functions, two helpers are always available:
+Alongside your Runfile functions, three helpers are always available:
 - `set_cwd(path: string)` — change the working directory for subsequent calls.
 - `get_cwd()` — report the current working directory.
+- `run_docs(topic?: string)` — fetch embedded Runfile/run documentation. Call with no arguments (or `"index"`) to list available topics, or pass a topic slug such as `"runfile-syntax"` or `"attributes-and-interpreters"` to retrieve the relevant docs.
 
 ## Output files and truncation
 - Long outputs are truncated in the MCP response to ~1200 characters (~300 tokens); the full text is saved to `.run-output/` next to your Runfile.

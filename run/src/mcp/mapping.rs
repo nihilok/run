@@ -20,7 +20,7 @@ pub(super) fn resolve_tool_name(sanitised_name: &str) -> Result<String, JsonRpcE
     let program = parser::parse_script(&config_content).map_err(|e| JsonRpcError {
         code: -32603,
         message: format!(
-            "Parse error: {}",
+            "Runfile syntax error: {}",
             parser::ParseError::from_pest(&e, &config_content, Some("Runfile"))
         ),
         data: None,
@@ -66,7 +66,7 @@ fn load_merged_program() -> Result<Program, JsonRpcError> {
     parser::parse_script(&config_content).map_err(|e| JsonRpcError {
         code: -32603,
         message: format!(
-            "Parse error: {}",
+            "Runfile syntax error: {}",
             parser::ParseError::from_pest(&e, &config_content, Some("Runfile"))
         ),
         data: None,

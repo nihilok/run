@@ -35,7 +35,7 @@ struct ServerInfo {
 
 /// Handle initialize request
 pub(super) fn handle_initialize(_params: Option<serde_json::Value>) -> serde_json::Value {
-    let response = serde_json::json!({
+    serde_json::json!({
         "protocolVersion": "2024-11-05",
         "capabilities": ServerCapabilities {
             tools: ToolsCapability {},
@@ -43,9 +43,15 @@ pub(super) fn handle_initialize(_params: Option<serde_json::Value>) -> serde_jso
         "serverInfo": ServerInfo {
             name: "run".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
-        }
-    });
-    response
+        },
+        "instructions": concat!(
+            "This is a `run` MCP server. `run` is a task-runner that reads a `Runfile` ",
+            "(similar to a Makefile) in the current working directory. ",
+            "Each function defined in the Runfile with a `# @desc` comment is exposed as a tool here. ",
+            "If a tool call fails with a Runfile syntax error, the Runfile itself needs to be fixed — ",
+            "use the `run_docs` tool to look up correct Runfile syntax, parameter types, and attributes."
+        )
+    })
 }
 
 /// Handle tools/list request
@@ -109,6 +115,73 @@ fn resolve_subprocess_runfile() -> Result<(PathBuf, Option<PathBuf>), JsonRpcErr
     }
 }
 
+/// Handle the built-in `run_docs` tool call.
+fn handle_run_docs(arguments: &serde_json::Value) -> serde_json::Value {
+    let topic = arguments
+        .get("topic")
+        .and_then(|v| v.as_str())
+        .unwrap_or("index");
+
+    let text = if topic == "index" || topic.is_empty() {
+        let index = super::tools::DOCS
+            .iter()
+            .map(|(slug, title, _)| format!("- **{slug}**: {title}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            "# run documentation topics\n\nCall `run_docs` with one of these topic slugs:\n\n{index}"
+        )
+    } else if let Some((_, _, content)) = super::tools::DOCS
+        .iter()
+        .find(|(slug, _, _)| *slug == topic)
+    {
+        content.to_string()
+    } else {
+        let available: Vec<&str> = super::tools::DOCS.iter().map(|(s, _, _)| *s).collect();
+        format!(
+            "Unknown topic `{topic}`. Available topics: {}",
+            available.join(", ")
+        )
+    };
+
+    serde_json::json!({
+        "content": [{ "type": "text", "text": text }],
+        "isError": false
+    })
+}
+
+fn handle_set_cwd(arguments: &serde_json::Value) -> Result<serde_json::Value, JsonRpcError> {
+    let path = arguments
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| JsonRpcError {
+            code: -32602,
+            message: "Missing 'path' argument".to_string(),
+            data: None,
+        })?;
+    std::env::set_current_dir(path).map_err(|e| JsonRpcError {
+        code: -32603,
+        message: format!("Failed to set CWD: {e}"),
+        data: None,
+    })?;
+    Ok(serde_json::json!({
+        "content": [{ "type": "text", "text": format!("Successfully changed working directory to {path}") }],
+        "isError": false
+    }))
+}
+
+fn handle_get_cwd() -> Result<serde_json::Value, JsonRpcError> {
+    let cwd = std::env::current_dir().map_err(|e| JsonRpcError {
+        code: -32603,
+        message: format!("Failed to get CWD: {e}"),
+        data: None,
+    })?;
+    Ok(serde_json::json!({
+        "content": [{ "type": "text", "text": cwd.display().to_string() }],
+        "isError": false
+    }))
+}
+
 /// Handle tools/call request
 pub(super) fn handle_tools_call(
     params: Option<serde_json::Value>,
@@ -132,43 +205,13 @@ pub(super) fn handle_tools_call(
     if tool_name == super::tools::TOOL_SET_CWD {
         let default_args = serde_json::json!({});
         let arguments = params_obj.get("arguments").unwrap_or(&default_args);
-
-        let path = arguments
-            .get("path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| JsonRpcError {
-                code: -32602,
-                message: "Missing 'path' argument".to_string(),
-                data: None,
-            })?;
-
-        std::env::set_current_dir(path).map_err(|e| JsonRpcError {
-            code: -32603,
-            message: format!("Failed to set CWD: {e}"),
-            data: None,
-        })?;
-
-        return Ok(serde_json::json!({
-            "content": [{
-                "type": "text",
-                "text": format!("Successfully changed working directory to {}", path)
-            }],
-            "isError": false
-        }));
+        return handle_set_cwd(arguments);
     } else if tool_name == super::tools::TOOL_GET_CWD {
-        let cwd = std::env::current_dir().map_err(|e| JsonRpcError {
-            code: -32603,
-            message: format!("Failed to get CWD: {e}"),
-            data: None,
-        })?;
-
-        return Ok(serde_json::json!({
-            "content": [{
-                "type": "text",
-                "text": cwd.display().to_string()
-            }],
-            "isError": false
-        }));
+        return handle_get_cwd();
+    } else if tool_name == super::tools::TOOL_RUN_DOCS {
+        let default_args = serde_json::json!({});
+        let arguments = params_obj.get("arguments").unwrap_or(&default_args);
+        return Ok(handle_run_docs(arguments));
     }
 
     // Resolve the sanitised tool name back to the original function name
