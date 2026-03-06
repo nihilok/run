@@ -99,10 +99,10 @@ pub fn transpile_to_pwsh(name: &str, body: &str, is_block: bool) -> String {
     }
 }
 
-/// sanitise function name by replacing colons with double underscores
+/// sanitise function name by replacing colons with double underscores and hyphens with underscores
 #[must_use]
 pub fn sanitise_name(name: &str) -> String {
-    name.replace(':', "__")
+    name.replace(':', "__").replace('-', "_")
 }
 
 /// Indent each line of text by the given prefix
@@ -310,6 +310,9 @@ mod tests {
         assert_eq!(sanitise_name("docker:build"), "docker__build");
         assert_eq!(sanitise_name("simple"), "simple");
         assert_eq!(sanitise_name("multi:level:name"), "multi__level__name");
+        assert_eq!(sanitise_name("my-func"), "my_func");
+        assert_eq!(sanitise_name("build-and-deploy"), "build_and_deploy");
+        assert_eq!(sanitise_name("ns:my-func"), "ns__my_func");
     }
 
     #[test]

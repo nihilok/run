@@ -307,7 +307,7 @@ pub(super) fn extract_function_metadata(
     // Only return a tool if it has a description
     description.map(|desc| {
         // Sanitise tool name: MCP spec requires [a-zA-Z0-9_-] only
-        // Replace colons with double underscores
+        // Replace colons with double underscores; hyphens are valid in MCP tool names so keep them
         let sanitised_name = name.replace(':', "__");
 
         Tool {

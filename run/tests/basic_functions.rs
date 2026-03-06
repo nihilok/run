@@ -518,3 +518,59 @@ check() {
 
     assert!(!output.status.success());
 }
+
+#[test]
+fn test_hyphenated_function_name_inline() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+my-func() echo "hyphen works"
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("my-func")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("hyphen works"));
+}
+
+#[test]
+fn test_hyphenated_function_name_block() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+build-project() {
+    echo "building project"
+}
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("build-project")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("building project"));
+}

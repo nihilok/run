@@ -78,8 +78,8 @@ argument_list = { argument ~ ("," ~ argument)* }
 // Assignment: var=value
 assignment = { identifier ~ "=" ~ value }
 
-// Identifier can contain letters, numbers, underscores, and colons
-identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ":")* }
+// Identifier can contain letters, numbers, underscores, colons, and hyphens (non-leading)
+identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_" | ":" | "-")* }
 
 // Command is everything after the function signature until end of line
 command = { command_part ~ (escaped_newline? ~ command_part)* }
