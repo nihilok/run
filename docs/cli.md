@@ -11,6 +11,7 @@ Most commands follow `run <function> [args...]`. The CLI also offers discovery, 
 ## Flags
 - `--list` — print all callable functions in the current Runfile.
 - `--inspect` — output the MCP JSON schema for all functions (descriptions, parameters, defaults).
+- `--show-script` — print the generated shell script that would be executed, without running it. Useful for debugging parameter injection and transpilation.
 - `--serve-mcp` — start the MCP server so AI agents can call your functions.
 - `--working-dir PATH` (alias `--runfile`) — point `run` at a specific project directory.
 - `--output-format stream|json|markdown` — choose how results are emitted; `json`/`markdown` use structured output when supported by the function.

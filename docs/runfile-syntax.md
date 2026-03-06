@@ -7,6 +7,7 @@ A `Runfile` is a catalog of callable functions. `run` looks for `Runfile` in the
   ```bash
   dev() cargo run
   fmt() cargo fmt
+  build-release() cargo build --release
   ```
 - **Block:** multi-line bodies without trailing backslashes
   ```bash
@@ -42,6 +43,9 @@ deploy(env: str, version = "latest") {
 - Named parameters work in polyglot functions too (Python, Node.js, Ruby). `run` auto-injects variables so you can use `name` directly instead of `sys.argv[1]`. See [Polyglot commands](./polyglot-commands.md).
 
 See [Arguments](./arguments.md) for mapping/defaults and [Variables](./variables.md) for scope and environment details.
+
+## Naming
+Function names must start with a letter or `_` and can contain letters, digits, `_`, `:`, or `-`. Hyphens are transparently mapped to underscores in the generated shell script, so `build-release` and `build_release` both work and call the same function.
 
 ## Namespaces
 Use colons to group related tasks. Invoke with spaces or colons.
