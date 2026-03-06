@@ -504,6 +504,174 @@ scale() echo "Scaling $1"
         "Expected tools list, got: {stdout}"
     );
 }
+// ========== MCP tools/call Tests ==========
+
+#[test]
+fn test_mcp_tools_call_executes_function() {
+    use std::io::Write;
+    use std::time::Duration;
+
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @desc Greet the user
+# @arg name str Name to greet
+greet(name: str) echo "Hello, $name!"
+"#,
+    );
+
+    let mut child = test_command(&binary)
+        .arg("--serve-mcp")
+        .current_dir(temp_dir.path())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn MCP server");
+
+    let stdin = child.stdin.as_mut().unwrap();
+
+    let call_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "greet",
+            "arguments": { "name": "World" }
+        }
+    });
+    writeln!(stdin, "{}", serde_json::to_string(&call_request).unwrap()).unwrap();
+    stdin.flush().unwrap();
+
+    std::thread::sleep(Duration::from_millis(1000));
+
+    child.kill().expect("Failed to kill process");
+    let output = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        stdout.contains("Hello, World!"),
+        "Expected 'Hello, World!' in output, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"isError\":false") || stdout.contains("\"isError\": false"),
+        "Expected isError=false, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_mcp_tools_call_non_zero_exit_sets_is_error() {
+    use std::io::Write;
+    use std::time::Duration;
+
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @desc Always fails
+fail() {
+    echo "About to fail"
+    exit 1
+}
+"#,
+    );
+
+    let mut child = test_command(&binary)
+        .arg("--serve-mcp")
+        .current_dir(temp_dir.path())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn MCP server");
+
+    let stdin = child.stdin.as_mut().unwrap();
+
+    let call_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "fail",
+            "arguments": {}
+        }
+    });
+    writeln!(stdin, "{}", serde_json::to_string(&call_request).unwrap()).unwrap();
+    stdin.flush().unwrap();
+
+    std::thread::sleep(Duration::from_millis(1000));
+
+    child.kill().expect("Failed to kill process");
+    let output = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        stdout.contains("\"isError\":true") || stdout.contains("\"isError\": true"),
+        "Expected isError=true for failing tool, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_mcp_tools_call_unknown_tool_returns_error() {
+    use std::io::Write;
+    use std::time::Duration;
+
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @desc Say hello
+hello() echo "hello"
+"#,
+    );
+
+    let mut child = test_command(&binary)
+        .arg("--serve-mcp")
+        .current_dir(temp_dir.path())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn MCP server");
+
+    let stdin = child.stdin.as_mut().unwrap();
+
+    let call_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "nonexistent_tool_xyz",
+            "arguments": {}
+        }
+    });
+    writeln!(stdin, "{}", serde_json::to_string(&call_request).unwrap()).unwrap();
+    stdin.flush().unwrap();
+
+    std::thread::sleep(Duration::from_millis(500));
+
+    child.kill().expect("Failed to kill process");
+    let output = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Should get a JSON-RPC error response (not isError in result, but error at protocol level)
+    assert!(
+        stdout.contains("\"error\""),
+        "Expected JSON-RPC error for unknown tool, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Tool not found") || stdout.contains("-32602"),
+        "Expected Tool not found error, got: {stdout}"
+    );
+}
+
 // ========== Tests for Global + Project Runfile Merging ==========
 
 #[test]

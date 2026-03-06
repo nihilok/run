@@ -164,3 +164,29 @@ clippy() {
     cargo clippy --workspace --all-targets || true
 }
 
+# @desc Format all Rust code
+fmt() cargo fmt --all
+
+# @desc Fast compile check (no codegen)
+check() cargo check --workspace --all-targets
+
+# @desc Build release binary
+build() cargo build --release
+
+# @desc Build and open documentation
+docs() cargo doc --open --no-deps
+
+# @desc Generate test coverage report (requires cargo-llvm-cov)
+coverage() {
+    local toolchain_bin="$HOME/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin"
+    LLVM_COV="$toolchain_bin/llvm-cov" LLVM_PROFDATA="$toolchain_bin/llvm-profdata" \
+        cargo llvm-cov --package run
+}
+
+# @desc Run full CI: fmt check, clippy, tests
+ci() {
+    cargo fmt --check || exit 1
+    cargo clippy --workspace --all-targets -- -D warnings || exit 1
+    cargo test --package run
+}
+

@@ -228,6 +228,229 @@ fn value_to_string(value: &serde_json::Value) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+    use serial_test::serial;
+    use std::env;
+    use std::fs;
+    use tempfile::tempdir;
+
+    /// Create a temp dir with a Runfile, return (`TempDir`, path).
+    /// Caller must hold `TempDir` alive for the duration of the test.
+    fn setup_runfile(content: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let temp = tempdir().expect("Failed to create temp dir");
+        fs::write(temp.path().join("Runfile"), content).expect("Failed to write Runfile");
+        let path = temp.path().to_path_buf();
+        (temp, path)
+    }
+
+    fn disable_global_merge() {
+        // Safety: tests are run serially (#[serial]) so no concurrent env mutation
+        unsafe { env::set_var("RUN_NO_GLOBAL_MERGE", "1") };
+    }
+
+    fn enable_global_merge() {
+        // Safety: tests are run serially (#[serial]) so no concurrent env mutation
+        unsafe { env::remove_var("RUN_NO_GLOBAL_MERGE") };
+    }
+
+    // ---- resolve_tool_name ----
+
+    #[test]
+    #[serial]
+    fn test_resolve_tool_name_simple() {
+        let original_cwd = env::current_dir().unwrap();
+        let (_temp, path) = setup_runfile(
+            "# @desc Deploy to environment\ndeploy(env: str) {\n    echo \"$env\"\n}\n",
+        );
+        env::set_current_dir(&path).unwrap();
+        disable_global_merge();
+
+        let result = resolve_tool_name("deploy");
+
+        enable_global_merge();
+        env::set_current_dir(original_cwd).unwrap();
+
+        assert_eq!(result.unwrap(), "deploy");
+    }
+
+    #[test]
+    #[serial]
+    fn test_resolve_tool_name_colon_sanitised() {
+        let original_cwd = env::current_dir().unwrap();
+        let (_temp, path) = setup_runfile(
+            "# @desc Deploy to staging\ndeploy:staging(region: str) {\n    echo \"$region\"\n}\n",
+        );
+        env::set_current_dir(&path).unwrap();
+        disable_global_merge();
+
+        let result = resolve_tool_name("deploy__staging");
+
+        enable_global_merge();
+        env::set_current_dir(original_cwd).unwrap();
+
+        assert_eq!(result.unwrap(), "deploy:staging");
+    }
+
+    #[test]
+    #[serial]
+    fn test_resolve_tool_name_not_found() {
+        let original_cwd = env::current_dir().unwrap();
+        let (_temp, path) = setup_runfile("# @desc Say hello\nhello() {\n    echo \"hello\"\n}\n");
+        env::set_current_dir(&path).unwrap();
+        disable_global_merge();
+
+        let result = resolve_tool_name("nonexistent_tool_xyz");
+
+        enable_global_merge();
+        env::set_current_dir(original_cwd).unwrap();
+
+        let err = result.unwrap_err();
+        assert_eq!(err.code, -32602);
+        assert!(err.message.contains("Tool not found"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_resolve_tool_name_no_runfile() {
+        let original_cwd = env::current_dir().unwrap();
+        let temp = tempdir().unwrap(); // no Runfile written
+        env::set_current_dir(temp.path()).unwrap();
+        disable_global_merge();
+
+        let result = resolve_tool_name("____tool_that_cannot_exist____");
+
+        enable_global_merge();
+        env::set_current_dir(original_cwd).unwrap();
+
+        // Either no Runfile found (-32603) or tool not found (-32602) — both indicate failure
+        let err = result.unwrap_err();
+        assert!(
+            err.code == -32603 || err.code == -32602,
+            "Expected -32602 or -32603, got: {} - {}",
+            err.code,
+            err.message
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_resolve_tool_name_only_functions_with_desc_are_found() {
+        let original_cwd = env::current_dir().unwrap();
+        // "hidden" has no @desc, so it should NOT be resolvable as a tool
+        let (_temp, path) =
+            setup_runfile("# @desc Visible\nvisible() echo ok\nhidden() echo secret\n");
+        env::set_current_dir(&path).unwrap();
+        disable_global_merge();
+
+        let found = resolve_tool_name("visible");
+        let not_found = resolve_tool_name("hidden");
+
+        enable_global_merge();
+        env::set_current_dir(original_cwd).unwrap();
+
+        assert_eq!(found.unwrap(), "visible");
+        assert_eq!(not_found.unwrap_err().code, -32602);
+    }
+
+    // ---- map_arguments_to_positional ----
+
+    #[test]
+    #[serial]
+    fn test_map_arguments_named_params_in_order() {
+        let original_cwd = env::current_dir().unwrap();
+        let (_temp, path) = setup_runfile(
+            "# @desc Deploy\ndeploy(env: str, version: str) {\n    echo \"$env $version\"\n}\n",
+        );
+        env::set_current_dir(&path).unwrap();
+        disable_global_merge();
+
+        let args = json!({ "env": "prod", "version": "2.0" });
+        let result = map_arguments_to_positional("deploy", &args);
+
+        enable_global_merge();
+        env::set_current_dir(original_cwd).unwrap();
+
+        let positional = result.unwrap();
+        assert_eq!(positional[0], "prod");
+        assert_eq!(positional[1], "2.0");
+    }
+
+    #[test]
+    #[serial]
+    fn test_map_arguments_rest_param_expands_array() {
+        let original_cwd = env::current_dir().unwrap();
+        let (_temp, path) = setup_runfile(
+            "# @desc Run in container\ndocker_exec(container: str, ...command) {\n    echo \"$container\"\n}\n",
+        );
+        env::set_current_dir(&path).unwrap();
+        disable_global_merge();
+
+        let args = json!({ "container": "web", "command": ["ls", "-la", "/app"] });
+        let result = map_arguments_to_positional("docker_exec", &args);
+
+        enable_global_merge();
+        env::set_current_dir(original_cwd).unwrap();
+
+        assert_eq!(result.unwrap(), vec!["web", "ls", "-la", "/app"]);
+    }
+
+    #[test]
+    #[serial]
+    fn test_map_arguments_non_object_returns_error() {
+        let original_cwd = env::current_dir().unwrap();
+        let (_temp, path) =
+            setup_runfile("# @desc Deploy\ndeploy(env: str) {\n    echo \"$env\"\n}\n");
+        env::set_current_dir(&path).unwrap();
+        disable_global_merge();
+
+        let args = json!("not an object");
+        let result = map_arguments_to_positional("deploy", &args);
+
+        enable_global_merge();
+        env::set_current_dir(original_cwd).unwrap();
+
+        let err = result.unwrap_err();
+        assert_eq!(err.code, -32602);
+        assert!(err.message.contains("Arguments must be an object"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_map_arguments_legacy_arg_mapping() {
+        let original_cwd = env::current_dir().unwrap();
+        let (_temp, path) = setup_runfile(
+            "# @desc Scale\n# @arg 1:service string Service\n# @arg 2:count int Count\nscale_service() {\n    echo \"$1 $2\"\n}\n",
+        );
+        env::set_current_dir(&path).unwrap();
+        disable_global_merge();
+
+        let args = json!({ "service": "web", "count": 3 });
+        let result = map_arguments_to_positional("scale_service", &args);
+
+        enable_global_merge();
+        env::set_current_dir(original_cwd).unwrap();
+
+        let positional = result.unwrap();
+        assert_eq!(positional[0], "web");
+        assert_eq!(positional[1], "3");
+    }
+
+    #[test]
+    #[serial]
+    fn test_map_arguments_no_params_returns_empty() {
+        let original_cwd = env::current_dir().unwrap();
+        // Function has no params and no @arg — arguments should be ignored
+        let (_temp, path) = setup_runfile("# @desc Say hello\nhello() echo \"hello\"\n");
+        env::set_current_dir(&path).unwrap();
+        disable_global_merge();
+
+        let args = json!({});
+        let result = map_arguments_to_positional("hello", &args);
+
+        enable_global_merge();
+        env::set_current_dir(original_cwd).unwrap();
+
+        assert_eq!(result.unwrap(), Vec::<String>::new());
+    }
 
     #[test]
     fn test_value_to_string_string() {

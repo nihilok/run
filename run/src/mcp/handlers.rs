@@ -309,6 +309,16 @@ mod tests {
     use std::env;
     use tempfile::tempdir;
 
+    fn disable_global_merge() {
+        // Safety: tests are run serially (#[serial]) so no concurrent env mutation
+        unsafe { env::set_var("RUN_NO_GLOBAL_MERGE", "1") };
+    }
+
+    fn enable_global_merge() {
+        // Safety: tests are run serially (#[serial]) so no concurrent env mutation
+        unsafe { env::remove_var("RUN_NO_GLOBAL_MERGE") };
+    }
+
     #[test]
     #[serial]
     fn test_handle_get_cwd() {
@@ -515,5 +525,36 @@ mod tests {
         });
         let result = handle_tools_call(Some(params));
         assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial]
+    fn test_handle_tools_call_unknown_tool() {
+        let original_cwd = env::current_dir().expect("Failed to get cwd");
+        let temp = tempdir().expect("Failed to create temp dir");
+        std::fs::write(
+            temp.path().join("Runfile"),
+            "# @desc Say hello\nhello() echo \"hello\"\n",
+        )
+        .expect("Failed to write Runfile");
+        env::set_current_dir(temp.path()).expect("Failed to set cwd");
+        disable_global_merge();
+
+        let params = json!({
+            "name": "nonexistent_tool_xyz",
+            "arguments": {}
+        });
+        let result = handle_tools_call(Some(params));
+
+        enable_global_merge();
+        env::set_current_dir(original_cwd).expect("Failed to restore cwd");
+
+        let err = result.expect_err("Should return error for unknown tool");
+        assert_eq!(err.code, -32602);
+        assert!(
+            err.message.contains("Tool not found"),
+            "Unexpected message: {}",
+            err.message
+        );
     }
 }
