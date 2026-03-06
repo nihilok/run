@@ -198,31 +198,28 @@ impl StructuredResult {
     pub fn to_mcp_format(&self) -> String {
         let mut md = String::new();
 
-        // Header with context
-        let _ = write!(md, "## Execution: `{}`\n\n", self.context.function_name);
-
+        // Compact single-line header: status, function name, duration, and optional host
+        let status = if self.success {
+            "✓ Success"
+        } else {
+            "✗ Failed"
+        };
+        let _ = write!(
+            md,
+            "Execution: `{}` {} ({}ms)",
+            self.context.function_name, status, self.total_duration_ms
+        );
         if let Some(host) = &self.context.remote_host {
-            let _ = writeln!(
+            let _ = write!(
                 md,
-                "**Host:** {}@{}",
+                " on {}@{}",
                 self.context.remote_user.as_deref().unwrap_or("?"),
                 host
             );
         }
+        md.push('\n');
 
-        let _ = writeln!(
-            md,
-            "**Status:** {}",
-            if self.success {
-                "✓ Success"
-            } else {
-                "✗ Failed"
-            }
-        );
-        let _ = write!(md, "**Duration:** {}ms\n\n", self.total_duration_ms);
-
-        // For MCP, we only show output, not implementation
-        // Combine all outputs into a single section
+        // Combine all outputs
         let all_stdout: String = self
             .outputs
             .iter()
@@ -240,12 +237,10 @@ impl StructuredResult {
             .join("");
 
         if !all_stdout.is_empty() {
-            md.push_str("**Output:**\n```\n");
             md.push_str(&all_stdout);
             if !all_stdout.ends_with('\n') {
                 md.push('\n');
             }
-            md.push_str("```\n\n");
         }
 
         // Only show stderr when the command failed
@@ -645,7 +640,7 @@ mod tests {
         };
 
         let mcp = result.to_mcp_format();
-        assert!(mcp.contains("## Execution: `test`"));
+        assert!(mcp.contains("Execution: `test` ✓ Success (10ms)"));
         assert!(mcp.contains("✓ Success"));
         // MCP format combines all stdout
         assert!(mcp.contains("a\n"));

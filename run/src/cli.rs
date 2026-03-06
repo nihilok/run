@@ -263,6 +263,6 @@ mod tests {
         let formatted = OutputFormatArg::Markdown.format_result(&result);
         assert!(formatted.is_some());
         let md = formatted.unwrap();
-        assert!(md.contains("## Execution: `test`"));
+        assert!(md.contains("Execution: `test` ✓ Success (0ms)"));
     }
 }

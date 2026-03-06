@@ -86,12 +86,9 @@ multi_step() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
 
-    // Check markdown structure - MCP format hides implementation details
-    assert!(stdout.contains("## Execution: `multi_step`"));
-    assert!(stdout.contains("**Status:** ✓ Success"));
-    assert!(stdout.contains("**Duration:**"));
-    // MCP format combines outputs and doesn't show Step headers (to hide implementation)
-    assert!(stdout.contains("**Output:**"));
+    // Check compact header format
+    assert!(stdout.contains("Execution: `multi_step` ✓ Success ("));
+    // MCP format combines outputs directly after header (no **Output:** label)
     assert!(stdout.contains("Step 1"));
     assert!(stdout.contains("Step 2"));
 }
@@ -232,10 +229,8 @@ mixed_output() {
 
     let stdout = String::from_utf8(output.stdout).unwrap();
 
-    // Check markdown structure includes both streams
-    assert!(stdout.contains("## Execution: `mixed_output`"));
-    assert!(stdout.contains("**Status:** ✓ Success"));
-    assert!(stdout.contains("**Output:**"));
+    // Check compact header format
+    assert!(stdout.contains("Execution: `mixed_output` ✓ Success ("));
     assert!(stdout.contains("stdout message"));
 
     // Stderr should be omitted on success
