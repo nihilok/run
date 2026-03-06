@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 thread_local! {
     static CUSTOM_RUNFILE_PATH: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
     static MCP_OUTPUT_DIR: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+    static MCP_FUNCTION_NAME: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 static MCP_OUTPUT_ENV: OnceLock<Option<PathBuf>> = OnceLock::new();
@@ -25,6 +26,19 @@ pub fn set_custom_runfile_path(path: Option<PathBuf>) {
 #[must_use]
 pub fn get_custom_runfile_path() -> Option<PathBuf> {
     CUSTOM_RUNFILE_PATH.with(|p| p.borrow().clone())
+}
+
+/// Set the MCP function name for the current thread
+pub fn set_mcp_function_name(name: &str) {
+    MCP_FUNCTION_NAME.with(|n| {
+        *n.borrow_mut() = Some(name.to_string());
+    });
+}
+
+/// Get the MCP function name if set
+#[must_use]
+pub fn get_mcp_function_name() -> Option<String> {
+    MCP_FUNCTION_NAME.with(|n| n.borrow().clone())
 }
 
 /// Set the MCP output directory for the current thread

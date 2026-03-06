@@ -71,6 +71,8 @@ pub fn run_function_call(function_name: &str, args: &[String], output_format: Ou
         }
     }
 
+    config::set_mcp_function_name(function_name);
+
     let exec_result = interpreter.call_function_without_parens(function_name, args);
 
     if matches!(output_format.mode(), crate::ast::OutputMode::Structured) {
