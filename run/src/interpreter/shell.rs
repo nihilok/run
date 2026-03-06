@@ -115,7 +115,18 @@ pub(super) fn execute_single_shell_invocation_with_args(
         .status()?;
 
     if !status.success() {
-        return Err(format!("Command failed with status: {status}").into());
+        let code = status.code().unwrap_or(-1);
+        if code == 2
+            && matches!(
+                interpreter,
+                TranspilerInterpreter::Sh | TranspilerInterpreter::Bash
+            )
+        {
+            eprintln!(
+                "\nhint: exit code 2 typically indicates a syntax error in the function body"
+            );
+        }
+        return Err(format!("{interpreter_name}: command failed (exit code {code})").into());
     }
 
     Ok(())
@@ -183,7 +194,8 @@ pub(super) fn execute_command_with_args(
         .status()?;
 
     if !status.success() {
-        eprintln!("Command failed with status: {status}");
+        let code = status.code().unwrap_or(-1);
+        eprintln!("{shell_cmd}: command failed (exit code {code})");
     }
 
     Ok(())

@@ -134,6 +134,28 @@ fn friendly_message(positives: &[Rule], _negatives: &[Rule]) -> String {
 fn friendly_hint(positives: &[Rule], source_line: Option<&str>, col: usize) -> Option<String> {
     let has = |r: Rule| positives.contains(&r);
 
+    // Hyphenated function name (e.g. `my-func() { ... }` or `my-func(x) command`).
+    // Hyphens are not valid in identifiers, so the parser falls back to treating the
+    // line as a command, then fails when it hits the `{` or end-of-line context.
+    if let Some(line) = source_line {
+        let trimmed = line.trim_start();
+        let first_word = trimmed
+            .split(|c: char| c == '(' || c.is_whitespace())
+            .next()
+            .unwrap_or("");
+        if !first_word.is_empty()
+            && first_word.starts_with(|c: char| c.is_alphabetic() || c == '_')
+            && first_word.contains('-')
+        {
+            return Some(
+                "Hyphens (`-`) are not allowed in function names. \
+                 Use underscores (`_`) or colons (`:`) instead, \
+                 e.g. `my_func` or `my:func`."
+                    .to_string(),
+            );
+        }
+    }
+
     // Missing function body.
     if has(Rule::block) && has(Rule::command) {
         return Some(
@@ -335,5 +357,32 @@ mod tests {
         if let Some(ref hint) = err.hint {
             assert!(!hint.contains("Rule::"), "raw rule name in hint: {hint}");
         }
+    }
+
+    #[test]
+    fn test_hint_hyphenated_function_name_block() {
+        // `my-func()` parses as a command word; `{` then fails to start a new item.
+        let input = "my-func() {\n  echo hello\n}";
+        let err = parse_err(input, None);
+        let hint = err
+            .hint
+            .expect("expected a hint for hyphenated function name");
+        assert!(
+            hint.contains("yphen") || hint.contains("nderscore"),
+            "hint should mention hyphens or underscores: {hint}"
+        );
+    }
+
+    #[test]
+    fn test_hint_hyphenated_function_name_variant() {
+        let input = "build-project() {\n  echo building\n}";
+        let err = parse_err(input, None);
+        let hint = err
+            .hint
+            .expect("expected a hint for hyphenated function name");
+        assert!(
+            hint.contains("yphen") || hint.contains("nderscore"),
+            "hint should mention hyphens or underscores: {hint}"
+        );
     }
 }

@@ -856,7 +856,11 @@ impl Interpreter {
             && code != 0
         {
             self.add_captured_output(output);
-            return Err(format!("Command failed with exit code: {code}").into());
+            return Err(format!(
+                "{}: command failed (exit code {code})",
+                self.last_interpreter_name
+            )
+            .into());
         }
 
         // Store the captured output
@@ -934,7 +938,9 @@ impl Interpreter {
                     && code != 0
                 {
                     self.add_captured_output(output);
-                    return Err(format!("Command failed with exit code: {code}").into());
+                    return Err(
+                        format!("{interpreter_name}: command failed (exit code {code})").into(),
+                    );
                 }
 
                 // Store the captured output

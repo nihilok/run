@@ -251,7 +251,12 @@ pub fn inspect() -> Result<InspectOutput, String> {
         return Ok(InspectOutput { tools: Vec::new() });
     };
 
-    let program = parser::parse_script(&config_content).map_err(|e| format!("Parse error: {e}"))?;
+    let program = parser::parse_script(&config_content).map_err(|e| {
+        format!(
+            "Parse error: {}",
+            parser::ParseError::from_pest(&e, &config_content, Some("Runfile"))
+        )
+    })?;
 
     let mut tools = Vec::new();
     let mut seen_names = std::collections::HashSet::new();
