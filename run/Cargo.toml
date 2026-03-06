@@ -9,6 +9,7 @@ repository.workspace = true
 readme = "../README.md"
 include = [
     "src/**/*",
+    "docs/**/*",
     "Cargo.toml",
     "README.md",
     "completions/**/*",

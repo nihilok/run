@@ -40,59 +40,55 @@ pub const DOCS: &[(&str, &str, &str)] = &[
     (
         "getting-started",
         "Getting started with run",
-        include_str!("../../../docs/getting-started.md"),
+        include_str!("../../docs/getting-started.md"),
     ),
     (
         "runfile-syntax",
         "Runfile syntax reference",
-        include_str!("../../../docs/runfile-syntax.md"),
+        include_str!("../../docs/runfile-syntax.md"),
     ),
     (
         "arguments",
         "Function arguments and parameters",
-        include_str!("../../../docs/arguments.md"),
+        include_str!("../../docs/arguments.md"),
     ),
     (
         "variables",
         "Variables",
-        include_str!("../../../docs/variables.md"),
+        include_str!("../../docs/variables.md"),
     ),
     (
         "attributes-and-interpreters",
         "Attributes and interpreters (@shell, @os, @desc)",
-        include_str!("../../../docs/attributes-and-interpreters.md"),
+        include_str!("../../docs/attributes-and-interpreters.md"),
     ),
     (
         "command-composition",
         "Command composition and piping",
-        include_str!("../../../docs/command-composition.md"),
+        include_str!("../../docs/command-composition.md"),
     ),
     (
         "polyglot-commands",
         "Polyglot commands (Python, Node, Ruby)",
-        include_str!("../../../docs/polyglot-commands.md"),
+        include_str!("../../docs/polyglot-commands.md"),
     ),
-    (
-        "mcp",
-        "MCP integration",
-        include_str!("../../../docs/mcp.md"),
-    ),
-    ("cli", "CLI reference", include_str!("../../../docs/cli.md")),
+    ("mcp", "MCP integration", include_str!("../../docs/mcp.md")),
+    ("cli", "CLI reference", include_str!("../../docs/cli.md")),
     (
         "bash-differences",
         "Differences from plain bash",
-        include_str!("../../../docs/bash-differences.md"),
+        include_str!("../../docs/bash-differences.md"),
     ),
     (
         "recipes",
         "Recipes and examples",
-        include_str!("../../../docs/recipes.md"),
+        include_str!("../../docs/recipes.md"),
     ),
-    ("faq", "FAQ", include_str!("../../../docs/faq.md")),
+    ("faq", "FAQ", include_str!("../../docs/faq.md")),
     (
         "reference",
         "Full reference",
-        include_str!("../../../docs/reference.md"),
+        include_str!("../../docs/reference.md"),
     ),
 ];
 

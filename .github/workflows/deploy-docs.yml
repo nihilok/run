@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'docs/**'
+      - 'run/docs/**'
       - 'book.toml'
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:

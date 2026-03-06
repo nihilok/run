@@ -3,7 +3,7 @@ title = "run"
 authors = ["nihilok", "sebastian"]
 description = "The bridge between human and AI tooling - define functions in a Runfile, run them from your terminal, or expose them as MCP tools"
 language = "en"
-src = "docs"
+src = "run/docs"
 
 [build]
 build-dir = "book"
