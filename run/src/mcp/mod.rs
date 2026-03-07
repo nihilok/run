@@ -271,6 +271,8 @@ mod tests {
 
         let args_param = tool.input_schema.properties.get("args").unwrap();
         assert_eq!(args_param.param_type, "array");
+        assert!(args_param.items.is_some());
+        assert_eq!(args_param.items.as_ref().unwrap().item_type, "string");
     }
 
     #[test]

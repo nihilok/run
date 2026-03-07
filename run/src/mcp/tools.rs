@@ -11,6 +11,15 @@ pub struct ParameterSchema {
     #[serde(rename = "type")]
     pub param_type: String,
     pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub items: Option<ItemsSchema>,
+}
+
+/// JSON Schema for array item types
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ItemsSchema {
+    #[serde(rename = "type")]
+    pub item_type: String,
 }
 
 /// JSON Schema for tool input
@@ -110,6 +119,7 @@ pub fn get_builtin_tools() -> Vec<Tool> {
         ParameterSchema {
             param_type: "string".to_string(),
             description: "The path to switch to (relative or absolute)".to_string(),
+            items: None,
         },
     );
     tools.push(Tool {
@@ -145,6 +155,7 @@ pub fn get_builtin_tools() -> Vec<Tool> {
                  Omit or pass \"index\" to list all topics.",
                 topic_list.join(", ")
             ),
+            items: None,
         },
     );
     tools.push(Tool {
@@ -258,6 +269,7 @@ pub(super) fn extract_function_metadata(
                     ParameterSchema {
                         param_type: param_type.to_string(),
                         description: arg_meta.description.clone(),
+                        items: None,
                     },
                 );
 
@@ -281,6 +293,9 @@ pub(super) fn extract_function_metadata(
                     ParameterSchema {
                         param_type: "array".to_string(),
                         description: param_description,
+                        items: Some(ItemsSchema {
+                            item_type: "string".to_string(),
+                        }),
                     },
                 );
             } else {
@@ -289,6 +304,7 @@ pub(super) fn extract_function_metadata(
                     ParameterSchema {
                         param_type: utils::arg_type_to_json_type(&param.param_type).to_string(),
                         description: param_description,
+                        items: None,
                     },
                 );
 
