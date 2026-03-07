@@ -35,6 +35,25 @@ pub(super) fn collect_rewritable_siblings(
     rewritable_names
 }
 
+/// Compute the `set -e` / `set -eo pipefail` prefix for a generated script.
+///
+/// Returns `"set -eo pipefail"` for Bash, `"set -e"` for Sh, and `""` for
+/// everything else (polyglot interpreters, `PowerShell`). The prefix is suppressed
+/// when the function's attributes include `@noerrexit`.
+pub(super) fn errexit_prefix(
+    interpreter: &TranspilerInterpreter,
+    attributes: &[Attribute],
+) -> &'static str {
+    if attributes.iter().any(|a| matches!(a, Attribute::Noerrexit)) {
+        return "";
+    }
+    match interpreter {
+        TranspilerInterpreter::Bash => "set -eo pipefail",
+        TranspilerInterpreter::Sh => "set -e",
+        _ => "",
+    }
+}
+
 /// Build the combined script with preambles and body.
 ///
 /// When `wrap_in_function` is true, the body is wrapped in a `__run__` shell
@@ -42,12 +61,16 @@ pub(super) fn collect_rewritable_siblings(
 /// function syntax, so users expect `return` to behave as it does inside a
 /// shell function. This should be true for shell interpreters (sh/bash/pwsh)
 /// but false for polyglot scripts (Python/Node/Ruby).
+///
+/// `errexit` is prepended as the first line of the script when non-empty
+/// (typically `"set -eo pipefail"` or `"set -e"`).
 pub(super) fn build_combined_script(
     var_preamble: String,
     func_preamble: String,
     rewritten_body: String,
     wrap_in_function: bool,
     param_locals: &str,
+    errexit: &str,
 ) -> String {
     let body = if wrap_in_function {
         if param_locals.is_empty() {
@@ -59,19 +82,18 @@ pub(super) fn build_combined_script(
         rewritten_body
     };
 
-    if var_preamble.is_empty() && func_preamble.is_empty() {
-        body
-    } else {
-        let mut parts = Vec::new();
-        if !var_preamble.is_empty() {
-            parts.push(var_preamble);
-        }
-        if !func_preamble.is_empty() {
-            parts.push(func_preamble);
-        }
-        parts.push(body);
-        parts.join("\n")
+    let mut parts = Vec::new();
+    if !errexit.is_empty() {
+        parts.push(errexit.to_string());
     }
+    if !var_preamble.is_empty() {
+        parts.push(var_preamble);
+    }
+    if !func_preamble.is_empty() {
+        parts.push(func_preamble);
+    }
+    parts.push(body);
+    parts.join("\n")
 }
 
 #[cfg(test)]
@@ -87,6 +109,7 @@ mod tests {
             "echo hello".to_string(),
             true,
             "",
+            "",
         );
         assert_eq!(result, "__run__() {\necho hello\n}\n__run__ \"$@\"");
     }
@@ -98,6 +121,7 @@ mod tests {
             String::new(),
             "echo $MY_VAR".to_string(),
             true,
+            "",
             "",
         );
         assert_eq!(
@@ -114,6 +138,7 @@ mod tests {
             "helper".to_string(),
             true,
             "",
+            "",
         );
         assert_eq!(
             result,
@@ -128,6 +153,7 @@ mod tests {
             "fn() { echo; }".to_string(),
             "fn $VAR".to_string(),
             true,
+            "",
             "",
         );
         assert_eq!(
@@ -144,6 +170,7 @@ mod tests {
             "if [ \"$1\" = \"fail\" ]; then\n    return 1\nfi\necho ok".to_string(),
             true,
             "",
+            "",
         );
         assert!(result.contains("__run__() {"));
         assert!(result.contains("return 1"));
@@ -158,6 +185,7 @@ mod tests {
             "print(x)".to_string(),
             false,
             "",
+            "",
         );
         assert_eq!(result, "x = 42\nprint(x)");
         assert!(!result.contains("__run__"));
@@ -171,6 +199,7 @@ mod tests {
             "echo $name".to_string(),
             true,
             "local name=\"$1\"",
+            "",
         );
         assert_eq!(
             result,
@@ -186,10 +215,82 @@ mod tests {
             "echo $name $VAR".to_string(),
             true,
             "local name=\"$1\"\nlocal version=\"${2:-latest}\"",
+            "",
         );
         assert!(result.contains("local name=\"$1\""));
         assert!(result.contains("local version=\"${2:-latest}\""));
         assert!(result.contains("VAR=\"x\""));
+    }
+
+    #[test]
+    fn test_build_combined_script_with_errexit() {
+        let result = build_combined_script(
+            String::new(),
+            String::new(),
+            "echo hello".to_string(),
+            true,
+            "",
+            "set -eo pipefail",
+        );
+        assert!(result.starts_with("set -eo pipefail\n"));
+        assert!(result.contains("__run__() {"));
+    }
+
+    #[test]
+    fn test_build_combined_script_errexit_before_preambles() {
+        let result = build_combined_script(
+            "VAR=\"x\"".to_string(),
+            "helper() { echo; }".to_string(),
+            "helper".to_string(),
+            true,
+            "",
+            "set -eo pipefail",
+        );
+        assert!(result.starts_with("set -eo pipefail\n"));
+        let errexit_pos = result.find("set -eo pipefail").unwrap();
+        let var_pos = result.find("VAR=\"x\"").unwrap();
+        let func_pos = result.find("helper()").unwrap();
+        assert!(errexit_pos < var_pos);
+        assert!(var_pos < func_pos);
+    }
+
+    #[test]
+    fn test_errexit_prefix_bash() {
+        assert_eq!(
+            errexit_prefix(&TranspilerInterpreter::Bash, &[]),
+            "set -eo pipefail"
+        );
+    }
+
+    #[test]
+    fn test_errexit_prefix_sh() {
+        assert_eq!(errexit_prefix(&TranspilerInterpreter::Sh, &[]), "set -e");
+    }
+
+    #[test]
+    fn test_errexit_prefix_python() {
+        assert_eq!(errexit_prefix(&TranspilerInterpreter::Python, &[]), "");
+    }
+
+    #[test]
+    fn test_errexit_prefix_node() {
+        assert_eq!(errexit_prefix(&TranspilerInterpreter::Node, &[]), "");
+    }
+
+    #[test]
+    fn test_errexit_prefix_noerrexit_attribute() {
+        let attrs = vec![Attribute::Noerrexit];
+        assert_eq!(errexit_prefix(&TranspilerInterpreter::Bash, &attrs), "");
+        assert_eq!(errexit_prefix(&TranspilerInterpreter::Sh, &attrs), "");
+    }
+
+    #[test]
+    fn test_errexit_prefix_noerrexit_with_other_attrs() {
+        let attrs = vec![
+            Attribute::Desc("some desc".to_string()),
+            Attribute::Noerrexit,
+        ];
+        assert_eq!(errexit_prefix(&TranspilerInterpreter::Bash, &attrs), "");
     }
 
     #[test]

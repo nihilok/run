@@ -341,6 +341,7 @@ pub enum Attribute {
     Shell(ShellType),
     Desc(String),
     Arg(ArgMetadata),
+    Noerrexit,
 }
 
 #[derive(Debug, Clone, PartialEq)]

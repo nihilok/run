@@ -36,16 +36,26 @@ Block function bodies are wrapped in a shell function called `__run__()`. This m
 - `return` works as expected (exits the function, not the script)
 - `exit` exits the subshell process
 
-## `set -e` is not the default
+## `set -e` is the default
 
-Runfile does not inject `set -e` automatically. If you want strict error handling, add it at the top of your block:
+Runfile injects `set -e` (for `sh`) or `set -eo pipefail` (for `bash`) at the top of every generated shell script. This means any command that exits non-zero will abort the function immediately — including calls to other Runfile functions.
+
+To allow individual commands to fail, use `|| true`:
 
 ```bash
-build() {
-    set -euo pipefail
-    cargo fmt -- --check
-    cargo clippy
-    cargo test
+ci() {
+    cargo clippy || true   # warn but continue
+    cargo test             # still runs
+}
+```
+
+To disable `set -e` for an entire block, use `set +e` / `set -e` around the section, or opt out entirely with the `@noerrexit` attribute:
+
+```bash
+# @noerrexit
+lenient_deploy() {
+    maybe_failing_step
+    echo "this runs regardless"
 }
 ```
 

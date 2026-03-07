@@ -77,6 +77,11 @@ fn parse_attribute_line(line: &str) -> Option<Attribute> {
         return Some(Attribute::Desc(strip_quotes(desc_text)));
     }
 
+    // Handle @noerrexit - opt out of set -e
+    if without_hash.trim() == "noerrexit" {
+        return Some(Attribute::Noerrexit);
+    }
+
     // Handle @arg - format: "1:name type description"
     if let Some(arg_text) = without_hash.strip_prefix("arg ") {
         return parse_arg_attribute(arg_text);

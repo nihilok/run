@@ -635,12 +635,14 @@ impl Interpreter {
             String::new()
         };
 
+        let errexit = execution::errexit_prefix(&target_interpreter, attributes);
         let combined_script = execution::build_combined_script(
             var_preamble,
             func_preamble,
             rewritten_body,
             is_shell,
             &param_locals,
+            errexit,
         );
 
         if is_shell && !params.is_empty() {
@@ -741,12 +743,14 @@ impl Interpreter {
         let param_locals = preamble::build_shell_param_locals(params);
 
         // Combine preambles and body — always wrap for shell (polyglot returns early above)
+        let errexit = execution::errexit_prefix(&target_interpreter, attributes);
         let combined_script = execution::build_combined_script(
             var_preamble,
             func_preamble,
             rewritten_body,
             true,
             &param_locals,
+            errexit,
         );
 
         if params.is_empty() {
