@@ -5,12 +5,20 @@ Attributes live in comments (`# @key value`) and adjust how a function is expose
 ## Descriptions and args
 - `@desc` — one-line summary shown in listings and MCP tool schemas.
 - `@arg <name> [type] <description>` — add human-readable parameter docs. Names should match the signature. Optional type keyword (`string`, `integer`, `float`/`number`, `boolean`, `object`/`dict`) sets the JSON schema type for MCP.
+- `@instructions <text>` — top-level MCP guidance line appended to server `initialize.instructions`. This is single-line and repeatable; lines are aggregated in merged/source order.
 
 ```bash
 # @desc Deploy to an environment
 # @arg env Target environment (staging|prod)
 # @arg version Version to deploy (defaults to "latest")
 deploy(env: str, version = "latest") { ... }
+```
+
+Top-level MCP instruction example:
+
+```bash
+# @instructions Confirm target environment before deploy calls
+# @instructions Prefer exact keywords when using memory recall queries
 ```
 
 ## Platform guards

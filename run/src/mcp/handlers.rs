@@ -33,6 +33,29 @@ struct ServerInfo {
     version: String,
 }
 
+fn build_initialize_instructions() -> String {
+    let mut instructions = String::from(concat!(
+        "This is a `run` MCP server. `run` is a task-runner that reads a `Runfile` ",
+        "(similar to a Makefile) in the current working directory. ",
+        "Each function defined in the Runfile with a `# @desc` comment is exposed as a tool here. ",
+        "If a tool call fails with a Runfile syntax error, the Runfile itself needs to be fixed — ",
+        "use the `run_docs` tool to look up correct Runfile syntax, parameter types, and attributes."
+    ));
+
+    if let Some((merged_content, _)) = config::load_merged_config() {
+        let runfile_instructions = config::collect_mcp_instructions(&merged_content);
+        if !runfile_instructions.is_empty() {
+            instructions.push_str("\n\nRunfile instructions:");
+            for instruction in runfile_instructions {
+                instructions.push_str("\n- ");
+                instructions.push_str(&instruction);
+            }
+        }
+    }
+
+    instructions
+}
+
 /// Handle initialize request
 pub(super) fn handle_initialize(_params: Option<serde_json::Value>) -> serde_json::Value {
     serde_json::json!({
@@ -44,13 +67,7 @@ pub(super) fn handle_initialize(_params: Option<serde_json::Value>) -> serde_jso
             name: "run".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
         },
-        "instructions": concat!(
-            "This is a `run` MCP server. `run` is a task-runner that reads a `Runfile` ",
-            "(similar to a Makefile) in the current working directory. ",
-            "Each function defined in the Runfile with a `# @desc` comment is exposed as a tool here. ",
-            "If a tool call fails with a Runfile syntax error, the Runfile itself needs to be fixed — ",
-            "use the `run_docs` tool to look up correct Runfile syntax, parameter types, and attributes."
-        )
+        "instructions": build_initialize_instructions()
     })
 }
 
@@ -460,6 +477,72 @@ mod tests {
             instructions.contains("run_docs"),
             "instructions should mention run_docs: {instructions}"
         );
+    }
+
+    #[test]
+    #[serial]
+    fn test_handle_initialize_appends_runfile_instructions() {
+        let temp = tempdir().expect("Failed to create temp dir");
+        let original_cwd = env::current_dir().expect("Failed to get cwd");
+        let original_custom_path = crate::config::get_custom_runfile_path();
+        disable_global_merge();
+
+        std::fs::write(
+            temp.path().join("Runfile"),
+            "\
+# @instructions Always confirm production environment before deploy\n\
+source ./shared.run\n\
+# @desc Hello tool\n\
+hello() echo hello\n",
+        )
+        .expect("Failed to write Runfile");
+        std::fs::write(
+            temp.path().join("shared.run"),
+            "# @instructions Prefer short, exact query keywords for recall\n",
+        )
+        .expect("Failed to write sourced file");
+
+        env::set_current_dir(temp.path()).expect("Failed to set cwd");
+        crate::config::set_custom_runfile_path(None);
+
+        let value = handle_initialize(None);
+        let instructions = value["instructions"].as_str().expect("instructions string");
+        assert!(instructions.contains("Runfile instructions:"));
+        assert!(instructions.contains("- Always confirm production environment before deploy"));
+        assert!(instructions.contains("- Prefer short, exact query keywords for recall"));
+
+        crate::config::set_custom_runfile_path(original_custom_path);
+        enable_global_merge();
+        env::set_current_dir(original_cwd).expect("Failed to restore cwd");
+    }
+
+    #[test]
+    #[serial]
+    fn test_handle_initialize_without_runfile_instructions_section() {
+        let temp = tempdir().expect("Failed to create temp dir");
+        let original_cwd = env::current_dir().expect("Failed to get cwd");
+        let original_custom_path = crate::config::get_custom_runfile_path();
+        disable_global_merge();
+
+        std::fs::write(
+            temp.path().join("Runfile"),
+            "# @desc Hello tool\nhello() echo hello\n",
+        )
+        .expect("Failed to write Runfile");
+
+        env::set_current_dir(temp.path()).expect("Failed to set cwd");
+        crate::config::set_custom_runfile_path(None);
+
+        let value = handle_initialize(None);
+        let instructions = value["instructions"].as_str().expect("instructions string");
+        assert!(
+            !instructions.contains("Runfile instructions:"),
+            "unexpected Runfile instructions section: {instructions}"
+        );
+
+        crate::config::set_custom_runfile_path(original_custom_path);
+        enable_global_merge();
+        env::set_current_dir(original_cwd).expect("Failed to restore cwd");
     }
 
     #[test]

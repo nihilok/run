@@ -233,6 +233,29 @@ pub fn expand_source_directives(content: &str, base_dir: &Path) -> String {
     expand_sources_inner(content, base_dir, &mut seen)
 }
 
+/// Collect top-level `# @instructions ...` lines from expanded/merged `Runfile` content.
+///
+/// Only directives at brace-depth 0 are considered. Directives inside function bodies are
+/// ignored. Order is preserved exactly as encountered in the input.
+#[must_use]
+pub fn collect_mcp_instructions(content: &str) -> Vec<String> {
+    let mut result = Vec::new();
+    let mut brace_depth: usize = 0;
+
+    for line in content.lines() {
+        if brace_depth == 0
+            && let Some(instruction) = top_level_instruction_text(line)
+        {
+            result.push(instruction.to_string());
+        }
+
+        let (opens, closes) = count_unquoted_braces(line);
+        brace_depth = brace_depth.saturating_add(opens).saturating_sub(closes);
+    }
+
+    result
+}
+
 fn expand_sources_inner(content: &str, base_dir: &Path, seen: &mut HashSet<PathBuf>) -> String {
     let mut result = String::new();
     let mut brace_depth: usize = 0;
@@ -282,6 +305,16 @@ fn expand_sources_inner(content: &str, base_dir: &Path, seen: &mut HashSet<PathB
     result
 }
 
+/// If `line` is a top-level `# @instructions ...` directive, return the instruction text.
+fn top_level_instruction_text(line: &str) -> Option<&str> {
+    let trimmed = line.trim();
+    let after_prefix = trimmed
+        .strip_prefix("# @instructions")
+        .or_else(|| trimmed.strip_prefix("#@instructions"))?;
+    let text = strip_wrapping_quotes(after_prefix.trim());
+    if text.is_empty() { None } else { Some(text) }
+}
+
 /// If `line` is a top-level `source <path>` directive, return the path portion.
 fn top_level_source_path(line: &str) -> Option<&str> {
     let trimmed = line.trim();
@@ -301,6 +334,19 @@ fn top_level_source_path(line: &str) -> Option<&str> {
             path
         },
     )
+}
+
+/// Strip matching surrounding single or double quotes from a string slice.
+fn strip_wrapping_quotes(text: &str) -> &str {
+    let trimmed = text.trim();
+    if trimmed.len() >= 2
+        && ((trimmed.starts_with('"') && trimmed.ends_with('"'))
+            || (trimmed.starts_with('\'') && trimmed.ends_with('\'')))
+    {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    }
 }
 
 /// Resolve a (possibly relative or `~/`-prefixed) path against a base directory.
@@ -815,6 +861,68 @@ mod tests {
         let result = expand_source_directives(&content, temp.path());
         assert!(result.contains("main_fn"));
         assert!(result.contains("other_fn"));
+    }
+
+    #[test]
+    fn test_collect_mcp_instructions_top_level_only() {
+        let content = r#"
+# @instructions First instruction
+#@instructions Second instruction
+build() {
+    # @instructions ignored inside function
+    echo "ok"
+}
+# @instructions "Quoted instruction"
+"#;
+
+        let instructions = collect_mcp_instructions(content);
+        assert_eq!(
+            instructions,
+            vec![
+                "First instruction".to_string(),
+                "Second instruction".to_string(),
+                "Quoted instruction".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_collect_mcp_instructions_source_expansion_order() {
+        let temp = tempfile::tempdir().expect("Failed to create temp dir");
+        let shared = temp.path().join("shared.run");
+        fs::write(
+            &shared,
+            "# @instructions Shared instruction A\n# @instructions Shared instruction B\n",
+        )
+        .expect("Failed to write shared");
+
+        let content = format!(
+            "# @instructions Root instruction 1\nsource {}\n# @instructions Root instruction 2\n",
+            shared.display()
+        );
+        let expanded = expand_source_directives(&content, temp.path());
+        let instructions = collect_mcp_instructions(&expanded);
+
+        assert_eq!(
+            instructions,
+            vec![
+                "Root instruction 1".to_string(),
+                "Shared instruction A".to_string(),
+                "Shared instruction B".to_string(),
+                "Root instruction 2".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_collect_mcp_instructions_ignores_empty_directives() {
+        let content = "\
+# @instructions\n\
+# @instructions    \n\
+# @instructions \"\"\n\
+# @instructions Real instruction\n";
+        let instructions = collect_mcp_instructions(content);
+        assert_eq!(instructions, vec!["Real instruction".to_string()]);
     }
 
     #[test]

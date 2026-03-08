@@ -32,6 +32,19 @@ Add an entry to your MCP config:
 }
 ```
 
+## Runfile-provided server instructions
+You can append project-specific guidance to MCP `initialize.instructions` using top-level `@instructions` lines:
+
+```bash
+# @instructions Confirm the active environment before running deploy tools
+# @instructions Ask before any destructive action
+```
+
+Rules:
+- Use top-level comment lines only (`# @instructions ...` or `#@instructions ...`).
+- Directives inside function bodies are ignored.
+- Lines are appended in merged/source order (global `~/.runfile` first, then project `Runfile`, with sourced content in place).
+
 ## Built-in MCP tools
 Alongside your Runfile functions, three helpers are always available:
 - `set_cwd(path: string)` — change the working directory for subsequent calls.
