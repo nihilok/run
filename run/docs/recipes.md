@@ -83,21 +83,10 @@ at session start.
 
 # @desc Create ad-hoc memory tables (idempotent)
 memory:init(db = ".run-memory.db") {
-    sqlite3 "$db" <<'SQL'
-CREATE TABLE IF NOT EXISTS memories (
-    id      TEXT PRIMARY KEY,
-    scope   TEXT NOT NULL DEFAULT 'session',
-    content TEXT NOT NULL,
-    updated TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS tags (
-    memory_id TEXT NOT NULL,
-    tag       TEXT NOT NULL,
-    PRIMARY KEY (memory_id, tag)
-);
-CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope);
-CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);
-SQL
+    sqlite3 "$db" "CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, scope TEXT NOT NULL DEFAULT 'session', content TEXT NOT NULL, updated TEXT NOT NULL)"
+    sqlite3 "$db" "CREATE TABLE IF NOT EXISTS tags (memory_id TEXT NOT NULL, tag TEXT NOT NULL, PRIMARY KEY (memory_id, tag))"
+    sqlite3 "$db" "CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope)"
+    sqlite3 "$db" "CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag)"
 }
 
 # @desc Store or update a memory note
@@ -126,8 +115,8 @@ memory:store(content: str, scope = "session", tags = "", id = "", db = ".run-mem
     echo "$entry_id"
 }
 
-# @desc Recall notes by substring/scope
-memory:recall(query = "", scope = "", limit = 20, db = ".run-memory.db") {
+# @desc Recall notes by substring/scope/id
+memory:recall(query = "", scope = "", limit = 20, id = "", db = ".run-memory.db") {
     memory:init "$db"
     where="1=1"
 
@@ -139,20 +128,62 @@ memory:recall(query = "", scope = "", limit = 20, db = ".run-memory.db") {
         esc_scope=$(printf "%s" "$scope" | sed "s/'/''/g")
         where="$where AND scope = '$esc_scope'"
     fi
+    if [ -n "$id" ]; then
+        esc_id=$(printf "%s" "$id" | sed "s/'/''/g")
+        where="$where AND id = '$esc_id'"
+    fi
+
+    match_count=$(sqlite3 "$db" "SELECT COUNT(*) FROM memories WHERE $where;")
+    if [ "$match_count" = "0" ]; then
+        echo "No memories found for the provided filters." >&2
+        return 1
+    fi
 
     sqlite3 -header -column "$db" "SELECT id, scope, content, updated
                                    FROM memories
                                    WHERE $where
                                    ORDER BY updated DESC
                                    LIMIT $limit;"
+    echo "Found $match_count matching memory note(s)." >&2
 }
 
 # @desc Forget a note by id
 memory:forget(id: str, db = ".run-memory.db") {
     memory:init "$db"
     esc_id=$(printf "%s" "$id" | sed "s/'/''/g")
-    sqlite3 "$db" "DELETE FROM tags WHERE memory_id = '$esc_id';"
-    sqlite3 "$db" "DELETE FROM memories WHERE id = '$esc_id';"
+    tags_deleted=$(sqlite3 "$db" "DELETE FROM tags WHERE memory_id = '$esc_id'; SELECT changes();")
+    memories_deleted=$(sqlite3 "$db" "DELETE FROM memories WHERE id = '$esc_id'; SELECT changes();")
+
+    if [ "$memories_deleted" = "0" ]; then
+        echo "No memory found for id '$esc_id'." >&2
+        return 1
+    fi
+
+    echo "Deleted memory '$esc_id' (tags removed: $tags_deleted)." >&2
+}
+
+# @desc Run store/recall/forget in one verification flow
+# @arg content Note to round-trip verify
+# @arg scope session|project|global (default: session)
+# @arg tags Comma-separated tags (optional)
+# @arg id Optional existing ID to upsert
+memory:roundtrip(content: str, scope = "session", tags = "", id = "", db = ".run-memory.db") {
+    memory:init "$db"
+    stored_id=$(memory:store "$content" "$scope" "$tags" "$id" "$db")
+    esc_stored_id=$(printf "%s" "$stored_id" | sed "s/'/''/g")
+    esc_scope=$(printf "%s" "$scope" | sed "s/'/''/g")
+    esc_content=$(printf "%s" "$content" | sed "s/'/''/g")
+    recalled_count=$(sqlite3 "$db" "SELECT COUNT(*) FROM memories WHERE id = '$esc_stored_id' AND scope = '$esc_scope' AND content = '$esc_content';")
+
+    if [ "$recalled_count" = "0" ]; then
+        echo "Round-trip recall verification failed for '$stored_id'." >&2
+        return 1
+    fi
+
+    memory:forget "$stored_id" "$db"
+
+    echo "$stored_id"
+    echo "Round-trip verification succeeded for '$stored_id'." >&2
 }
 ```
 
