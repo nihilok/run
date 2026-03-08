@@ -72,6 +72,90 @@ csv_to_json(input: str, output: str) {
 }
 ```
 
+## Ad-hoc memory (SQLite recipe)
+
+If you want memory-like behavior, you can do it with plain Runfile functions and an `sqlite3` database. The top-level `@instructions` lines in this example are appended to MCP `initialize.instructions`, so the agent gets usage guidance
+at session start.
+
+```bash
+# @instructions Until built-in MCP memory mode is released, use this SQLite recipe for facts discovered during a session that need to survive context compaction or carry across sessions (for example: resolved environment details, confirmed decisions).
+# @instructions Prefer the host's own auto-memory (for example: MEMORY.md) for user preferences and workflow instructions that should be read at conversation start.
+
+# @desc Create ad-hoc memory tables (idempotent)
+memory:init(db = ".run-memory.db") {
+    sqlite3 "$db" <<'SQL'
+CREATE TABLE IF NOT EXISTS memories (
+    id      TEXT PRIMARY KEY,
+    scope   TEXT NOT NULL DEFAULT 'session',
+    content TEXT NOT NULL,
+    updated TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tags (
+    memory_id TEXT NOT NULL,
+    tag       TEXT NOT NULL,
+    PRIMARY KEY (memory_id, tag)
+);
+CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope);
+CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);
+SQL
+}
+
+# @desc Store or update a memory note
+# @arg content Note to remember
+# @arg scope session|project|global (default: session)
+# @arg tags Comma-separated tags (optional)
+# @arg id Optional existing ID to upsert
+memory:store(content: str, scope = "session", tags = "", id = "", db = ".run-memory.db") {
+    memory:init "$db"
+    entry_id="${id:-m-$(date +%s)-$RANDOM}"
+    esc_content=$(printf "%s" "$content" | sed "s/'/''/g")
+    esc_scope=$(printf "%s" "$scope" | sed "s/'/''/g")
+
+    sqlite3 "$db" "INSERT INTO memories (id, scope, content, updated) VALUES ('$entry_id', '$esc_scope', '$esc_content', datetime('now'))
+                   ON CONFLICT(id) DO UPDATE SET scope = excluded.scope, content = excluded.content, updated = datetime('now');"
+
+    sqlite3 "$db" "DELETE FROM tags WHERE memory_id = '$entry_id';"
+    IFS=',' read -ra parts <<< "$tags"
+    for tag in "${parts[@]}"; do
+        clean_tag=$(printf "%s" "$tag" | xargs)
+        [ -z "$clean_tag" ] && continue
+        esc_tag=$(printf "%s" "$clean_tag" | sed "s/'/''/g")
+        sqlite3 "$db" "INSERT OR IGNORE INTO tags (memory_id, tag) VALUES ('$entry_id', '$esc_tag');"
+    done
+
+    echo "$entry_id"
+}
+
+# @desc Recall notes by substring/scope
+memory:recall(query = "", scope = "", limit = 20, db = ".run-memory.db") {
+    memory:init "$db"
+    where="1=1"
+
+    if [ -n "$query" ]; then
+        esc_query=$(printf "%s" "$query" | sed "s/'/''/g")
+        where="$where AND content LIKE '%$esc_query%'"
+    fi
+    if [ -n "$scope" ]; then
+        esc_scope=$(printf "%s" "$scope" | sed "s/'/''/g")
+        where="$where AND scope = '$esc_scope'"
+    fi
+
+    sqlite3 -header -column "$db" "SELECT id, scope, content, updated
+                                   FROM memories
+                                   WHERE $where
+                                   ORDER BY updated DESC
+                                   LIMIT $limit;"
+}
+
+# @desc Forget a note by id
+memory:forget(id: str, db = ".run-memory.db") {
+    memory:init "$db"
+    esc_id=$(printf "%s" "$id" | sed "s/'/''/g")
+    sqlite3 "$db" "DELETE FROM tags WHERE memory_id = '$esc_id';"
+    sqlite3 "$db" "DELETE FROM memories WHERE id = '$esc_id';"
+}
+```
+
 ## Platform-specific commands
 
 ```bash
