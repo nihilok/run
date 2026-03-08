@@ -72,13 +72,52 @@ csv_to_json(input: str, output: str) {
 }
 ```
 
+## Platform-specific commands
+
+```bash
+# @desc Clean build artifacts
+# @os windows
+clean() {
+    del /Q /S target\*
+}
+
+# @desc Clean build artifacts
+# @os unix
+clean() {
+    rm -rf target/
+}
+
+# @desc Open the project (portable)
+open() {
+    case "$(uname -s)" in
+        Darwin) open . ;;
+        Linux)  xdg-open . ;;
+        MINGW*|MSYS*|CYGWIN*) start . ;;
+        *) echo "Unsupported OS" >&2; return 1 ;;
+    esac
+}
+```
+
+## Deploy with dependencies
+
+```bash
+build() cargo build --release
+
+# @desc Build and deploy
+deploy(env: str, version = "latest") {
+    build || exit 1
+    echo "Deploying $version to $env"
+    ./scripts/deploy.sh $env $version
+}
+```
+
 ## Ad-hoc memory (SQLite recipe)
 
 If you want memory-like behavior, you can do it with plain Runfile functions and an `sqlite3` database. The top-level `@instructions` lines in this example are appended to MCP `initialize.instructions`, so the agent gets usage guidance
 at session start.
 
 ```bash
-# @instructions Until built-in MCP memory mode is released, use this SQLite recipe for facts discovered during a session that need to survive context compaction or carry across sessions (for example: resolved environment details, confirmed decisions).
+# @instructions Use this SQLite recipe for facts discovered during a session that need to survive context compaction or carry across sessions (for example: resolved environment details, confirmed decisions).
 # @instructions Prefer the host's own auto-memory (for example: MEMORY.md) for user preferences and workflow instructions that should be read at conversation start.
 
 # @desc Create ad-hoc memory tables (idempotent)
@@ -184,45 +223,6 @@ memory:roundtrip(content: str, scope = "session", tags = "", id = "", db = ".run
 
     echo "$stored_id"
     echo "Round-trip verification succeeded for '$stored_id'." >&2
-}
-```
-
-## Platform-specific commands
-
-```bash
-# @desc Clean build artifacts
-# @os windows
-clean() {
-    del /Q /S target\*
-}
-
-# @desc Clean build artifacts
-# @os unix
-clean() {
-    rm -rf target/
-}
-
-# @desc Open the project (portable)
-open() {
-    case "$(uname -s)" in
-        Darwin) open . ;;
-        Linux)  xdg-open . ;;
-        MINGW*|MSYS*|CYGWIN*) start . ;;
-        *) echo "Unsupported OS" >&2; return 1 ;;
-    esac
-}
-```
-
-## Deploy with dependencies
-
-```bash
-build() cargo build --release
-
-# @desc Build and deploy
-deploy(env: str, version = "latest") {
-    build || exit 1
-    echo "Deploying $version to $env"
-    ./scripts/deploy.sh $env $version
 }
 ```
 
