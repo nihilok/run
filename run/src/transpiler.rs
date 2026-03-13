@@ -112,119 +112,22 @@ pub fn sanitise_name(name: &str) -> String {
 /// 1. Adding whitespace would change the content delivered to the command.
 /// 2. Indenting the closing delimiter would prevent the shell from recognising it.
 fn indent(text: &str, prefix: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let mask = crate::utils::build_heredoc_mask(&lines);
     let mut result = Vec::new();
-    let mut heredoc_stack: Vec<String> = Vec::new();
 
-    for line in text.lines() {
-        if let Some(delim) = heredoc_stack.last() {
+    for (idx, line) in lines.iter().enumerate() {
+        if mask[idx] {
             // Inside a heredoc — emit the line verbatim (no indentation).
-            result.push(line.to_string());
-            // Check whether this line closes the innermost heredoc.
-            // For `<<DELIM` the delimiter must appear alone; for `<<-DELIM`
-            // bash strips leading tabs, so we also try after stripping tabs.
-            let trimmed = line.trim_end();
-            if trimmed == delim || trimmed.trim_start_matches('\t') == delim {
-                heredoc_stack.pop();
-            }
+            result.push((*line).to_string());
+        } else if line.trim().is_empty() {
+            result.push(String::new());
         } else {
-            // Normal line — apply indentation.
-            if line.trim().is_empty() {
-                result.push(String::new());
-            } else {
-                result.push(format!("{prefix}{line}"));
-            }
-            // After emitting, check whether this line opens one or more heredocs.
-            heredoc_stack.extend(extract_heredoc_delimiters(line));
+            result.push(format!("{prefix}{line}"));
         }
     }
 
     result.join("\n")
-}
-
-/// Extract heredoc delimiter names from a line of shell code.
-///
-/// Recognises `<<DELIM`, `<<-DELIM`, `<<"DELIM"`, `<<'DELIM'`, and `<<\DELIM`.
-/// Skips `<<<` (here-strings) and `<<` that appears inside quoted strings.
-#[must_use]
-pub fn extract_heredoc_delimiters(line: &str) -> Vec<String> {
-    let mut delimiters = Vec::new();
-    let chars: Vec<char> = line.chars().collect();
-    let len = chars.len();
-    let mut i = 0;
-    let mut in_single_quote = false;
-    let mut in_double_quote = false;
-
-    while i < len {
-        match chars[i] {
-            '\'' if !in_double_quote => {
-                in_single_quote = !in_single_quote;
-            }
-            '"' if !in_single_quote => {
-                in_double_quote = !in_double_quote;
-            }
-            '\\' if !in_single_quote && i + 1 < len => {
-                i += 2;
-                continue;
-            }
-            '<' if !in_single_quote
-                && !in_double_quote
-                && i + 1 < len
-                && chars[i + 1] == '<'
-                && !(i + 2 < len && chars[i + 2] == '<')
-                && (i == 0 || chars[i - 1] != '<') =>
-            {
-                i += 2; // skip `<<`
-
-                // optional dash (`<<-`)
-                if i < len && chars[i] == '-' {
-                    i += 1;
-                }
-                // optional whitespace
-                while i < len && (chars[i] == ' ' || chars[i] == '\t') {
-                    i += 1;
-                }
-                if i >= len {
-                    break;
-                }
-
-                // optional quoting character: ', ", or backslash
-                let close_quote = match chars[i] {
-                    q @ ('\'' | '"') => {
-                        i += 1;
-                        Some(q)
-                    }
-                    '\\' => {
-                        i += 1;
-                        None
-                    }
-                    _ => None,
-                };
-
-                // read the delimiter word
-                let start = i;
-                while i < len && (chars[i].is_alphanumeric() || chars[i] == '_') {
-                    i += 1;
-                }
-
-                if i > start {
-                    let delim: String = chars[start..i].iter().collect();
-                    // skip the matching closing quote if present
-                    if let Some(q) = close_quote
-                        && i < len
-                        && chars[i] == q
-                    {
-                        i += 1;
-                    }
-                    delimiters.push(delim);
-                }
-                continue;
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-
-    delimiters
 }
 
 /// Rewrite call sites in function body to use sanitised names
@@ -565,26 +468,6 @@ mod tests {
             result,
             "    echo \"<<EOF is not a heredoc\"\n    echo normal"
         );
-    }
-
-    #[test]
-    fn test_extract_heredoc_delimiters_basic() {
-        assert_eq!(extract_heredoc_delimiters("cat <<EOF"), vec!["EOF"]);
-        assert_eq!(extract_heredoc_delimiters("cat <<-EOF"), vec!["EOF"]);
-        assert_eq!(extract_heredoc_delimiters("cat <<'EOF'"), vec!["EOF"]);
-        assert_eq!(extract_heredoc_delimiters("cat <<\"EOF\""), vec!["EOF"]);
-    }
-
-    #[test]
-    fn test_extract_heredoc_skips_herestring() {
-        let result: Vec<String> = extract_heredoc_delimiters("cat <<<EOF");
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn test_extract_heredoc_inside_quotes() {
-        let result: Vec<String> = extract_heredoc_delimiters("echo \"<<EOF\" more");
-        assert!(result.is_empty());
     }
 
     #[test]

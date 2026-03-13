@@ -32,7 +32,7 @@ pub(super) fn parse_block_content(block_str: &str) -> String {
     // Identify which lines are inside heredocs so they are excluded from the
     // minimum-indentation calculation (heredoc content is literal and must not
     // be dedented).
-    let heredoc_mask = build_heredoc_mask(&lines);
+    let heredoc_mask = crate::utils::build_heredoc_mask(&lines);
 
     // Find the minimum indentation (excluding empty lines and heredoc lines)
     let min_indent = lines
@@ -62,32 +62,6 @@ pub(super) fn parse_block_content(block_str: &str) -> String {
         .collect();
 
     dedented_lines.join("\n")
-}
-
-/// Build a boolean mask indicating which lines are inside a heredoc.
-///
-/// A line is considered "inside a heredoc" if it is between a heredoc opening
-/// marker (`<<DELIM`) and the corresponding closing delimiter. The opening
-/// marker line itself is NOT masked (it is a normal command), but every
-/// subsequent line up to and including the closing delimiter IS masked.
-fn build_heredoc_mask(lines: &[&str]) -> Vec<bool> {
-    let mut mask = vec![false; lines.len()];
-    let mut heredoc_stack: Vec<String> = Vec::new();
-
-    for (idx, line) in lines.iter().enumerate() {
-        if let Some(delim) = heredoc_stack.last() {
-            mask[idx] = true;
-            let trimmed = line.trim_end();
-            if trimmed == delim || trimmed.trim_start_matches('\t') == delim {
-                heredoc_stack.pop();
-            }
-        } else {
-            // Not inside a heredoc — check whether this line opens one.
-            heredoc_stack.extend(crate::transpiler::extract_heredoc_delimiters(line));
-        }
-    }
-
-    mask
 }
 
 /// Split block content into commands based on shell type
