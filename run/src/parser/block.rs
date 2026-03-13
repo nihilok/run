@@ -29,19 +29,29 @@ pub(super) fn parse_block_content(block_str: &str) -> String {
         vec![]
     };
 
-    // Find the minimum indentation (excluding empty lines)
+    // Identify which lines are inside heredocs so they are excluded from the
+    // minimum-indentation calculation (heredoc content is literal and must not
+    // be dedented).
+    let heredoc_mask = build_heredoc_mask(&lines);
+
+    // Find the minimum indentation (excluding empty lines and heredoc lines)
     let min_indent = lines
         .iter()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| line.len() - line.trim_start().len())
+        .enumerate()
+        .filter(|(idx, line)| !line.trim().is_empty() && !heredoc_mask[*idx])
+        .map(|(_, line)| line.len() - line.trim_start().len())
         .min()
         .unwrap_or(0);
 
-    // Build dedented lines
+    // Build dedented lines — heredoc lines are emitted verbatim.
     let dedented_lines: Vec<String> = lines
         .iter()
-        .map(|line| {
-            if line.trim().is_empty() {
+        .enumerate()
+        .map(|(idx, line)| {
+            if heredoc_mask[idx] {
+                // Inside a heredoc — preserve exactly as-is.
+                (*line).to_string()
+            } else if line.trim().is_empty() {
                 String::new()
             } else if line.len() > min_indent {
                 line[min_indent..].to_string()
@@ -52,6 +62,32 @@ pub(super) fn parse_block_content(block_str: &str) -> String {
         .collect();
 
     dedented_lines.join("\n")
+}
+
+/// Build a boolean mask indicating which lines are inside a heredoc.
+///
+/// A line is considered "inside a heredoc" if it is between a heredoc opening
+/// marker (`<<DELIM`) and the corresponding closing delimiter. The opening
+/// marker line itself is NOT masked (it is a normal command), but every
+/// subsequent line up to and including the closing delimiter IS masked.
+fn build_heredoc_mask(lines: &[&str]) -> Vec<bool> {
+    let mut mask = vec![false; lines.len()];
+    let mut heredoc_stack: Vec<String> = Vec::new();
+
+    for (idx, line) in lines.iter().enumerate() {
+        if let Some(delim) = heredoc_stack.last() {
+            mask[idx] = true;
+            let trimmed = line.trim_end();
+            if trimmed == delim || trimmed.trim_start_matches('\t') == delim {
+                heredoc_stack.pop();
+            }
+        } else {
+            // Not inside a heredoc — check whether this line opens one.
+            heredoc_stack.extend(crate::transpiler::extract_heredoc_delimiters(line));
+        }
+    }
+
+    mask
 }
 
 /// Split block content into commands based on shell type
