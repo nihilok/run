@@ -937,3 +937,60 @@ app:build() echo "app build executed"
         "Expected double underscore to resolve to colon function"
     );
 }
+
+#[test]
+fn test_heredoc_in_composed_function() {
+    // Heredoc content and closing delimiter must not be indented when
+    // the function body is transpiled into a preamble for composition.
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+    let out_file = temp_dir.path().join("heredoc_out.txt");
+
+    let runfile = format!(
+        r#"
+write_config() {{
+    cat > {} <<EOF
+KEY=value
+LINE2=other
+EOF
+    echo "config written"
+}}
+
+deploy() {{
+    write_config
+    echo "deploy done"
+}}
+"#,
+        out_file.display()
+    );
+    create_runfile(temp_dir.path(), &runfile);
+
+    let output = Command::new(&binary)
+        .arg("deploy")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "Command failed (stderr: {stderr})");
+    assert!(
+        stdout.contains("config written"),
+        "Expected 'config written' in output, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("deploy done"),
+        "Expected 'deploy done' in output, got: {stdout}"
+    );
+
+    let content = fs::read_to_string(&out_file).expect("heredoc output file should exist");
+    assert!(
+        content.contains("KEY=value"),
+        "Heredoc content should be written verbatim, got: {content}"
+    );
+    assert!(
+        content.contains("LINE2=other"),
+        "Heredoc content should be written verbatim, got: {content}"
+    );
+}
