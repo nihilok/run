@@ -813,4 +813,64 @@ scale(service, replicas) docker compose scale $service=$replicas
             panic!("Expected SimpleFunctionDef");
         }
     }
+
+    #[test]
+    fn test_block_function_with_apostrophe_in_comment() {
+        // Regression test: unbalanced single quote in a comment must not break parsing
+        let input =
+            "test:hello() {\n    # It's a comment with an apostrophe\n    echo \"hello\"\n}";
+        let result = parse_script(input).unwrap();
+
+        if let Statement::BlockFunctionDef { name, .. } = &result.statements[0] {
+            assert_eq!(name, "test:hello");
+        } else {
+            panic!("Expected BlockFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_block_function_with_multiple_apostrophes_in_comments() {
+        // Multiple unbalanced single quotes across comment lines must all be handled
+        let input = "greet() {\n    # It's fine, don't worry\n    echo \"hi\"\n}";
+        let result = parse_script(input).unwrap();
+
+        if let Statement::BlockFunctionDef { name, .. } = &result.statements[0] {
+            assert_eq!(name, "greet");
+        } else {
+            panic!("Expected BlockFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_block_function_single_quotes_in_double_quoted_string() {
+        // Single quotes inside double-quoted strings (e.g. Python style) must still parse
+        let input = "fix() {\n    hostname.replace(\"'\", \"''\")\n}";
+        let result = parse_script(input).unwrap();
+
+        if let Statement::BlockFunctionDef { name, .. } = &result.statements[0] {
+            assert_eq!(name, "fix");
+        } else {
+            panic!("Expected BlockFunctionDef");
+        }
+    }
+
+    #[test]
+    fn test_function_after_comment_with_apostrophe() {
+        // A function defined AFTER another function whose body has an apostrophe in a comment
+        // must also parse correctly (the apostrophe must not consume content past the block end)
+        let input = "first() {\n    # It's ok\n    echo \"first\"\n}\nsecond() echo \"second\"";
+        let result = parse_script(input).unwrap();
+
+        assert_eq!(result.statements.len(), 2);
+        if let Statement::BlockFunctionDef { name, .. } = &result.statements[0] {
+            assert_eq!(name, "first");
+        } else {
+            panic!("Expected BlockFunctionDef for first");
+        }
+        if let Statement::SimpleFunctionDef { name, .. } = &result.statements[1] {
+            assert_eq!(name, "second");
+        } else {
+            panic!("Expected SimpleFunctionDef for second");
+        }
+    }
 }
