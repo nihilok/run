@@ -61,10 +61,14 @@ param_identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 block = { "{" ~ block_content ~ "}" }
 block_content = @{ block_part* }
 block_part = _{
-    quoted_string_in_block
+    comment_in_block  // Comments must be matched first so quotes inside them are not parsed as string delimiters
+    | quoted_string_in_block
     | "{" ~ block_content ~ "}"  // Nested braces
     | (!("}" | "\"" | "'") ~ ANY)  // Regular characters
 }
+// Matches a shell comment (#...) up to (but not including) the end of line.
+// This prevents single/double quotes within comments from being parsed as string delimiters.
+comment_in_block = @{ "#" ~ (!NL ~ ANY)* }
 quoted_string_in_block = @{
     "\"" ~ ("\\\"" | (!"\"" ~ ANY))* ~ "\""
     | "'" ~ ("\\'" | (!"'" ~ ANY))* ~ "'"
