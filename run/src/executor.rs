@@ -37,7 +37,24 @@ pub fn execute_file(path: &PathBuf) {
 
     let base_dir = path.parent().unwrap_or(std::path::Path::new("."));
     let processed = config::expand_source_directives(&script, base_dir);
-    execute_script(&processed, Some(&path.to_string_lossy()));
+
+    let program = match parser::parse_script(&processed) {
+        Ok(prog) => prog,
+        Err(e) => {
+            eprintln!(
+                "{}",
+                parser::ParseError::from_pest(&e, &processed, Some(&path.to_string_lossy()))
+            );
+            std::process::exit(1);
+        }
+    };
+
+    let mut interpreter = interpreter::Interpreter::new();
+    interpreter.set_runfile_dir(Some(base_dir.to_path_buf()));
+    if let Err(e) = interpreter.execute(program) {
+        eprintln!("error: {e}");
+        std::process::exit(1);
+    }
 }
 
 /// Load function definitions from config and call a function with arguments.
@@ -60,6 +77,10 @@ pub fn run_function_call(
     let mut interpreter = interpreter::Interpreter::new();
     interpreter.set_output_mode(output_format.mode());
     interpreter.set_show_script(show_script);
+
+    // Inject __RUNFILE_DIR__ from the resolved Runfile path
+    let runfile_dir = config::find_runfile_path().and_then(|p| p.parent().map(PathBuf::from));
+    interpreter.set_runfile_dir(runfile_dir);
 
     match parser::parse_script(&config_content) {
         Ok(program) => {

@@ -7,6 +7,19 @@ Functions inherit the caller environment. Two key variables affect `run` itself:
 - `RUN_SHELL` — override the default shell for execution. Defaults to `bash` on Unix/macOS (falls back to `sh` if bash is not available), `pwsh` (or `powershell`) on Windows.
 - `RUN_MCP_OUTPUT_DIR` — directory for MCP output files when responses are truncated.
 
+## Built-in variables
+`run` automatically injects the following variables into every function's execution scope:
+
+- `__RUNFILE_DIR__` — absolute path of the directory that contains the Runfile (or `~/.runfile`) the function was defined in. Useful for constructing paths relative to the Runfile itself:
+  ```bash
+  build() {
+      # Load config from the same directory as this Runfile
+      source "$__RUNFILE_DIR__/config.sh"
+      echo "Building from $__RUNFILE_DIR__"
+  }
+  ```
+  For polyglot functions the variable is injected with the appropriate syntax for the target language (e.g. `__RUNFILE_DIR__ = "/path"` for Python/Ruby, `const __RUNFILE_DIR__ = "/path";` for Node.js).
+
 ## Runfile scope
 - Top-level variables declared in a Runfile are visible to all functions.
 - Sibling functions are injected into the execution scope, so you can call them by name.

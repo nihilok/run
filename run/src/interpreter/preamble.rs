@@ -657,6 +657,51 @@ pub(super) fn build_variable_preamble(
     }
 }
 
+/// Escape a path string for safe embedding in polyglot (Python/Node/Ruby) string literals.
+fn escape_polyglot_path(path: &str) -> String {
+    path.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Build a single-line preamble that sets the `__RUNFILE_DIR__` built-in variable.
+///
+/// The assignment syntax is adapted to the target interpreter so that the
+/// variable is immediately accessible inside every function body:
+/// - Shell (sh/bash): `__RUNFILE_DIR__="<escaped-path>"`
+/// - `PowerShell`: `$__RUNFILE_DIR__ = "<escaped-path>"`
+/// - Python/Ruby: `__RUNFILE_DIR__ = "<escaped-path>"`
+/// - Node: `const __RUNFILE_DIR__ = "<escaped-path>";`
+pub(super) fn build_runfile_dir_preamble(dir: &str, interpreter: &TranspilerInterpreter) -> String {
+    match interpreter {
+        TranspilerInterpreter::Pwsh => {
+            format!("$__RUNFILE_DIR__ = \"{}\"", escape_pwsh_value(dir))
+        }
+        TranspilerInterpreter::Python
+        | TranspilerInterpreter::Python3
+        | TranspilerInterpreter::Ruby => {
+            format!("__RUNFILE_DIR__ = \"{}\"", escape_polyglot_path(dir))
+        }
+        TranspilerInterpreter::Node => {
+            format!("const __RUNFILE_DIR__ = \"{}\";", escape_polyglot_path(dir))
+        }
+        _ => {
+            // sh / bash: standard shell assignment
+            format!("__RUNFILE_DIR__=\"{}\"", escape_shell_value(dir))
+        }
+    }
+}
+
+/// Combine an optional builtin preamble line with user-defined variable preamble lines.
+///
+/// Returns the builtin line prepended to the user preamble, with the two separated
+/// by a newline when both are non-empty.
+pub(super) fn combine_with_builtin(builtin: Option<String>, user: String) -> String {
+    match (builtin, user) {
+        (Some(b), u) if u.is_empty() => b,
+        (Some(b), u) => format!("{b}\n{u}"),
+        (None, u) => u,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -701,6 +746,79 @@ mod tests {
         vars.insert("VAR".to_string(), "$env:PATH".to_string());
         let result = build_variable_preamble(&vars, &TranspilerInterpreter::Pwsh);
         assert_eq!(result, "$VAR = \"`$env:PATH\"");
+    }
+
+    #[test]
+    fn test_build_runfile_dir_preamble_sh() {
+        let result = build_runfile_dir_preamble("/home/user/project", &TranspilerInterpreter::Sh);
+        assert_eq!(result, "__RUNFILE_DIR__=\"/home/user/project\"");
+    }
+
+    #[test]
+    fn test_build_runfile_dir_preamble_bash() {
+        let result = build_runfile_dir_preamble("/home/user/project", &TranspilerInterpreter::Bash);
+        assert_eq!(result, "__RUNFILE_DIR__=\"/home/user/project\"");
+    }
+
+    #[test]
+    fn test_build_runfile_dir_preamble_pwsh() {
+        let result = build_runfile_dir_preamble("C:\\Users\\user", &TranspilerInterpreter::Pwsh);
+        assert_eq!(result, "$__RUNFILE_DIR__ = \"C:\\Users\\user\"");
+    }
+
+    #[test]
+    fn test_build_runfile_dir_preamble_python() {
+        let result =
+            build_runfile_dir_preamble("/home/user/project", &TranspilerInterpreter::Python);
+        assert_eq!(result, "__RUNFILE_DIR__ = \"/home/user/project\"");
+    }
+
+    #[test]
+    fn test_build_runfile_dir_preamble_node() {
+        let result = build_runfile_dir_preamble("/home/user/project", &TranspilerInterpreter::Node);
+        assert_eq!(result, "const __RUNFILE_DIR__ = \"/home/user/project\";");
+    }
+
+    #[test]
+    fn test_build_runfile_dir_preamble_ruby() {
+        let result = build_runfile_dir_preamble("/home/user/project", &TranspilerInterpreter::Ruby);
+        assert_eq!(result, "__RUNFILE_DIR__ = \"/home/user/project\"");
+    }
+
+    #[test]
+    fn test_build_runfile_dir_preamble_path_with_special_chars() {
+        // Paths with double quotes should be escaped
+        let result =
+            build_runfile_dir_preamble("/home/user/my\"project", &TranspilerInterpreter::Sh);
+        assert_eq!(result, "__RUNFILE_DIR__=\"/home/user/my\\\"project\"");
+    }
+
+    #[test]
+    fn test_combine_with_builtin_both_present() {
+        let result = combine_with_builtin(
+            Some("__RUNFILE_DIR__=\"/dir\"".to_string()),
+            "MY_VAR=\"val\"".to_string(),
+        );
+        assert_eq!(result, "__RUNFILE_DIR__=\"/dir\"\nMY_VAR=\"val\"");
+    }
+
+    #[test]
+    fn test_combine_with_builtin_no_user_vars() {
+        let result =
+            combine_with_builtin(Some("__RUNFILE_DIR__=\"/dir\"".to_string()), String::new());
+        assert_eq!(result, "__RUNFILE_DIR__=\"/dir\"");
+    }
+
+    #[test]
+    fn test_combine_with_builtin_no_builtin() {
+        let result = combine_with_builtin(None, "MY_VAR=\"val\"".to_string());
+        assert_eq!(result, "MY_VAR=\"val\"");
+    }
+
+    #[test]
+    fn test_combine_with_builtin_both_empty() {
+        let result = combine_with_builtin(None, String::new());
+        assert_eq!(result, "");
     }
 
     #[test]

@@ -12,6 +12,7 @@ use crate::ast::{Attribute, CommandOutput, Expression, OutputMode, Program, Stat
 use crate::transpiler::{self, Interpreter as TranspilerInterpreter};
 use crate::utils;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 #[derive(Clone)]
 pub(crate) struct FunctionMetadata {
@@ -34,6 +35,8 @@ pub struct Interpreter {
     last_interpreter_name: String,
     /// When true, print the generated script instead of executing
     show_script: bool,
+    /// Directory of the Runfile that was loaded, exposed as `__RUNFILE_DIR__`
+    runfile_dir: Option<PathBuf>,
 }
 
 impl Default for Interpreter {
@@ -51,6 +54,7 @@ impl Default for Interpreter {
             captured_outputs: Vec::new(),
             last_interpreter_name: default_interpreter_name.to_string(),
             show_script: false,
+            runfile_dir: None,
         }
     }
 }
@@ -115,6 +119,12 @@ impl Interpreter {
     /// Enable show-script mode (print script without executing)
     pub fn set_show_script(&mut self, show: bool) {
         self.show_script = show;
+    }
+
+    /// Set the directory of the Runfile that was loaded.
+    /// This is injected into every function's execution scope as `__RUNFILE_DIR__`.
+    pub fn set_runfile_dir(&mut self, dir: Option<PathBuf>) {
+        self.runfile_dir = dir;
     }
 
     /// Get the current output mode
@@ -604,7 +614,14 @@ impl Interpreter {
         let rewritten_body = transpiler::rewrite_call_sites(command_template, &sibling_names);
 
         // Build preambles
-        let var_preamble = preamble::build_variable_preamble(&self.variables, &target_interpreter);
+        let user_var_preamble =
+            preamble::build_variable_preamble(&self.variables, &target_interpreter);
+        let runfile_dir_line = self
+            .runfile_dir
+            .as_ref()
+            .and_then(|p| p.to_str())
+            .map(|dir| preamble::build_runfile_dir_preamble(dir, &target_interpreter));
+        let var_preamble = preamble::combine_with_builtin(runfile_dir_line, user_var_preamble);
         let func_preamble = preamble::build_function_preamble(
             target_name,
             &target_interpreter,
@@ -704,6 +721,14 @@ impl Interpreter {
                 format!("{arg_preamble}\n{script}")
             };
 
+            // Inject __RUNFILE_DIR__ built-in at the top of the polyglot script
+            let script = if let Some(dir) = self.runfile_dir.as_ref().and_then(|p| p.to_str()) {
+                let dir_line = preamble::build_runfile_dir_preamble(dir, &target_interpreter);
+                format!("{dir_line}\n{script}")
+            } else {
+                script
+            };
+
             let substituted = self.substitute_args_with_params(&script, args, params);
 
             // Use execute_with_mode_polyglot for proper capture support with args
@@ -729,7 +754,14 @@ impl Interpreter {
 
         // Rewrite call sites and build preambles
         let rewritten_body = transpiler::rewrite_call_sites(&full_script, &sibling_names);
-        let var_preamble = preamble::build_variable_preamble(&self.variables, &target_interpreter);
+        let user_var_preamble =
+            preamble::build_variable_preamble(&self.variables, &target_interpreter);
+        let runfile_dir_line = self
+            .runfile_dir
+            .as_ref()
+            .and_then(|p| p.to_str())
+            .map(|dir| preamble::build_runfile_dir_preamble(dir, &target_interpreter));
+        let var_preamble = preamble::combine_with_builtin(runfile_dir_line, user_var_preamble);
         let func_preamble = preamble::build_function_preamble(
             target_name,
             &target_interpreter,
