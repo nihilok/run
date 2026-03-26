@@ -574,3 +574,62 @@ build-project() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("building project"));
 }
+
+/// Assert that the `__RUNFILE_DIR__` output from a function matches `expected_dir`.
+fn assert_runfile_dir_matches(stdout: &str, expected_dir: &std::path::Path) {
+    let expected = expected_dir.to_string_lossy();
+    assert!(
+        stdout.trim().ends_with(expected.trim_end_matches('/')),
+        "Expected __RUNFILE_DIR__ to end with '{expected}', got: '{stdout}'"
+    );
+}
+
+#[test]
+fn test_runfile_dir_builtin_simple_function() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+show_dir() echo "$__RUNFILE_DIR__"
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("show_dir")
+        .current_dir(temp_dir.path())
+        .env("RUN_NO_GLOBAL_MERGE", "1")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_runfile_dir_matches(&stdout, temp_dir.path());
+}
+
+#[test]
+fn test_runfile_dir_builtin_block_function() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+show_dir() {
+    echo "$__RUNFILE_DIR__"
+}
+"#,
+    );
+
+    let output = Command::new(&binary)
+        .arg("show_dir")
+        .current_dir(temp_dir.path())
+        .env("RUN_NO_GLOBAL_MERGE", "1")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_runfile_dir_matches(&stdout, temp_dir.path());
+}
