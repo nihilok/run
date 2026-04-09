@@ -270,7 +270,7 @@ fn test_runfile_dir_override_via_env_var() {
     );
 
     // Simulate the merged content a MCP handler would write to a temp file.
-    // Here we reuse the already-expanded content by reading the Runfile directly.
+    // We use the same function body that would result from expanding the source directive.
     let merged_content = "show_dir() {\n    echo \"DIR=$__RUNFILE_DIR__\"\n}\n";
     let merged_file = merged_dir.path().join("runfile_merged_test.run");
     fs::write(&merged_file, merged_content).unwrap();
