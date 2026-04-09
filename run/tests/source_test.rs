@@ -226,10 +226,7 @@ fn test_runfile_dir_set_correctly_for_sourced_function() {
         "test_dir() {\n    echo \"DIR=$__RUNFILE_DIR__\"\n}\n",
     );
 
-    create_runfile(
-        temp_dir.path(),
-        "source runfiles/common.run\n",
-    );
+    create_runfile(temp_dir.path(), "source runfiles/common.run\n");
 
     let output = test_command(&binary)
         .arg("test_dir")
@@ -264,10 +261,7 @@ fn test_runfile_dir_override_via_env_var() {
     );
 
     // Create the project Runfile that sources the helper.
-    create_runfile(
-        project_dir.path(),
-        "source scripts/helpers.run\n",
-    );
+    create_runfile(project_dir.path(), "source scripts/helpers.run\n");
 
     // Simulate the merged content a MCP handler would write to a temp file.
     // We use the same function body that would result from expanding the source directive.
