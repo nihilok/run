@@ -212,6 +212,88 @@ fn test_source_multiple_files() {
 }
 
 #[test]
+fn test_runfile_dir_set_correctly_for_sourced_function() {
+    // __RUNFILE_DIR__ must resolve to the project Runfile's directory even when the
+    // function that uses it is defined in a sourced file.
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    fs::create_dir(temp_dir.path().join("runfiles")).unwrap();
+
+    write_file(
+        &temp_dir.path().join("runfiles"),
+        "common.run",
+        "test_dir() {\n    echo \"DIR=$__RUNFILE_DIR__\"\n}\n",
+    );
+
+    create_runfile(temp_dir.path(), "source runfiles/common.run\n");
+
+    let output = test_command(&binary)
+        .arg("test_dir")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let expected_dir = temp_dir.path().to_str().unwrap();
+    assert!(
+        stdout.contains(&format!("DIR={expected_dir}")),
+        "__RUNFILE_DIR__ should be the project dir '{expected_dir}', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_runfile_dir_override_via_env_var() {
+    // When RUN_RUNFILE_DIR is set (as done by the MCP handler when using a temp merged
+    // file), __RUNFILE_DIR__ must resolve to that directory rather than the directory of
+    // the --runfile path.
+    let binary = get_binary_path();
+    let project_dir = create_temp_dir(); // the "real" project directory
+    let merged_dir = create_temp_dir(); // simulates the system temp directory
+
+    // Create the function in a sourced file under the project directory.
+    fs::create_dir(project_dir.path().join("scripts")).unwrap();
+    write_file(
+        &project_dir.path().join("scripts"),
+        "helpers.run",
+        "show_dir() {\n    echo \"DIR=$__RUNFILE_DIR__\"\n}\n",
+    );
+
+    // Create the project Runfile that sources the helper.
+    create_runfile(project_dir.path(), "source scripts/helpers.run\n");
+
+    // Simulate the merged content a MCP handler would write to a temp file.
+    // We use the same function body that would result from expanding the source directive.
+    let merged_content = "show_dir() {\n    echo \"DIR=$__RUNFILE_DIR__\"\n}\n";
+    let merged_file = merged_dir.path().join("runfile_merged_test.run");
+    fs::write(&merged_file, merged_content).unwrap();
+
+    // Run the function using the temp merged file as --runfile (MCP subprocess pattern),
+    // but provide RUN_RUNFILE_DIR so __RUNFILE_DIR__ resolves to the real project dir.
+    let output = test_command(&binary)
+        .arg("--runfile")
+        .arg(merged_file.to_str().unwrap())
+        .arg("show_dir")
+        .env("RUN_RUNFILE_DIR", project_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let real_dir = project_dir.path().to_str().unwrap();
+    let temp_merged = merged_dir.path().to_str().unwrap();
+    assert!(
+        stdout.contains(&format!("DIR={real_dir}")),
+        "__RUNFILE_DIR__ should be the real project dir '{real_dir}', got: {stdout}"
+    );
+    assert!(
+        !stdout.contains(temp_merged),
+        "__RUNFILE_DIR__ must not be the temp merged dir '{temp_merged}', got: {stdout}"
+    );
+}
+
+#[test]
 fn test_source_in_script_file() {
     // source directives should also work in .run script files executed directly.
     let binary = get_binary_path();

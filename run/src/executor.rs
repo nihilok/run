@@ -78,8 +78,16 @@ pub fn run_function_call(
     interpreter.set_output_mode(output_format.mode());
     interpreter.set_show_script(show_script);
 
-    // Inject __RUNFILE_DIR__ from the resolved Runfile path
-    let runfile_dir = config::find_runfile_path().and_then(|p| p.parent().map(PathBuf::from));
+    // Inject __RUNFILE_DIR__ from the resolved Runfile path.
+    // Prefer the RUN_RUNFILE_DIR env var (set by the MCP handler when the subprocess is
+    // given a temp merged file) so that __RUNFILE_DIR__ always points to the actual project
+    // root, not the system temp directory where the merged file was written.
+    // Only accept the env-var value when it points to an existing directory, so a stale or
+    // malformed env var does not silently override a correctly resolved path.
+    let runfile_dir = std::env::var_os("RUN_RUNFILE_DIR")
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+        .or_else(|| config::find_runfile_path().and_then(|p| p.parent().map(PathBuf::from)));
     interpreter.set_runfile_dir(runfile_dir);
 
     match parser::parse_script(&config_content) {
