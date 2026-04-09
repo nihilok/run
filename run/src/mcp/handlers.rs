@@ -272,6 +272,16 @@ pub(super) fn handle_tools_call(
     let mcp_output_dir = config::ensure_mcp_output_dir();
     cmd.env("RUN_MCP_OUTPUT_DIR", &mcp_output_dir);
 
+    // When a temp merged file is used, the subprocess would derive __RUNFILE_DIR__ from
+    // the temp file location.  Pass the real project Runfile directory explicitly so that
+    // __RUNFILE_DIR__ resolves to the project root, not the system temp directory.
+    if temp_merged_path.is_some()
+        && let Some(real_dir) = config::find_project_runfile_path()
+            .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+    {
+        cmd.env("RUN_RUNFILE_DIR", real_dir);
+    }
+
     cmd.arg(&actual_function_name); // Use the original function name with colons
 
     for arg in positional_args {
