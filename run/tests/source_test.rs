@@ -236,7 +236,8 @@ fn test_runfile_dir_set_correctly_for_sourced_function() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let expected_dir = temp_dir.path().to_str().unwrap();
+    let expected_path = temp_dir.path().canonicalize().unwrap();
+    let expected_dir = expected_path.to_str().unwrap();
     assert!(
         stdout.contains(&format!("DIR={expected_dir}")),
         "__RUNFILE_DIR__ should be the project dir '{expected_dir}', got: {stdout}"
