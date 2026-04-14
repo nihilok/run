@@ -1,0 +1,193 @@
+name: Deploy
+
+# Replicates `run deploy:all` — bump version, publish to crates.io,
+# update Homebrew/AUR in parallel, wait for the release binaries, then
+# update Scoop.
+#
+# Required secrets:
+#   DEPLOY_PAT          — GitHub PAT (repo scope) for pushing to main and
+#                         to the nihilok/homebrew-tap, nihilok/scoop-bucket,
+#                         and nihilok/aur-pkgbuild repos.
+#   CARGO_REGISTRY_TOKEN — crates.io API token.
+#   AUR_SSH_KEY         — Ed25519/RSA private key registered on
+#                         aur.archlinux.org for the nihilok account.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  publish:
+    name: Bump version & publish to crates.io
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.DEPLOY_PAT }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Bump version, test, publish & tag
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: ./scripts/deploy.sh ${{ inputs.version_bump }} --yes
+
+      - name: Output version
+        id: version
+        run: echo "version=$(git describe --tags --abbrev=0 | sed 's/^v//')" >> "$GITHUB_OUTPUT"
+
+  update-homebrew:
+    name: Update Homebrew formula
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.DEPLOY_PAT }}
+
+      - name: Configure git
+        run: |
+          # Rewrite SSH submodule remotes to HTTPS so DEPLOY_PAT is used for auth
+          git config --global url."https://x-access-token:${{ secrets.DEPLOY_PAT }}@github.com/".insteadOf "git@github.com:"
+          git -C homebrew-tap config user.name "github-actions[bot]"
+          git -C homebrew-tap config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Update formula
+        run: ./scripts/update_homebrew.sh ${{ needs.publish.outputs.version }}
+
+      - name: Commit and push
+        run: |
+          cd homebrew-tap
+          git add Formula/runtool.rb
+          git commit -m "Update to v${{ needs.publish.outputs.version }}"
+          git push
+
+  update-aur:
+    name: Update AUR PKGBUILD
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.DEPLOY_PAT }}
+
+      - name: Configure git
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.DEPLOY_PAT }}@github.com/".insteadOf "git@github.com:"
+          git -C aur-pkgbuild config user.name "github-actions[bot]"
+          git -C aur-pkgbuild config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Configure AUR SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          printf 'Host aur.archlinux.org\n  IdentityFile ~/.ssh/aur\n  User aur\n' >> ~/.ssh/config
+
+      - name: Update PKGBUILD
+        run: ./scripts/update_aur.sh ${{ needs.publish.outputs.version }}
+
+      - name: Commit and push
+        run: |
+          cd aur-pkgbuild
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update to v${{ needs.publish.outputs.version }}"
+          git push
+          git push aur HEAD:master
+
+  update-scoop:
+    name: Update Scoop manifest
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.DEPLOY_PAT }}
+
+      - name: Configure git
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.DEPLOY_PAT }}@github.com/".insteadOf "git@github.com:"
+          git -C scoop-bucket config user.name "github-actions[bot]"
+          git -C scoop-bucket config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Wait for release workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Waiting for release workflow to start..."
+          sleep 10
+
+          max_wait=600
+          waited=0
+          interval=15
+
+          while [ $waited -lt $max_wait ]; do
+            status=$(gh run list \
+              --repo ${{ github.repository }} \
+              --workflow=release.yml \
+              --limit=1 \
+              --json status \
+              --jq '.[0].status')
+            if [ "$status" = "completed" ]; then
+              conclusion=$(gh run list \
+                --repo ${{ github.repository }} \
+                --workflow=release.yml \
+                --limit=1 \
+                --json conclusion \
+                --jq '.[0].conclusion')
+              if [ "$conclusion" = "success" ]; then
+                echo "Release workflow completed successfully"
+                break
+              else
+                echo "Release workflow failed: $conclusion"
+                exit 1
+              fi
+            fi
+            echo "  Status: ${status:-pending}... (${waited}s / ${max_wait}s)"
+            sleep $interval
+            waited=$((waited + interval))
+          done
+
+          if [ $waited -ge $max_wait ]; then
+            echo "Timed out waiting for release workflow after ${max_wait}s"
+            exit 1
+          fi
+
+      - name: Update Scoop manifest
+        run: ./scripts/update_scoop.sh ${{ needs.publish.outputs.version }}
+
+      - name: Commit and push
+        run: |
+          cd scoop-bucket
+          git add bucket/runtool.json
+          git commit -m "Update to v${{ needs.publish.outputs.version }}"
+          git push
