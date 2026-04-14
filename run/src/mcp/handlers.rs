@@ -230,9 +230,7 @@ fn run_command_with_timeout(
                     };
                     return Err(JsonRpcError {
                         code: -32603,
-                        message: format!(
-                            "Tool call timed out after {secs} second(s){kill_info}"
-                        ),
+                        message: format!("Tool call timed out after {secs} second(s){kill_info}"),
                         data: None,
                     });
                 }
@@ -303,10 +301,7 @@ pub(super) fn handle_tools_call(
     // Build a filtered argument object that excludes the built-in timeout key so
     // it is not mistakenly mapped to a positional argument of the shell function.
     let filtered_arguments = {
-        let mut obj = arguments
-            .as_object()
-            .cloned()
-            .unwrap_or_default();
+        let mut obj = arguments.as_object().cloned().unwrap_or_default();
         obj.remove(super::tools::TIMEOUT_PARAM);
         serde_json::Value::Object(obj)
     };
