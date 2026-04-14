@@ -75,6 +75,7 @@ jobs:
         run: |
           # Rewrite SSH submodule remotes to HTTPS so DEPLOY_PAT is used for auth
           git config --global url."https://x-access-token:${{ secrets.DEPLOY_PAT }}@github.com/".insteadOf "git@github.com:"
+          git -C homebrew-tap checkout main
           git -C homebrew-tap config user.name "github-actions[bot]"
           git -C homebrew-tap config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -101,6 +102,7 @@ jobs:
       - name: Configure git
         run: |
           git config --global url."https://x-access-token:${{ secrets.DEPLOY_PAT }}@github.com/".insteadOf "git@github.com:"
+          git -C aur-pkgbuild checkout main
           git -C aur-pkgbuild config user.name "github-actions[bot]"
           git -C aur-pkgbuild config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -136,6 +138,7 @@ jobs:
       - name: Configure git
         run: |
           git config --global url."https://x-access-token:${{ secrets.DEPLOY_PAT }}@github.com/".insteadOf "git@github.com:"
+          git -C scoop-bucket checkout main
           git -C scoop-bucket config user.name "github-actions[bot]"
           git -C scoop-bucket config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
