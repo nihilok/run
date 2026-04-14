@@ -6,6 +6,7 @@ use super::tools::inspect;
 use crate::config;
 use serde::Serialize;
 use std::fmt::Write as _;
+use std::io::Read as _;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -201,11 +202,33 @@ fn handle_get_cwd() -> Result<serde_json::Value, JsonRpcError> {
     }))
 }
 
+/// Joins a reader thread and collects its output, mapping errors to `JsonRpcError`.
+fn join_reader(
+    thread: std::thread::JoinHandle<std::io::Result<Vec<u8>>>,
+    label: &str,
+) -> Result<Vec<u8>, JsonRpcError> {
+    thread
+        .join()
+        .map_err(|_| JsonRpcError {
+            code: -32603,
+            message: format!("{label} reader thread panicked"),
+            data: None,
+        })?
+        .map_err(|e| JsonRpcError {
+            code: -32603,
+            message: format!("Failed to read tool {label}: {e}"),
+            data: None,
+        })
+}
+
 /// Run a command, optionally killing it after `timeout_secs` seconds.
 ///
 /// When `timeout_secs` is `None` the subprocess runs to completion with no time limit.
 /// When `Some(secs)` is provided the subprocess is killed and an error is returned if it
 /// does not exit within the allotted time.
+///
+/// stdout and stderr are drained in background threads so that a subprocess producing
+/// more than the OS pipe buffer (~64 KB) never deadlocks waiting for a reader.
 fn run_command_with_timeout(
     mut cmd: Command,
     timeout_secs: Option<u64>,
@@ -218,6 +241,32 @@ fn run_command_with_timeout(
         message: format!("Failed to execute tool: {e}"),
         data: None,
     })?;
+
+    // Drain stdout and stderr in background threads to prevent pipe-buffer
+    // deadlock: if the subprocess writes more than the OS pipe buffer before
+    // exiting, it will block on write() and never exit unless we read
+    // concurrently.
+    let mut stdout_reader = child.stdout.take().ok_or_else(|| JsonRpcError {
+        code: -32603,
+        message: "Failed to capture tool stdout".to_string(),
+        data: None,
+    })?;
+    let mut stderr_reader = child.stderr.take().ok_or_else(|| JsonRpcError {
+        code: -32603,
+        message: "Failed to capture tool stderr".to_string(),
+        data: None,
+    })?;
+
+    let stdout_thread = std::thread::spawn(move || -> std::io::Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        stdout_reader.read_to_end(&mut buf)?;
+        Ok(buf)
+    });
+    let stderr_thread = std::thread::spawn(move || -> std::io::Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        stderr_reader.read_to_end(&mut buf)?;
+        Ok(buf)
+    });
 
     if let Some(secs) = timeout_secs {
         let deadline = Instant::now()
@@ -233,16 +282,19 @@ fn run_command_with_timeout(
                 Ok(None) if Instant::now() >= deadline => {
                     let kill_error = child.kill().err();
                     let wait_error = child.wait().err();
-                    let mut timeout_message = format!("Tool call timed out after {secs} second(s)");
+                    // Reader threads see EOF once the child is killed; join to clean up.
+                    let _ = stdout_thread.join();
+                    let _ = stderr_thread.join();
+                    let mut msg = format!("Tool call timed out after {secs} second(s)");
                     if let Some(e) = kill_error {
-                        let _ = write!(timeout_message, " (kill failed: {e})");
+                        let _ = write!(msg, " (kill failed: {e})");
                     }
                     if let Some(e) = wait_error {
-                        let _ = write!(timeout_message, " (wait failed: {e})");
+                        let _ = write!(msg, " (wait failed: {e})");
                     }
                     return Err(JsonRpcError {
                         code: -32603,
-                        message: timeout_message,
+                        message: msg,
                         data: None,
                     });
                 }
@@ -258,10 +310,16 @@ fn run_command_with_timeout(
         }
     }
 
-    child.wait_with_output().map_err(|e| JsonRpcError {
+    let status = child.wait().map_err(|e| JsonRpcError {
         code: -32603,
         message: format!("Failed to collect tool output: {e}"),
         data: None,
+    })?;
+
+    Ok(std::process::Output {
+        status,
+        stdout: join_reader(stdout_thread, "stdout")?,
+        stderr: join_reader(stderr_thread, "stderr")?,
     })
 }
 
