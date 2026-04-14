@@ -994,3 +994,172 @@ deploy() {{
         "Heredoc content should be written verbatim, got: {content}"
     );
 }
+
+#[test]
+fn test_helper_function_positional_args_preserved_at_runtime() {
+    // Regression test: top-level helper functions that use ${1:-default} positional
+    // argument syntax should NOT have those patterns resolved at script-generation
+    // time. They must remain as shell expressions that the runtime resolves when
+    // the helper is actually called.
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let runfile = r#"
+_helper() {
+    echo "arg1=${1:-default}"
+}
+
+# @desc Test with named param
+test_with_param(val: str = "hello") {
+    _helper "$val"
+}
+
+# @desc Test without named param
+test_no_param() {
+    _helper "$1"
+}
+"#;
+    create_runfile(temp_dir.path(), runfile);
+
+    // Named param: default value
+    let output = Command::new(&binary)
+        .arg("test_with_param")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("arg1=hello"),
+        "Expected helper to receive default val 'hello', got: {stdout}"
+    );
+
+    // Named param: explicit value
+    let output = Command::new(&binary)
+        .arg("test_with_param")
+        .arg("world")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("arg1=world"),
+        "Expected helper to receive 'world', got: {stdout}"
+    );
+
+    // No named param: no args -> helper uses its default
+    let output = Command::new(&binary)
+        .arg("test_no_param")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("arg1=default"),
+        "Expected helper positional default 'default' when no arg passed, got: {stdout}"
+    );
+
+    // No named param: with arg -> helper receives it
+    let output = Command::new(&binary)
+        .arg("test_no_param")
+        .arg("runtime_value")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("arg1=runtime_value"),
+        "Expected helper to receive 'runtime_value', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_helper_function_multiple_positional_args_preserved_at_runtime() {
+    // Regression test: helper functions that forward all positional args ($@) or
+    // multiple positional args ($1, $2, ...) should receive them at runtime.
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let runfile = r#"
+_multi_helper() {
+    echo "count=$#"
+    echo "all=$@"
+    echo "first=${1:-none}"
+    echo "second=${2:-none}"
+}
+
+caller() {
+    _multi_helper "$@"
+}
+"#;
+    create_runfile(temp_dir.path(), runfile);
+
+    // No args: helper uses its defaults
+    let output = Command::new(&binary)
+        .arg("caller")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("first=none"),
+        "Expected helper positional default 'none', got: {stdout}"
+    );
+    assert!(
+        stdout.contains("second=none"),
+        "Expected helper positional default 'none', got: {stdout}"
+    );
+
+    // Two args: helper receives both
+    let output = Command::new(&binary)
+        .arg("caller")
+        .arg("alpha")
+        .arg("beta")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("first=alpha"),
+        "Expected helper to receive 'alpha' as first arg, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("second=beta"),
+        "Expected helper to receive 'beta' as second arg, got: {stdout}"
+    );
+}
