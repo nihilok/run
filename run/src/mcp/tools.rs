@@ -321,6 +321,19 @@ pub(super) fn extract_function_metadata(
         }
     }
 
+    // Safety: if the user has already defined a parameter named `timeout` we
+    // cannot inject without silently overwriting their schema *and* stripping
+    // the value from the call.  Emit a warning and skip this tool instead.
+    if description.is_some() && properties.contains_key(TIMEOUT_PARAM) {
+        eprintln!(
+            "Warning: function {name:?} defines a parameter named {TIMEOUT_PARAM:?}, \
+             which conflicts with the built-in MCP timeout parameter. \
+             The tool will not be exposed via MCP. \
+             Rename the parameter to resolve this conflict."
+        );
+        return None;
+    }
+
     // Only return a tool if it has a description
     description.map(|desc| {
         // Sanitise tool name: MCP spec requires [a-zA-Z0-9_-] only
@@ -336,7 +349,7 @@ pub(super) fn extract_function_metadata(
                 param_type: "integer".to_string(),
                 description: "Optional timeout in seconds. \
                               If the command exceeds this duration it will be killed \
-                              and an error returned. Omit or set to null for no timeout."
+                              and an error returned. Omit this field for no timeout."
                     .to_string(),
                 items: None,
             },

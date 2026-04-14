@@ -219,18 +219,29 @@ fn run_command_with_timeout(
     })?;
 
     if let Some(secs) = timeout_secs {
-        let deadline = Instant::now() + Duration::from_secs(secs);
+        let deadline = Instant::now()
+            .checked_add(Duration::from_secs(secs))
+            .ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: format!("Invalid timeout: {secs} second(s) is too large"),
+                data: None,
+            })?;
         loop {
             match child.try_wait() {
                 Ok(Some(_)) => break, // process finished in time
                 Ok(None) if Instant::now() >= deadline => {
-                    let kill_info = match child.kill() {
-                        Ok(()) => String::new(),
-                        Err(e) => format!(" (kill failed: {e})"),
-                    };
+                    let kill_error = child.kill().err();
+                    let wait_error = child.wait().err();
+                    let mut timeout_message = format!("Tool call timed out after {secs} second(s)");
+                    if let Some(e) = kill_error {
+                        timeout_message.push_str(&format!(" (kill failed: {e})"));
+                    }
+                    if let Some(e) = wait_error {
+                        timeout_message.push_str(&format!(" (wait failed: {e})"));
+                    }
                     return Err(JsonRpcError {
                         code: -32603,
-                        message: format!("Tool call timed out after {secs} second(s){kill_info}"),
+                        message: timeout_message,
                         data: None,
                     });
                 }
@@ -294,16 +305,35 @@ pub(super) fn handle_tools_call(
     // Extract the built-in timeout parameter before mapping arguments.
     // It is a reserved MCP-level parameter and must never be forwarded to the
     // underlying shell function as a positional argument.
-    let timeout_secs = arguments
-        .get(super::tools::TIMEOUT_PARAM)
-        .and_then(serde_json::Value::as_u64);
+    // If the key is present but is not a valid non-negative integer, reject the call
+    // with -32602 (Invalid params) so client mistakes are surfaced rather than
+    // silently ignored.
+    let timeout_secs = match arguments.get(super::tools::TIMEOUT_PARAM) {
+        None => None,
+        Some(serde_json::Value::Null) => None,
+        Some(v) => {
+            let secs = v.as_u64().ok_or_else(|| JsonRpcError {
+                code: -32602,
+                message: format!(
+                    "Invalid value for '{}': expected a non-negative integer, got {v}",
+                    super::tools::TIMEOUT_PARAM
+                ),
+                data: None,
+            })?;
+            Some(secs)
+        }
+    };
 
     // Build a filtered argument object that excludes the built-in timeout key so
     // it is not mistakenly mapped to a positional argument of the shell function.
-    let filtered_arguments = {
-        let mut obj = arguments.as_object().cloned().unwrap_or_default();
-        obj.remove(super::tools::TIMEOUT_PARAM);
-        serde_json::Value::Object(obj)
+    // Preserve non-object arguments unchanged so downstream validation still
+    // returns the original "Arguments must be an object" error for invalid input.
+    let filtered_arguments = if let Some(obj) = arguments.as_object() {
+        let mut filtered_obj = obj.clone();
+        filtered_obj.remove(super::tools::TIMEOUT_PARAM);
+        serde_json::Value::Object(filtered_obj)
+    } else {
+        arguments.clone()
     };
 
     // Map arguments to positional (use resolved original function name)
