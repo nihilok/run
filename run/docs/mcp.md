@@ -51,6 +51,27 @@ Alongside your Runfile functions, three helpers are always available:
 - `get_cwd()` — report the current working directory.
 - `run_docs(topic?: string)` — fetch embedded Runfile/run documentation. Call with no arguments (or `"index"`) to list available topics, or pass a topic slug such as `"runfile-syntax"` or `"attributes-and-interpreters"` to retrieve the relevant docs.
 
+## Built-in `timeout` parameter
+Every Runfile-derived tool automatically receives an optional `timeout` parameter (integer, seconds):
+
+```json
+{
+  "name": "deploy",
+  "inputSchema": {
+    "properties": {
+      "env":     { "type": "string" },
+      "timeout": { "type": "integer", "description": "Optional timeout in seconds..." }
+    },
+    "required": ["env"]
+  }
+}
+```
+
+- Omit it (or pass `null`) for no time limit — previous behaviour is unchanged.
+- If the command exceeds the limit the process is killed and a JSON-RPC error is returned.
+- `timeout` is never forwarded to the shell function as a positional argument.
+- If your Runfile already defines a parameter named `timeout`, that function will not be exposed via MCP. Rename the parameter to resolve the conflict.
+
 ## Output files and truncation
 - Long outputs are truncated in the MCP response to ~1200 characters (~300 tokens); the full text is saved to `.run-output/` next to your Runfile.
 - Override the output location with `RUN_MCP_OUTPUT_DIR` if you need a different directory.
