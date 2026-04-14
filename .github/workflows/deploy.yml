@@ -105,6 +105,7 @@ jobs:
           git -C aur-pkgbuild checkout main
           git -C aur-pkgbuild config user.name "github-actions[bot]"
           git -C aur-pkgbuild config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C aur-pkgbuild remote add aur ssh://aur@aur.archlinux.org/runtool.git
 
       - name: Configure AUR SSH key
         run: |
