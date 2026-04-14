@@ -131,6 +131,7 @@ deploy:aur(version = "") {
     echo ""
     echo "Committing and pushing changes..."
     cd aur-pkgbuild
+    git checkout main
     git add PKGBUILD .SRCINFO
     git commit -m "Update to v${ver}"
     git push
