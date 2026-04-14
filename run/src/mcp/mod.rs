@@ -165,7 +165,9 @@ mod tests {
 
         assert_eq!(tool.name, "test");
         assert_eq!(tool.description, "Test function");
-        assert!(tool.input_schema.properties.is_empty());
+        // Only the built-in timeout parameter should be present
+        assert_eq!(tool.input_schema.properties.len(), 1);
+        assert!(tool.input_schema.properties.contains_key("timeout"));
         assert!(tool.input_schema.required.is_empty());
     }
 
@@ -199,7 +201,7 @@ mod tests {
 
         assert_eq!(tool.name, "scale");
         assert_eq!(tool.description, "Scale service");
-        assert_eq!(tool.input_schema.properties.len(), 2);
+        assert_eq!(tool.input_schema.properties.len(), 3); // service, replicas, timeout
         assert_eq!(tool.input_schema.required.len(), 2);
 
         let service_param = tool.input_schema.properties.get("service").unwrap();
@@ -236,7 +238,7 @@ mod tests {
 
         assert_eq!(tool.name, "deploy");
         assert_eq!(tool.description, "Deploy application");
-        assert_eq!(tool.input_schema.properties.len(), 2);
+        assert_eq!(tool.input_schema.properties.len(), 3); // env, version, timeout
         assert_eq!(tool.input_schema.required.len(), 1); // Only env is required
 
         let env_param = tool.input_schema.properties.get("env").unwrap();
@@ -266,7 +268,7 @@ mod tests {
         let tool = extract_function_metadata("echo_all", &attributes, &params).unwrap();
 
         assert_eq!(tool.name, "echo_all");
-        assert_eq!(tool.input_schema.properties.len(), 1);
+        assert_eq!(tool.input_schema.properties.len(), 2); // args, timeout
         assert_eq!(tool.input_schema.required.len(), 0); // Rest params are not required
 
         let args_param = tool.input_schema.properties.get("args").unwrap();

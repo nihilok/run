@@ -44,6 +44,11 @@ pub const TOOL_SET_CWD: &str = "set_cwd";
 pub const TOOL_GET_CWD: &str = "get_cwd";
 pub const TOOL_RUN_DOCS: &str = "run_docs";
 
+/// Reserved built-in MCP parameter injected into every Runfile-derived tool schema.
+/// Agents can pass this to impose a wall-clock timeout (in seconds) on a tool call.
+/// It is **never** forwarded to the underlying shell function as a positional argument.
+pub const TIMEOUT_PARAM: &str = "timeout";
+
 /// Embedded documentation topics, keyed by slug.
 pub const DOCS: &[(&str, &str, &str)] = &[
     (
@@ -316,11 +321,39 @@ pub(super) fn extract_function_metadata(
         }
     }
 
+    // Safety: if the user has already defined a parameter named `timeout` we
+    // cannot inject without silently overwriting their schema *and* stripping
+    // the value from the call.  Emit a warning and skip this tool instead.
+    if description.is_some() && properties.contains_key(TIMEOUT_PARAM) {
+        eprintln!(
+            "Warning: function {name:?} defines a parameter named {TIMEOUT_PARAM:?}, \
+             which conflicts with the built-in MCP timeout parameter. \
+             The tool will not be exposed via MCP. \
+             Rename the parameter to resolve this conflict."
+        );
+        return None;
+    }
+
     // Only return a tool if it has a description
     description.map(|desc| {
         // Sanitise tool name: MCP spec requires [a-zA-Z0-9_-] only
         // Replace colons with double underscores; hyphens are valid in MCP tool names so keep them
         let sanitised_name = name.replace(':', "__");
+
+        // Inject the built-in timeout parameter into every Runfile-derived tool.
+        // It is optional (not added to required) and is handled by the MCP handler;
+        // it is never forwarded to the underlying shell function as a positional arg.
+        properties.insert(
+            TIMEOUT_PARAM.to_string(),
+            ParameterSchema {
+                param_type: "integer".to_string(),
+                description: "Optional timeout in seconds. \
+                              If the command exceeds this duration it will be killed \
+                              and an error returned. Omit this field for no timeout."
+                    .to_string(),
+                items: None,
+            },
+        );
 
         Tool {
             name: sanitised_name,
@@ -508,7 +541,7 @@ mod tests {
 
         let tool = extract_function_metadata("clone", &attributes, &[]).unwrap();
 
-        assert_eq!(tool.input_schema.properties.len(), 2);
+        assert_eq!(tool.input_schema.properties.len(), 3); // url, branch, timeout
         assert!(tool.input_schema.properties.contains_key("url"));
         assert!(tool.input_schema.properties.contains_key("branch"));
         assert!(!tool.input_schema.properties.contains_key("branch?"));
