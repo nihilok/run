@@ -5,6 +5,7 @@ use super::mapping::resolve_tool_name;
 use super::tools::inspect;
 use crate::config;
 use serde::Serialize;
+use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -234,10 +235,10 @@ fn run_command_with_timeout(
                     let wait_error = child.wait().err();
                     let mut timeout_message = format!("Tool call timed out after {secs} second(s)");
                     if let Some(e) = kill_error {
-                        timeout_message.push_str(&format!(" (kill failed: {e})"));
+                        let _ = write!(timeout_message, " (kill failed: {e})");
                     }
                     if let Some(e) = wait_error {
-                        timeout_message.push_str(&format!(" (wait failed: {e})"));
+                        let _ = write!(timeout_message, " (wait failed: {e})");
                     }
                     return Err(JsonRpcError {
                         code: -32603,
@@ -309,8 +310,7 @@ pub(super) fn handle_tools_call(
     // with -32602 (Invalid params) so client mistakes are surfaced rather than
     // silently ignored.
     let timeout_secs = match arguments.get(super::tools::TIMEOUT_PARAM) {
-        None => None,
-        Some(serde_json::Value::Null) => None,
+        None | Some(serde_json::Value::Null) => None,
         Some(v) => {
             let secs = v.as_u64().ok_or_else(|| JsonRpcError {
                 code: -32602,
