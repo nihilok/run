@@ -628,6 +628,26 @@ fn convert_ruby_list(expr: &str, arg_type: &crate::ast::ArgType) -> String {
     }
 }
 
+/// Strip surrounding shell quotes from a variable value captured by the grammar.
+///
+/// The Runfile grammar captures the entire right-hand side of an assignment
+/// verbatim, including any surrounding `"` or `'` quotes. For example,
+/// `VERSION="1.0.0"` stores `"1.0.0"` as the value. When generating shell
+/// variable assignments for the preamble we must strip these outer quotes
+/// before re-wrapping in double-quotes, otherwise we produce `VERSION="\"1.0.0\""`,
+/// which sets `VERSION` to the literal string `"1.0.0"` (with quote characters).
+fn strip_surrounding_shell_quotes(value: &str) -> &str {
+    if value.len() >= 2 {
+        let bytes = value.as_bytes();
+        if (bytes[0] == b'"' && bytes[value.len() - 1] == b'"')
+            || (bytes[0] == b'\'' && bytes[value.len() - 1] == b'\'')
+        {
+            return &value[1..value.len() - 1];
+        }
+    }
+    value
+}
+
 /// Build a preamble of variable assignments
 pub(super) fn build_variable_preamble(
     variables: &HashMap<String, String>,
@@ -642,7 +662,13 @@ pub(super) fn build_variable_preamble(
             // PowerShell variable syntax: $VAR = "value"
             variables
                 .iter()
-                .map(|(k, v)| format!("${} = \"{}\"", k, escape_pwsh_value(v)))
+                .map(|(k, v)| {
+                    format!(
+                        "${} = \"{}\"",
+                        k,
+                        escape_pwsh_value(strip_surrounding_shell_quotes(v))
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join("\n")
         }
@@ -650,7 +676,13 @@ pub(super) fn build_variable_preamble(
             // Shell variable syntax: VAR="value"
             variables
                 .iter()
-                .map(|(k, v)| format!("{}=\"{}\"", k, escape_shell_value(v)))
+                .map(|(k, v)| {
+                    format!(
+                        "{}=\"{}\"",
+                        k,
+                        escape_shell_value(strip_surrounding_shell_quotes(v))
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join("\n")
         }

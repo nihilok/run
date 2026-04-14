@@ -653,25 +653,49 @@ impl Interpreter {
         };
 
         let errexit = execution::errexit_prefix(&target_interpreter, attributes);
-        let combined_script = execution::build_combined_script(
-            var_preamble,
-            func_preamble,
-            rewritten_body,
-            is_shell,
-            &param_locals,
-            errexit,
-        );
 
         if is_shell && !params.is_empty() {
             // Shell functions with named params: pass args natively via positional parameters
+            let combined_script = execution::build_combined_script(
+                var_preamble,
+                func_preamble,
+                rewritten_body,
+                is_shell,
+                &param_locals,
+                errexit,
+            );
             self.execute_with_mode_args(
                 &combined_script,
                 &target_interpreter,
                 Some(command_template),
                 args,
             )
+        } else if is_shell {
+            // Shell functions without named params: apply substitution only to the body
+            // so that sibling helper function preambles are left intact.
+            // Applying substitution to the full combined script would incorrectly resolve
+            // positional params like ${1:-default} inside helper bodies at generation time.
+            let substituted_body = self.substitute_args(&rewritten_body, args);
+            let combined_script = execution::build_combined_script(
+                var_preamble,
+                func_preamble,
+                substituted_body,
+                is_shell,
+                &param_locals,
+                errexit,
+            );
+            let display_cmd = self.substitute_args(command_template, args);
+            self.execute_with_mode(&combined_script, &target_interpreter, Some(&display_cmd))
         } else {
-            // No params or non-shell: use textual substitution as before
+            // Non-shell (polyglot): use textual substitution on the combined script
+            let combined_script = execution::build_combined_script(
+                var_preamble,
+                func_preamble,
+                rewritten_body,
+                is_shell,
+                &param_locals,
+                errexit,
+            );
             let substituted = self.substitute_args_with_params(&combined_script, args, params);
             let display_cmd = self.substitute_args_with_params(command_template, args, params);
             self.execute_with_mode(&substituted, &target_interpreter, Some(&display_cmd))
@@ -776,22 +800,33 @@ impl Interpreter {
 
         // Combine preambles and body — always wrap for shell (polyglot returns early above)
         let errexit = execution::errexit_prefix(&target_interpreter, attributes);
-        let combined_script = execution::build_combined_script(
-            var_preamble,
-            func_preamble,
-            rewritten_body,
-            true,
-            &param_locals,
-            errexit,
-        );
 
         if params.is_empty() {
-            // No params: use textual substitution as before
-            let substituted = self.substitute_args_with_params(&combined_script, args, params);
-            let display_cmd = self.substitute_args_with_params(&full_script, args, params);
-            self.execute_with_mode(&substituted, &target_interpreter, Some(&display_cmd))
+            // No named params: apply substitution only to the body so that sibling helper
+            // function preambles are left intact. Applying substitution to the full combined
+            // script would incorrectly resolve positional params like ${1:-default} inside
+            // helper bodies at script-generation time rather than at runtime.
+            let substituted_body = self.substitute_args(&rewritten_body, args);
+            let display_cmd = self.substitute_args(&full_script, args);
+            let combined_script = execution::build_combined_script(
+                var_preamble,
+                func_preamble,
+                substituted_body,
+                true,
+                &param_locals,
+                errexit,
+            );
+            self.execute_with_mode(&combined_script, &target_interpreter, Some(&display_cmd))
         } else {
             // Shell functions with named params: pass args natively via positional parameters
+            let combined_script = execution::build_combined_script(
+                var_preamble,
+                func_preamble,
+                rewritten_body,
+                true,
+                &param_locals,
+                errexit,
+            );
             self.execute_with_mode_args(
                 &combined_script,
                 &target_interpreter,
