@@ -4,3 +4,6 @@
 [submodule "homebrew-tap"]
 	path = homebrew-tap
 	url = git@github.com:nihilok/homebrew-tap.git
+[submodule "aur-pkgbuild"]
+	path = aur-pkgbuild
+	url = git@github.com:nihilok/aur-pkgbuild.git

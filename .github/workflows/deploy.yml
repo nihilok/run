@@ -67,12 +67,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.DEPLOY_PAT }}
 
-      - name: Clone homebrew-tap
+      - name: Configure git
         run: |
-          git clone \
-            https://x-access-token:${{ secrets.DEPLOY_PAT }}@github.com/nihilok/homebrew-tap.git \
-            homebrew-tap
+          # Rewrite SSH submodule remotes to HTTPS so DEPLOY_PAT is used for auth
+          git config --global url."https://x-access-token:${{ secrets.DEPLOY_PAT }}@github.com/".insteadOf "git@github.com:"
           git -C homebrew-tap config user.name "github-actions[bot]"
           git -C homebrew-tap config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -92,15 +94,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.DEPLOY_PAT }}
 
-      - name: Clone aur-pkgbuild
+      - name: Configure git
         run: |
-          git clone \
-            https://x-access-token:${{ secrets.DEPLOY_PAT }}@github.com/nihilok/aur-pkgbuild.git \
-            aur-pkgbuild
+          git config --global url."https://x-access-token:${{ secrets.DEPLOY_PAT }}@github.com/".insteadOf "git@github.com:"
           git -C aur-pkgbuild config user.name "github-actions[bot]"
           git -C aur-pkgbuild config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git -C aur-pkgbuild remote add aur ssh://aur@aur.archlinux.org/runtool.git
 
       - name: Configure AUR SSH key
         run: |
@@ -127,12 +129,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.DEPLOY_PAT }}
 
-      - name: Clone scoop-bucket
+      - name: Configure git
         run: |
-          git clone \
-            https://x-access-token:${{ secrets.DEPLOY_PAT }}@github.com/nihilok/scoop-bucket.git \
-            scoop-bucket
+          git config --global url."https://x-access-token:${{ secrets.DEPLOY_PAT }}@github.com/".insteadOf "git@github.com:"
           git -C scoop-bucket config user.name "github-actions[bot]"
           git -C scoop-bucket config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
