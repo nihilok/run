@@ -639,9 +639,9 @@ fn convert_ruby_list(expr: &str, arg_type: &crate::ast::ArgType) -> String {
 fn strip_surrounding_shell_quotes(value: &str) -> &str {
     if value.len() >= 2 {
         let bytes = value.as_bytes();
-        if (bytes[0] == b'"' && bytes[value.len() - 1] == b'"')
-            || (bytes[0] == b'\'' && bytes[value.len() - 1] == b'\'')
-        {
+        let first = bytes[0];
+        let last = bytes[value.len() - 1];
+        if (first == b'"' && last == b'"') || (first == b'\'' && last == b'\'') {
             return &value[1..value.len() - 1];
         }
     }

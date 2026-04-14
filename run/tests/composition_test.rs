@@ -1095,3 +1095,71 @@ test_no_param() {
         "Expected helper to receive 'runtime_value', got: {stdout}"
     );
 }
+
+#[test]
+fn test_helper_function_multiple_positional_args_preserved_at_runtime() {
+    // Regression test: helper functions that forward all positional args ($@) or
+    // multiple positional args ($1, $2, ...) should receive them at runtime.
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let runfile = r#"
+_multi_helper() {
+    echo "count=$#"
+    echo "all=$@"
+    echo "first=${1:-none}"
+    echo "second=${2:-none}"
+}
+
+caller() {
+    _multi_helper "$@"
+}
+"#;
+    create_runfile(temp_dir.path(), runfile);
+
+    // No args: helper uses its defaults
+    let output = Command::new(&binary)
+        .arg("caller")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("first=none"),
+        "Expected helper positional default 'none', got: {stdout}"
+    );
+    assert!(
+        stdout.contains("second=none"),
+        "Expected helper positional default 'none', got: {stdout}"
+    );
+
+    // Two args: helper receives both
+    let output = Command::new(&binary)
+        .arg("caller")
+        .arg("alpha")
+        .arg("beta")
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "Command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        stdout.contains("first=alpha"),
+        "Expected helper to receive 'alpha' as first arg, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("second=beta"),
+        "Expected helper to receive 'beta' as second arg, got: {stdout}"
+    );
+}
