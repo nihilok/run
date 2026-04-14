@@ -285,3 +285,97 @@ clone() {
         "optional arg must not be in required"
     );
 }
+
+#[test]
+fn test_mcp_inspect_has_builtin_timeout_param() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r"
+# @desc Say hello
+hello() {
+    echo hello
+}
+",
+    );
+
+    let output = test_command(&binary)
+        .arg("--inspect")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+    let tools = json["tools"].as_array().expect("tools should be array");
+    let tool = &tools[0];
+
+    let properties = &tool["inputSchema"]["properties"];
+    assert!(
+        properties["timeout"].is_object(),
+        "built-in timeout property should exist in every @desc tool"
+    );
+    assert_eq!(
+        properties["timeout"]["type"].as_str().unwrap(),
+        "integer",
+        "timeout should be an integer type"
+    );
+
+    // timeout must NOT appear in the required list
+    let required = tool["inputSchema"]["required"]
+        .as_array()
+        .expect("required should be array");
+    assert!(
+        !required.contains(&serde_json::json!("timeout")),
+        "built-in timeout must not be required"
+    );
+}
+
+#[test]
+fn test_mcp_inspect_timeout_not_in_required_with_other_params() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r"
+# @desc Deploy
+deploy(env) {
+    echo $env
+}
+",
+    );
+
+    let output = test_command(&binary)
+        .arg("--inspect")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+    let tools = json["tools"].as_array().expect("tools should be array");
+    let tool = &tools[0];
+
+    // timeout should be in properties but not required
+    assert!(
+        tool["inputSchema"]["properties"]["timeout"].is_object(),
+        "timeout should be in properties"
+    );
+
+    let required = tool["inputSchema"]["required"]
+        .as_array()
+        .expect("required should be array");
+    assert!(
+        required.contains(&serde_json::json!("env")),
+        "env should still be required"
+    );
+    assert!(
+        !required.contains(&serde_json::json!("timeout")),
+        "timeout must not be required"
+    );
+}

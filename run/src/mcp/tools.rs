@@ -44,6 +44,11 @@ pub const TOOL_SET_CWD: &str = "set_cwd";
 pub const TOOL_GET_CWD: &str = "get_cwd";
 pub const TOOL_RUN_DOCS: &str = "run_docs";
 
+/// Reserved built-in MCP parameter injected into every Runfile-derived tool schema.
+/// Agents can pass this to impose a wall-clock timeout (in seconds) on a tool call.
+/// It is **never** forwarded to the underlying shell function as a positional argument.
+pub const TIMEOUT_PARAM: &str = "timeout";
+
 /// Embedded documentation topics, keyed by slug.
 pub const DOCS: &[(&str, &str, &str)] = &[
     (
@@ -322,6 +327,21 @@ pub(super) fn extract_function_metadata(
         // Replace colons with double underscores; hyphens are valid in MCP tool names so keep them
         let sanitised_name = name.replace(':', "__");
 
+        // Inject the built-in timeout parameter into every Runfile-derived tool.
+        // It is optional (not added to required) and is handled by the MCP handler;
+        // it is never forwarded to the underlying shell function as a positional arg.
+        properties.insert(
+            TIMEOUT_PARAM.to_string(),
+            ParameterSchema {
+                param_type: "integer".to_string(),
+                description: "Optional timeout in seconds. \
+                              If the command exceeds this duration it will be killed \
+                              and an error returned. Omit or set to null for no timeout."
+                    .to_string(),
+                items: None,
+            },
+        );
+
         Tool {
             name: sanitised_name,
             description: desc,
@@ -508,7 +528,7 @@ mod tests {
 
         let tool = extract_function_metadata("clone", &attributes, &[]).unwrap();
 
-        assert_eq!(tool.input_schema.properties.len(), 2);
+        assert_eq!(tool.input_schema.properties.len(), 3); // url, branch, timeout
         assert!(tool.input_schema.properties.contains_key("url"));
         assert!(tool.input_schema.properties.contains_key("branch"));
         assert!(!tool.input_schema.properties.contains_key("branch?"));

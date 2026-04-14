@@ -6,7 +6,8 @@ use super::tools::inspect;
 use crate::config;
 use serde::Serialize;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 /// JSON-RPC 2.0 error structure
 #[derive(Debug, Serialize)]
@@ -199,6 +200,61 @@ fn handle_get_cwd() -> Result<serde_json::Value, JsonRpcError> {
     }))
 }
 
+/// Run a command, optionally killing it after `timeout_secs` seconds.
+///
+/// When `timeout_secs` is `None` the subprocess runs to completion with no time limit.
+/// When `Some(secs)` is provided the subprocess is killed and an error is returned if it
+/// does not exit within the allotted time.
+fn run_command_with_timeout(
+    mut cmd: Command,
+    timeout_secs: Option<u64>,
+) -> Result<std::process::Output, JsonRpcError> {
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().map_err(|e| JsonRpcError {
+        code: -32603,
+        message: format!("Failed to execute tool: {e}"),
+        data: None,
+    })?;
+
+    if let Some(secs) = timeout_secs {
+        let deadline = Instant::now() + Duration::from_secs(secs);
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break, // process finished in time
+                Ok(None) if Instant::now() >= deadline => {
+                    let kill_info = match child.kill() {
+                        Ok(()) => String::new(),
+                        Err(e) => format!(" (kill failed: {e})"),
+                    };
+                    return Err(JsonRpcError {
+                        code: -32603,
+                        message: format!(
+                            "Tool call timed out after {secs} second(s){kill_info}"
+                        ),
+                        data: None,
+                    });
+                }
+                Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+                Err(e) => {
+                    return Err(JsonRpcError {
+                        code: -32603,
+                        message: format!("Failed to wait for tool process: {e}"),
+                        data: None,
+                    });
+                }
+            }
+        }
+    }
+
+    child.wait_with_output().map_err(|e| JsonRpcError {
+        code: -32603,
+        message: format!("Failed to collect tool output: {e}"),
+        data: None,
+    })
+}
+
 /// Handle tools/call request
 pub(super) fn handle_tools_call(
     params: Option<serde_json::Value>,
@@ -237,8 +293,26 @@ pub(super) fn handle_tools_call(
     let default_args = serde_json::json!({});
     let arguments = params_obj.get("arguments").unwrap_or(&default_args);
 
+    // Extract the built-in timeout parameter before mapping arguments.
+    // It is a reserved MCP-level parameter and must never be forwarded to the
+    // underlying shell function as a positional argument.
+    let timeout_secs = arguments
+        .get(super::tools::TIMEOUT_PARAM)
+        .and_then(serde_json::Value::as_u64);
+
+    // Build a filtered argument object that excludes the built-in timeout key so
+    // it is not mistakenly mapped to a positional argument of the shell function.
+    let filtered_arguments = {
+        let mut obj = arguments
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
+        obj.remove(super::tools::TIMEOUT_PARAM);
+        serde_json::Value::Object(obj)
+    };
+
     // Map arguments to positional (use resolved original function name)
-    let positional_args = map_arguments_to_positional(&actual_function_name, arguments)?;
+    let positional_args = map_arguments_to_positional(&actual_function_name, &filtered_arguments)?;
 
     // Execute the function with structured markdown output
 
@@ -288,11 +362,7 @@ pub(super) fn handle_tools_call(
         cmd.arg(arg);
     }
 
-    let output = cmd.output().map_err(|e| JsonRpcError {
-        code: -32603,
-        message: format!("Failed to execute tool: {e}"),
-        data: None,
-    })?;
+    let output = run_command_with_timeout(cmd, timeout_secs)?;
 
     // Clean up temp file if we created one.
     // Cleanup failure is non-critical — the OS will eventually reclaim the temp file —
@@ -647,6 +717,41 @@ hello() echo hello\n",
         assert!(
             err.message.contains("Tool not found"),
             "Unexpected message: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_run_command_with_timeout_no_timeout_succeeds() {
+        let mut cmd = Command::new("echo");
+        cmd.arg("hello");
+        let output = run_command_with_timeout(cmd, None).expect("should succeed without timeout");
+        assert!(output.status.success());
+        assert!(String::from_utf8_lossy(&output.stdout).contains("hello"));
+    }
+
+    #[test]
+    fn test_run_command_with_timeout_generous_timeout_succeeds() {
+        let mut cmd = Command::new("echo");
+        cmd.arg("world");
+        let output =
+            run_command_with_timeout(cmd, Some(30)).expect("should succeed within 30s timeout");
+        assert!(output.status.success());
+        assert!(String::from_utf8_lossy(&output.stdout).contains("world"));
+    }
+
+    #[test]
+    fn test_run_command_with_timeout_expires() {
+        // Use `sleep 10` which will never finish within 1 second
+        let cmd = Command::new("sleep");
+        let mut sleep_cmd = cmd;
+        sleep_cmd.arg("10");
+        let result = run_command_with_timeout(sleep_cmd, Some(1));
+        let err = result.expect_err("should return an error when command times out");
+        assert_eq!(err.code, -32603);
+        assert!(
+            err.message.contains("timed out"),
+            "Expected timeout message, got: {}",
             err.message
         );
     }
