@@ -194,3 +194,28 @@ jobs:
           git add bucket/runtool.json
           git commit -m "Update to v${{ needs.publish.outputs.version }}"
           git push
+
+  update-submodule-pointers:
+    name: Update submodule pointers in main repo
+    needs: [update-homebrew, update-aur, update-scoop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.DEPLOY_PAT }}
+
+      - name: Configure git
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.DEPLOY_PAT }}@github.com/".insteadOf "git@github.com:"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Pull latest submodule commits
+        run: git submodule update --remote
+
+      - name: Commit and push
+        run: |
+          git add aur-pkgbuild homebrew-tap scoop-bucket
+          git diff --cached --quiet || git commit -m "chore: update submodule pointers to v${{ needs.publish.outputs.version }}"
+          git push
