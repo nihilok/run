@@ -47,6 +47,8 @@ Type hints (`str`, `int`, `float`/`number`, `bool`, `object`/`obj`/`dict`) are u
 - `bool`/`boolean` — parsed as a boolean (truthy: `true`, `1`, `yes`)
 - `object`/`obj`/`dict` — parsed from a JSON string into a native object/dict
 
+Signature type hints take precedence over any type keyword in a matching `@arg` attribute. The `@arg` type is only consulted when the function has no typed signature (e.g., legacy shell functions using `$1`, `$2`). See [`@arg` type vs. signature type hint](./attributes-and-interpreters.md#descriptions-and-args) for the full precedence rules.
+
 ## Quoting and spaces
 Arguments are passed as plain CLI tokens. Quote values containing spaces or shell-sensitive characters:
 ```bash
