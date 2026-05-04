@@ -4,7 +4,7 @@ Attributes live in comments (`# @key value`) and adjust how a function is expose
 
 ## Descriptions and args
 - `@desc` — one-line summary shown in listings and MCP tool schemas.
-- `@arg <name> [type] <description>` — add human-readable parameter docs. Names should match the signature. Optional type keyword (`string`, `integer`, `float`/`number`, `boolean`, `object`/`dict`) sets the JSON schema type for MCP.
+- `@arg <name> [type] <description>` — add human-readable parameter docs. Names should match the signature. Optional type keyword (`string`, `integer`, `float`/`number`, `boolean`, `object`/`dict`) sets the JSON schema type for MCP when the function has no typed signature.
 - `@instructions <text>` — top-level MCP guidance line appended to server `initialize.instructions`. This is single-line and repeatable; lines are aggregated in merged/source order.
 
 ```bash
@@ -13,6 +13,13 @@ Attributes live in comments (`# @key value`) and adjust how a function is expose
 # @arg version Version to deploy (defaults to "latest")
 deploy(env: str, version = "latest") { ... }
 ```
+
+> **`@arg` type vs. signature type hint:** The type keyword in `@arg` and the type annotation in the function signature serve related but distinct purposes:
+>
+> - **Signature type hint** (e.g., `env: str`) is the primary driver. When a typed signature is present, it controls the MCP JSON schema type *and*, in polyglot functions (Python, Node.js, Ruby), drives automatic runtime value conversion.
+> - **`@arg` type keyword** (e.g., `# @arg env string …`) is a fallback used when the function has no typed signature — for example, shell functions that rely on positional variables (`$1`, `$2`). In that case, the `@arg` type sets the MCP schema type.
+> - **`@arg` description** is always used regardless of whether a signature type hint is present.
+> - The two do not need to agree, but keeping them consistent is recommended. If they conflict, the signature type hint wins for MCP schema generation.
 
 Top-level MCP instruction example:
 
