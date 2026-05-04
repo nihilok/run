@@ -546,7 +546,7 @@ greet(name: str) echo "Hello, $name!"
     writeln!(stdin, "{}", serde_json::to_string(&call_request).unwrap()).unwrap();
     stdin.flush().unwrap();
 
-    std::thread::sleep(Duration::from_millis(1000));
+    std::thread::sleep(Duration::from_secs(1));
 
     child.kill().expect("Failed to kill process");
     let output = child.wait_with_output().unwrap();
@@ -604,7 +604,7 @@ fail() {
     writeln!(stdin, "{}", serde_json::to_string(&call_request).unwrap()).unwrap();
     stdin.flush().unwrap();
 
-    std::thread::sleep(Duration::from_millis(1000));
+    std::thread::sleep(Duration::from_secs(1));
 
     child.kill().expect("Failed to kill process");
     let output = child.wait_with_output().unwrap();
@@ -994,7 +994,7 @@ check() {
 
     // Allow extra time because the MCP server spawns a subprocess to run the function.
     // Existing tests use 500 ms for requests that don't fork; we need more here.
-    std::thread::sleep(std::time::Duration::from_millis(2000));
+    std::thread::sleep(std::time::Duration::from_secs(2));
 
     child.kill().expect("Failed to kill process");
     let output = child.wait_with_output().unwrap();
