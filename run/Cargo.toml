@@ -25,6 +25,7 @@ which.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 regex.workspace = true
+inquire = "0.9.4"
 [dev-dependencies]
 tempfile.workspace = true
 serde_json.workspace = true

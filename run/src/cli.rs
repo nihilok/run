@@ -50,6 +50,10 @@ struct Cli {
     #[arg(long)]
     serve_mcp: bool,
 
+    /// Interactive setup for AI agents (Claude, Antigravity, Cursor, Copilot)
+    #[arg(long)]
+    setup_ai: bool,
+
     /// Output format for command execution (stream, json, markdown)
     #[arg(long, value_name = "FORMAT", default_value = "stream")]
     output_format: OutputFormatArg,
@@ -160,6 +164,12 @@ pub fn run_cli() {
     // Handle --serve-mcp flag
     if cli.serve_mcp {
         mcp::serve_mcp();
+        return;
+    }
+
+    // Handle --setup-ai flag
+    if cli.setup_ai {
+        crate::agent_setup::interactive_setup();
         return;
     }
 

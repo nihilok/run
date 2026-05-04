@@ -2,6 +2,7 @@
 //!
 //! A simple scripting language for CLI automation, inspired by shell scripting and Makefiles.
 
+pub mod agent_setup;
 pub mod ast;
 pub mod cli;
 pub mod completion;
