@@ -81,7 +81,8 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
             let name = inner.next()?.as_str().to_string();
 
             // Check if next element is param_list or body
-            let (params, body_pair) = if let Some(next) = inner.next() {
+            let (params, body_pair) = {
+                let next = inner.next()?;
                 if next.as_rule() == Rule::param_list {
                     // Parse parameters
                     let params = parse_param_list(next);
@@ -91,8 +92,6 @@ fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> O
                     // No params, this is the body
                     (Vec::new(), next)
                 }
-            } else {
-                return None;
             };
 
             // Parse body (block or command)

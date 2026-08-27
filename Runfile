@@ -15,11 +15,19 @@ deploy:major() {
     ./scripts/deploy.sh major --yes
 }
 
-# @desc Full release: patch bump, publish, deploy homebrew + AUR, wait for CI, deploy scoop
+# @desc Full release: bump version (default: patch), publish, deploy homebrew + AUR, wait for CI, deploy scoop
+# @arg bump_level The version component to bump (patch, minor, major). Default: patch
 deploy:all() {
-    # 1. Bump patch version and publish to crates.io
-    echo "=== Step 1/4: Bumping patch version and publishing ==="
-    deploy:patch
+    local bump=${1:-patch}
+    
+    if [ "$bump" != "patch" ] && [ "$bump" != "minor" ] && [ "$bump" != "major" ]; then
+        echo "Error: bump level must be patch, minor, or major"
+        return 1
+    fi
+
+    # 1. Bump version and publish to crates.io
+    echo "=== Step 1/4: Bumping $bump version and publishing ==="
+    "deploy:$bump"
 
     local ver=$(git describe --tags --abbrev=0 | sed 's/^v//')
     echo ""
