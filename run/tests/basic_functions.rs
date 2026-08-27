@@ -7,7 +7,6 @@ mod common;
 
 use common::*;
 use std::fs;
-use std::process::Command;
 
 #[test]
 fn test_simple_function_call() {
@@ -21,7 +20,7 @@ greet() echo "Hello from run!"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("greet")
         .current_dir(temp_dir.path())
         .output()
@@ -44,7 +43,7 @@ greet() echo "Hello, $1!"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("greet")
         .arg("Alice")
         .current_dir(temp_dir.path())
@@ -68,7 +67,7 @@ add() echo "$1 + $2 = $(($1 + $2))"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("add")
         .arg("5")
         .arg("3")
@@ -93,7 +92,7 @@ echo_all() echo "All args: $@"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("echo_all")
         .arg("foo")
         .arg("bar")
@@ -119,7 +118,7 @@ docker:shell() echo "Opening Docker shell for $1"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("docker")
         .arg("shell")
         .arg("myapp")
@@ -144,7 +143,7 @@ build() echo "Building..."
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("nonexistent")
         .current_dir(temp_dir.path())
         .output()
@@ -167,7 +166,7 @@ count() echo "one\ntwo\nthree" | wc -l
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("count")
         .current_dir(temp_dir.path())
         .output()
@@ -192,7 +191,7 @@ test() echo "Testing"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("--list")
         .current_dir(temp_dir.path())
         .output()
@@ -217,7 +216,7 @@ multiline() echo "This is a" \
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("multiline")
         .current_dir(temp_dir.path())
         .output()
@@ -243,7 +242,7 @@ greet(World)
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg(script_path.to_str().unwrap())
         .current_dir(temp_dir.path())
         .output()
@@ -269,7 +268,7 @@ parent() echo "Called from parent"
     let subdir = temp_dir.path().join("subdir");
     fs::create_dir(&subdir).unwrap();
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("parent")
         .current_dir(&subdir)
         .output()
@@ -297,7 +296,7 @@ test() echo "From local"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("test")
         .current_dir(&local_dir)
         .env("HOME", temp_dir.path())
@@ -325,7 +324,7 @@ hello()
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg(script_path.to_str().unwrap())
         .current_dir(temp_dir.path())
         .output()
@@ -348,7 +347,7 @@ invalid syntax here
 ",
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("test")
         .current_dir(temp_dir.path())
         .output()
@@ -374,7 +373,7 @@ echo "Hello, $name!"
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg(script_path.to_str().unwrap())
         .current_dir(temp_dir.path())
         .output()
@@ -401,7 +400,7 @@ show(production)
     )
     .unwrap();
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg(script_path.to_str().unwrap())
         .current_dir(temp_dir.path())
         .output()
@@ -424,7 +423,7 @@ server() echo "Starting server on port ${1:-8080}"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("server")
         .current_dir(temp_dir.path())
         .output()
@@ -434,7 +433,7 @@ server() echo "Starting server on port ${1:-8080}"
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("port 8080"));
 
-    let output2 = Command::new(&binary)
+    let output2 = common::test_command(&binary)
         .arg("server")
         .arg("3000")
         .current_dir(temp_dir.path())
@@ -531,7 +530,7 @@ my-func() echo "hyphen works"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("my-func")
         .current_dir(temp_dir.path())
         .output()
@@ -560,7 +559,7 @@ build-project() {
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("build-project")
         .current_dir(temp_dir.path())
         .output()
@@ -596,7 +595,7 @@ show_dir() echo "$__RUNFILE_DIR__"
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("show_dir")
         .current_dir(temp_dir.path())
         .env("RUN_NO_GLOBAL_MERGE", "1")
@@ -622,7 +621,7 @@ show_dir() {
 "#,
     );
 
-    let output = Command::new(&binary)
+    let output = common::test_command(&binary)
         .arg("show_dir")
         .current_dir(temp_dir.path())
         .env("RUN_NO_GLOBAL_MERGE", "1")

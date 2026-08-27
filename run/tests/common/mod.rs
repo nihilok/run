@@ -78,5 +78,6 @@ pub const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub fn test_command(binary: &PathBuf) -> Command {
     let mut cmd = Command::new(binary);
     cmd.env("RUN_NO_GLOBAL_MERGE", "1");
+    cmd.env_remove("RUN_RUNFILE_DIR");
     cmd
 }
