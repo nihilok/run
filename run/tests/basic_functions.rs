@@ -632,3 +632,69 @@ show_dir() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_runfile_dir_matches(&stdout, temp_dir.path());
 }
+
+#[test]
+fn test_dependency_graph_execution() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @depends b, c
+a() echo "running a"
+
+# @depends d
+b() echo "running b"
+
+c() echo "running c"
+
+d() echo "running d"
+"#,
+    );
+
+    let output = common::test_command(&binary)
+        .arg("a")
+        .current_dir(temp_dir.path())
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(output.status.success(), "stderr: {stderr}");
+
+    let expected = "running d\nrunning b\nrunning c\nrunning a\n";
+    assert_eq!(stdout, expected);
+}
+
+#[test]
+fn test_dependency_graph_cycle_detection() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @depends b
+a() echo "running a"
+
+# @depends c
+b() echo "running b"
+
+# @depends a
+c() echo "running c"
+"#,
+    );
+
+    let output = common::test_command(&binary)
+        .arg("a")
+        .current_dir(temp_dir.path())
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success());
+    assert!(stderr.contains("Circular dependency detected"));
+}

@@ -82,6 +82,16 @@ fn parse_attribute_line(line: &str) -> Option<Attribute> {
         return Some(Attribute::Noerrexit);
     }
 
+    // Handle @depends - format: "@depends task1, task2"
+    if let Some(depends_text) = without_hash.strip_prefix("depends ") {
+        let tasks = depends_text
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        return Some(Attribute::Depends(tasks));
+    }
+
     // Handle @arg - format: "1:name type description"
     if let Some(arg_text) = without_hash.strip_prefix("arg ") {
         return parse_arg_attribute(arg_text);

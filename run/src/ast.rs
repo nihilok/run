@@ -341,6 +341,7 @@ pub enum Attribute {
     Shell(ShellType),
     Desc(String),
     Arg(ArgMetadata),
+    Depends(Vec<String>),
     Noerrexit,
 }
 
@@ -350,6 +351,16 @@ pub struct ArgMetadata {
     pub name: String,
     pub arg_type: ArgType,
     pub description: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct FunctionMetadata {
+    pub os: Option<OsPlatform>,
+    pub shell: Option<ShellType>,
+    pub desc: Option<String>,
+    pub args: Vec<ArgMetadata>,
+    pub depends: Vec<String>,
+    pub noerrexit: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

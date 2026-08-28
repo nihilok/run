@@ -8,6 +8,7 @@ pub mod cli;
 pub mod completion;
 pub mod config;
 pub mod executor;
+pub mod graph;
 pub mod interpreter;
 pub mod mcp;
 pub mod output_file;

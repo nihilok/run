@@ -172,6 +172,71 @@ impl Interpreter {
     /// - A statement fails to execute
     /// - A function call references a non-existent function
     /// - A command execution fails
+    #[must_use]
+    pub fn get_dependencies(&self, name: &str) -> Vec<String> {
+        if let Some(metadata) = self.function_metadata.get(name) {
+            for attr in &metadata.attributes {
+                if let Attribute::Depends(deps) = attr {
+                    return deps.clone();
+                }
+            }
+        }
+        Vec::new()
+    }
+
+    #[must_use]
+    pub fn resolve_target(
+        &self,
+        function_name: &str,
+        args: &[String],
+    ) -> Option<(String, Vec<String>)> {
+        // Direct match
+        if self.simple_functions.contains_key(function_name)
+            || self.block_functions.contains_key(function_name)
+            || self.functions.contains_key(function_name)
+        {
+            return Some((function_name.to_string(), args.to_vec()));
+        }
+
+        // Subcommand match
+        if !args.is_empty() {
+            let nested_name = format!("{}:{}", function_name, args[0]);
+            if self.simple_functions.contains_key(&nested_name)
+                || self.block_functions.contains_key(&nested_name)
+                || self.functions.contains_key(&nested_name)
+            {
+                return Some((nested_name, args[1..].to_vec()));
+            }
+        }
+
+        // MCP sanitization match (__ -> :)
+        if function_name.contains("__") {
+            let with_colons = function_name.replace("__", ":");
+            if self.simple_functions.contains_key(&with_colons)
+                || self.block_functions.contains_key(&with_colons)
+                || self.functions.contains_key(&with_colons)
+            {
+                return Some((with_colons, args.to_vec()));
+            }
+        }
+
+        // Underscore replacement match (_ -> :)
+        let with_colons = function_name.replace('_', ":");
+        if with_colons != function_name
+            && (self.simple_functions.contains_key(&with_colons)
+                || self.block_functions.contains_key(&with_colons)
+                || self.functions.contains_key(&with_colons))
+        {
+            return Some((with_colons, args.to_vec()));
+        }
+
+        None
+    }
+
+    /// Executes a parsed program (AST).
+    ///
+    /// # Errors
+    /// Returns an error if statement execution fails.
     pub fn execute(&mut self, program: Program) -> Result<(), Box<dyn std::error::Error>> {
         for statement in program.statements {
             self.execute_statement(statement)?;

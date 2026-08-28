@@ -108,7 +108,42 @@ pub fn run_function_call(
 
     config::set_mcp_function_name(function_name);
 
-    let exec_result = interpreter.call_function_without_parens(function_name, args);
+    // Resolve dependencies
+    let resolved_target = interpreter.resolve_target(function_name, args);
+    let mut execution_order = Vec::new();
+
+    if let Some((target_name, _target_args)) = &resolved_target {
+        match crate::graph::resolve_dependencies(target_name, |name| {
+            interpreter.get_dependencies(name)
+        }) {
+            Ok(order) => execution_order = order,
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        // If it can't be resolved, just let it fail naturally in call_function_without_parens
+        execution_order.push(function_name.to_string());
+    }
+
+    let mut exec_result = Ok(());
+
+    // Run dependencies
+    if execution_order.len() > 1 {
+        for dep in &execution_order[..execution_order.len() - 1] {
+            let res = interpreter.call_function_without_parens(dep, &[]);
+            if let Err(e) = res {
+                exec_result = Err(e);
+                break;
+            }
+        }
+    }
+
+    // Run the main target if dependencies succeeded
+    if exec_result.is_ok() {
+        exec_result = interpreter.call_function_without_parens(function_name, args);
+    }
 
     if matches!(output_format.mode(), crate::ast::OutputMode::Structured) {
         let outputs = interpreter.take_captured_outputs();
