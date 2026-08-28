@@ -173,8 +173,14 @@ clippy() {
     cargo clippy --workspace --all-targets || true
 }
 
+# @desc Run clippy strictly (fails on warnings)
+clippy:check() cargo clippy --workspace --all-targets -- -D warnings
+
 # @desc Format all Rust code
 fmt() cargo fmt --all
+
+# @desc Check formatting (fails if unformatted)
+fmt:check() cargo fmt --check
 
 # @desc Fast compile check (no codegen)
 check() cargo check --workspace --all-targets
@@ -192,11 +198,10 @@ coverage() {
         cargo llvm-cov --package run
 }
 
-# @desc Run full CI: fmt check, clippy, tests
+# @depends fmt:check, clippy:check, test
+# @desc Run full CI pipeline (formatting, linting, tests)
 ci() {
-    cargo fmt --check || exit 1
-    cargo clippy --workspace --all-targets -- -D warnings || exit 1
-    cargo test --package run
+    echo "✓ CI pipeline completed successfully!"
 }
 
 # Ad-hoc memory recipe (for testing before built-in memory mode release)
