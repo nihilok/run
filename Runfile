@@ -152,7 +152,7 @@ deploy:aur(version = "") {
     git checkout main
     git add PKGBUILD .SRCINFO
     git commit -m "Update to v${ver}"
-    git push
+    git push origin main
     git push aur HEAD:master
     cd ..
 
