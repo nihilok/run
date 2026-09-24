@@ -129,7 +129,7 @@ pub fn get_builtin_tools() -> Vec<Tool> {
     );
     tools.push(Tool {
         name: TOOL_SET_CWD.to_string(),
-        description: "Set the current working directory. Call this before other tools to change their execution context.".to_string(),
+        description: "Set the working directory used by this MCP server's own tools (Runfile-backed tool calls). Does not affect the calling agent's shell/Bash tool or any other MCP server.".to_string(),
         input_schema: InputSchema {
             schema_type: "object".to_string(),
             properties: set_cwd_props,
@@ -140,7 +140,7 @@ pub fn get_builtin_tools() -> Vec<Tool> {
     // get_cwd
     tools.push(Tool {
         name: TOOL_GET_CWD.to_string(),
-        description: "Get the current working directory.".to_string(),
+        description: "Get the current working directory used by this MCP server's own tools (Runfile-backed tool calls).".to_string(),
         input_schema: InputSchema {
             schema_type: "object".to_string(),
             properties: HashMap::new(),
@@ -592,7 +592,7 @@ mod tests {
             .expect("set_cwd tool should exist");
         assert_eq!(
             set_cwd.description,
-            "Set the current working directory. Call this before other tools to change their execution context."
+            "Set the working directory used by this MCP server's own tools (Runfile-backed tool calls). Does not affect the calling agent's shell/Bash tool or any other MCP server."
         );
         assert_eq!(set_cwd.input_schema.schema_type, "object");
         assert!(set_cwd.input_schema.properties.contains_key("path"));
@@ -603,7 +603,10 @@ mod tests {
             .iter()
             .find(|t| t.name == TOOL_GET_CWD)
             .expect("get_cwd tool should exist");
-        assert_eq!(get_cwd.description, "Get the current working directory.");
+        assert_eq!(
+            get_cwd.description,
+            "Get the current working directory used by this MCP server's own tools (Runfile-backed tool calls)."
+        );
         assert_eq!(get_cwd.input_schema.schema_type, "object");
         assert!(get_cwd.input_schema.properties.is_empty());
         assert!(get_cwd.input_schema.required.is_empty());

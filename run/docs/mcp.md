@@ -47,8 +47,8 @@ Rules:
 
 ## Built-in MCP tools
 Alongside your Runfile functions, three helpers are always available:
-- `set_cwd(path: string)` — change the working directory for subsequent calls.
-- `get_cwd()` — report the current working directory.
+- `set_cwd(path: string)` — change the working directory used by this MCP server's own tools (Runfile-backed calls). Does not affect the calling agent's shell/Bash tool or other MCP servers.
+- `get_cwd()` — report the current working directory used by this MCP server's own tools.
 - `run_docs(topic?: string)` — fetch embedded Runfile/run documentation. Call with no arguments (or `"index"`) to list available topics, or pass a topic slug such as `"runfile-syntax"` or `"attributes-and-interpreters"` to retrieve the relevant docs.
 
 ## Built-in `timeout` parameter
