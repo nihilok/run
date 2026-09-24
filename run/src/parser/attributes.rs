@@ -82,6 +82,11 @@ fn parse_attribute_line(line: &str) -> Option<Attribute> {
         return Some(Attribute::Noerrexit);
     }
 
+    // Handle @parallel - execute dependencies in parallel
+    if without_hash.trim() == "parallel" {
+        return Some(Attribute::Parallel);
+    }
+
     // Handle @cd - format: "@cd path" or "@cd ./path"
     if let Some(cd_text) = without_hash.strip_prefix("cd ") {
         let dir = strip_quotes(cd_text.trim());
@@ -256,5 +261,14 @@ mod tests {
 
         let attr = parse_attribute_line("#@source_dir \"/path with spaces\"").unwrap();
         assert_eq!(attr, Attribute::SourceDir("/path with spaces".to_string()));
+    }
+
+    #[test]
+    fn test_parse_parallel_attribute() {
+        let attr = parse_attribute_line("# @parallel").unwrap();
+        assert_eq!(attr, Attribute::Parallel);
+
+        let attr = parse_attribute_line("#@parallel").unwrap();
+        assert_eq!(attr, Attribute::Parallel);
     }
 }

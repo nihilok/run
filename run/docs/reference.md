@@ -8,6 +8,8 @@ Quick lookups for attributes, environment variables, and discovery rules.
 - `@os <unix|windows|macos|linux>` — restrict a function to a platform.
 - Platform branching: use separate `# @os` variants or branch inside the shell body (inline `@macos {}` style guards are not supported).
 - `@cd <path>` — set working directory for the function execution (relative paths resolve against the defining file's directory; changes are isolated to a subshell).
+- `@depends <task1>, <task2>` — declare prerequisite task dependencies (resolved as a DAG with cycle detection and deduplication).
+- `@parallel` — execute dependencies concurrently in parallel stages (depth-based DAG concurrency).
 - `@shell <interpreter>` — force an interpreter (`python3`, `node`, `pwsh`, `bash`, `sh`, etc.). Overrides any shebang.
 
 ## Source directive
@@ -24,8 +26,12 @@ Quick lookups for attributes, environment variables, and discovery rules.
 - `RUN_NO_GLOBAL_MERGE` — skip merging `~/.runfile` into the project Runfile (useful for isolation/tests).
 
 ## Output handling
-- `--output-format stream|json|markdown` controls how results are emitted.
+- `-o, --output-format stream|json|markdown` controls how results are emitted.
 - Structured output is used when a function returns it (e.g., MCP-aware functions); otherwise output is streamed.
+
+## Concurrency
+- `-p, --parallel` — run independent dependencies in parallel.
+- `-j, --jobs <N>` — limit maximum worker threads for dependencies (`-j 1` forces sequential execution).
 
 ## Interpreters
 Supported interpreters include `python`, `python3`, `node`, `ruby`, `pwsh`, `bash`, and `sh`. Use a shebang or `@shell` to select one; `@shell` wins if both are present.

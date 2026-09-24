@@ -21,6 +21,7 @@ pub(crate) struct FunctionMetadata {
     pub(crate) params: Vec<crate::ast::Parameter>,
 }
 
+#[derive(Clone)]
 pub struct Interpreter {
     variables: HashMap<String, String>,
     functions: HashMap<String, Vec<Statement>>,
@@ -158,6 +159,14 @@ impl Interpreter {
         self.captured_outputs.push(output);
     }
 
+    /// Add multiple captured outputs
+    pub(crate) fn extend_captured_outputs(
+        &mut self,
+        outputs: impl IntoIterator<Item = CommandOutput>,
+    ) {
+        self.captured_outputs.extend(outputs);
+    }
+
     // Helper to get attributes for simple functions (returns a slice reference)
     fn get_simple_function_attributes(&self, name: &str) -> &[Attribute] {
         self.function_metadata
@@ -191,6 +200,19 @@ impl Interpreter {
             }
         }
         Vec::new()
+    }
+
+    /// Check if a function is marked with the `@parallel` attribute
+    #[must_use]
+    pub fn is_parallel(&self, name: &str) -> bool {
+        if let Some(metadata) = self.function_metadata.get(name) {
+            for attr in &metadata.attributes {
+                if matches!(attr, Attribute::Parallel) {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     #[must_use]

@@ -360,6 +360,7 @@ pub enum Attribute {
     Noerrexit,
     Cd(String),
     SourceDir(String),
+    Parallel,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -380,6 +381,7 @@ pub struct FunctionMetadata {
     pub noerrexit: bool,
     pub cd: Option<String>,
     pub source_dir: Option<String>,
+    pub parallel: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

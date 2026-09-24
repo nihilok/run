@@ -68,6 +68,8 @@ pub fn run_function_call(
     args: &[String],
     output_format: OutputFormatArg,
     show_script: bool,
+    parallel: bool,
+    jobs: Option<usize>,
 ) {
     let Some((config_content, _metadata)) = config::load_merged_config() else {
         eprintln!("{}", config::NO_RUNFILE_ERROR);
@@ -110,34 +112,11 @@ pub fn run_function_call(
 
     // Resolve dependencies
     let resolved_target = interpreter.resolve_target(function_name, args);
-    let mut execution_order = Vec::new();
-
-    if let Some((target_name, _target_args)) = &resolved_target {
-        match crate::graph::resolve_dependencies(target_name, |name| {
-            interpreter.get_dependencies(name)
-        }) {
-            Ok(order) => execution_order = order,
-            Err(e) => {
-                eprintln!("error: {e}");
-                std::process::exit(1);
-            }
-        }
-    } else {
-        // If it can't be resolved, just let it fail naturally in call_function_without_parens
-        execution_order.push(function_name.to_string());
-    }
-
     let mut exec_result = Ok(());
 
-    // Run dependencies
-    if execution_order.len() > 1 {
-        for dep in &execution_order[..execution_order.len() - 1] {
-            let res = interpreter.call_function_without_parens(dep, &[]);
-            if let Err(e) = res {
-                exec_result = Err(e);
-                break;
-            }
-        }
+    if let Some((target_name, _target_args)) = &resolved_target {
+        exec_result =
+            execute_dependencies(&mut interpreter, target_name, parallel, jobs, show_script);
     }
 
     // Run the main target if dependencies succeeded
@@ -167,6 +146,153 @@ pub fn run_function_call(
         eprintln!("error: {e}");
         std::process::exit(1);
     }
+}
+
+#[allow(clippy::too_many_lines)]
+fn execute_dependencies(
+    interpreter: &mut interpreter::Interpreter,
+    target_name: &str,
+    parallel: bool,
+    jobs: Option<usize>,
+    show_script: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write;
+
+    let is_parallel = !show_script
+        && (parallel || interpreter.is_parallel(target_name) || jobs.is_some_and(|j| j > 1))
+        && jobs.is_none_or(|j| j > 1);
+
+    if is_parallel {
+        let stages = match crate::graph::resolve_dependency_stages(target_name, |name| {
+            interpreter.get_dependencies(name)
+        }) {
+            Ok(stages) => stages,
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+        };
+
+        if stages.len() <= 1 {
+            return Ok(());
+        }
+
+        let max_jobs = jobs.filter(|&j| j > 0).unwrap_or_else(|| {
+            std::thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get)
+        });
+
+        for stage in &stages[..stages.len() - 1] {
+            if stage.is_empty() {
+                continue;
+            }
+
+            if stage.len() == 1 {
+                interpreter.call_function_without_parens(&stage[0], &[])?;
+                continue;
+            }
+
+            let num_workers = stage.len().min(max_jobs);
+            let task_queue = std::sync::Mutex::new(std::collections::VecDeque::from(stage.clone()));
+            let aborted = std::sync::atomic::AtomicBool::new(false);
+            let first_error: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+            let results_by_task: std::sync::Mutex<
+                std::collections::HashMap<String, Vec<crate::ast::CommandOutput>>,
+            > = std::sync::Mutex::new(std::collections::HashMap::new());
+            let print_lock = std::sync::Mutex::new(());
+            let original_mode = interpreter.output_mode();
+
+            std::thread::scope(|s| {
+                for _ in 0..num_workers {
+                    s.spawn(|| {
+                        let mut worker_interp = interpreter.clone();
+                        worker_interp.set_output_mode(crate::ast::OutputMode::Structured);
+
+                        loop {
+                            if aborted.load(std::sync::atomic::Ordering::Relaxed) {
+                                break;
+                            }
+
+                            let next_task = {
+                                let Ok(mut q) = task_queue.lock() else {
+                                    break;
+                                };
+                                q.pop_front()
+                            };
+
+                            let Some(task_name) = next_task else {
+                                break;
+                            };
+
+                            let res = worker_interp.call_function_without_parens(&task_name, &[]);
+                            let outputs = worker_interp.take_captured_outputs();
+
+                            if matches!(
+                                original_mode,
+                                crate::ast::OutputMode::Stream | crate::ast::OutputMode::Capture
+                            ) && let Ok(_lock) = print_lock.lock()
+                            {
+                                for out in &outputs {
+                                    if !out.stdout.is_empty() {
+                                        print!("{}", out.stdout);
+                                    }
+                                    if !out.stderr.is_empty() {
+                                        eprint!("{}", out.stderr);
+                                    }
+                                }
+                                let _ = std::io::stdout().flush();
+                                let _ = std::io::stderr().flush();
+                            }
+
+                            if let Ok(mut results) = results_by_task.lock() {
+                                results.insert(task_name.clone(), outputs);
+                            }
+
+                            if let Err(e) = res {
+                                aborted.store(true, std::sync::atomic::Ordering::Relaxed);
+                                if let Ok(mut err_slot) = first_error.lock()
+                                    && err_slot.is_none()
+                                {
+                                    *err_slot = Some(e.to_string());
+                                }
+                                break;
+                            }
+                        }
+                    });
+                }
+            });
+
+            // Preserve deterministic stage task order for structured output
+            if let Ok(mut results_map) = results_by_task.into_inner() {
+                for task_name in stage {
+                    if let Some(outputs) = results_map.remove(task_name) {
+                        interpreter.extend_captured_outputs(outputs);
+                    }
+                }
+            }
+
+            if let Ok(Some(err_msg)) = first_error.into_inner() {
+                return Err(err_msg.into());
+            }
+        }
+    } else {
+        let execution_order = match crate::graph::resolve_dependencies(target_name, |name| {
+            interpreter.get_dependencies(name)
+        }) {
+            Ok(order) => order,
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+        };
+
+        if execution_order.len() > 1 {
+            for dep in &execution_order[..execution_order.len() - 1] {
+                interpreter.call_function_without_parens(dep, &[])?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// List all available functions from the Runfile.

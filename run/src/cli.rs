@@ -55,7 +55,12 @@ struct Cli {
     setup_ai: bool,
 
     /// Output format for command execution (stream, json, markdown)
-    #[arg(long, value_name = "FORMAT", default_value = "stream")]
+    #[arg(
+        short = 'o',
+        long = "output-format",
+        value_name = "FORMAT",
+        default_value = "stream"
+    )]
     output_format: OutputFormatArg,
 
     /// Working directory containing the Runfile (alias: --runfile)
@@ -65,6 +70,14 @@ struct Cli {
     /// Show the generated shell script without executing
     #[arg(long)]
     show_script: bool,
+
+    /// Run independent dependencies in parallel
+    #[arg(short = 'p', long = "parallel")]
+    parallel: bool,
+
+    /// Maximum number of parallel jobs for dependencies
+    #[arg(short = 'j', long = "jobs", value_name = "N")]
+    jobs: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -187,6 +200,8 @@ pub fn run_cli() {
                     &cli.args,
                     cli.output_format,
                     cli.show_script,
+                    cli.parallel,
+                    cli.jobs,
                 );
             }
         }

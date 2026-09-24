@@ -55,6 +55,51 @@ build() npm run build
 test() cargo test
 ```
 
+## Task dependencies and parallelism
+Functions can declare prerequisite tasks using `# @depends`:
+- `@depends <task1>, <task2>, ...` — declare one or more dependencies to run before this task.
+- Dependencies are resolved as a Directed Acyclic Graph (DAG) with automatic cycle detection.
+- **Deduplication / Memoization**: If multiple dependencies share a common prerequisite (e.g. diamond dependency pattern), the shared prerequisite executes only once.
+- Failure of any dependency immediately halts downstream execution.
+
+To execute independent dependencies concurrently:
+- `@parallel` — marks the function so that independent tasks at the same depth in the dependency DAG execute in parallel stages.
+- Concurrency can also be controlled on the command line using `-p, --parallel` or `-j, --jobs <N>`.
+- Passing `-j 1` overrides `@parallel` and forces sequential execution.
+
+```bash
+clean() {
+    cargo clean
+}
+
+# @depends clean
+build() {
+    cargo build --release
+}
+
+# @depends build
+lint() {
+    cargo clippy
+}
+
+# @depends build
+test() {
+    cargo test
+}
+
+# @depends lint, test
+# @parallel
+ci() {
+    echo "CI checks passed!"
+}
+```
+
+In the example above, running `run ci`:
+1. Runs `clean`.
+2. Runs `build`.
+3. Runs `lint` and `test` concurrently in parallel.
+4. Runs `ci`.
+
 ## Interpreter selection
 There are two ways to pick an interpreter for a function body:
 
@@ -82,3 +127,4 @@ Supported interpreters include `python`, `python3`, `node`, `ruby`, `pwsh`, `bas
 - If no interpreter is set, the function uses the default shell (`RUN_SHELL` or platform default).
 
 For language-specific behaviors and argument forwarding, see [Polyglot commands](./polyglot-commands.md).
+

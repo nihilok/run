@@ -14,7 +14,9 @@ Most commands follow `run <function> [args...]`. The CLI also offers discovery, 
 - `--show-script` — print the generated shell script that would be executed, without running it. Useful for debugging parameter injection and transpilation.
 - `--serve-mcp` — start the MCP server so AI agents can call your functions.
 - `--working-dir PATH` (alias `--runfile`) — point `run` at a specific project directory.
-- `--output-format stream|json|markdown` — choose how results are emitted; `json`/`markdown` use structured output when supported by the function.
+- `-o, --output-format stream|json|markdown` — choose how results are emitted; `json`/`markdown` use structured output when supported by the function.
+- `-p, --parallel` — run independent `@depends` tasks in parallel.
+- `-j, --jobs <N>` — limit maximum parallel worker threads (`-j 1` forces sequential execution).
 - `--install-completion [SHELL]` — install shell completions (auto-detects if omitted).
 - `--generate-completion SHELL` — print completion script without installing.
 
