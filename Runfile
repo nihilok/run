@@ -28,9 +28,15 @@ deploy:all() {
     # 1. Bump version and publish to crates.io
     echo "=== Step 1/4: Bumping $bump version and publishing ==="
     case "$bump" in
-        patch) deploy:patch ;;
-        minor) deploy:minor ;;
-        major) deploy:major ;;
+        patch)
+            deploy:patch
+            ;;
+        minor)
+            deploy:minor
+            ;;
+        major)
+            deploy:major
+            ;;
     esac
 
     local ver=$(git describe --tags --abbrev=0 | sed 's/^v//')
