@@ -40,6 +40,21 @@ clean() del /Q dist
 clean() rm -rf dist
 ```
 
+## Working directory (`@cd`)
+The `@cd <path>` attribute sets the working directory for a function's execution:
+- Relative paths are resolved relative to the file defining the function (e.g. the sourced file's directory or the root Runfile directory).
+- Absolute paths and home directory (`~/` or `~`) paths are supported.
+- When composed with other functions, directory changes are executed in an isolated subshell to prevent directory changes from leaking to callers.
+- Works across all interpreters (shell, Python, Node.js, Ruby, etc.).
+
+```bash
+# @cd ./frontend
+build() npm run build
+
+# @cd crates/cli
+test() cargo test
+```
+
 ## Interpreter selection
 There are two ways to pick an interpreter for a function body:
 

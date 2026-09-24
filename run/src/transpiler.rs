@@ -73,10 +73,32 @@ impl Default for Interpreter {
 /// * `body` - Function body (command template or block)
 /// * `is_block` - Whether this is a block function
 #[must_use]
-pub fn transpile_to_shell(name: &str, body: &str, is_block: bool) -> String {
+pub fn transpile_to_shell_with_cd(
+    name: &str,
+    body: &str,
+    is_block: bool,
+    cd_dir: Option<&str>,
+) -> String {
     let sanitised = sanitise_name(name);
 
-    if is_block {
+    if let Some(dir) = cd_dir {
+        let cd_cmd = if dir == "~" {
+            "cd \"$HOME\" || exit 1".to_string()
+        } else if let Some(suffix) = dir.strip_prefix("~/") {
+            format!("cd \"$HOME/{suffix}\" || exit 1")
+        } else if std::path::Path::new(dir).is_absolute() {
+            format!("cd \"{dir}\" || exit 1")
+        } else {
+            format!("cd \"${{__SOURCE_DIR__:-${{__RUNFILE_DIR__:-.}}}}\"/{dir} || exit 1")
+        };
+
+        if is_block {
+            let indented = indent(body, "    ");
+            format!("{sanitised}() (\n    {cd_cmd}\n{indented}\n)")
+        } else {
+            format!("{sanitised}() (\n    {cd_cmd}\n    {body}\n)")
+        }
+    } else if is_block {
         // Block function - body already contains multiple lines
         let indented = indent(body, "    ");
         format!("{sanitised}() {{\n{indented}\n}}")
@@ -86,17 +108,44 @@ pub fn transpile_to_shell(name: &str, body: &str, is_block: bool) -> String {
     }
 }
 
-/// Transpile a function to `PowerShell` syntax
+/// Transpile a Runfile function to shell syntax
+///
+/// # Arguments
+/// * `name` - Function name (may contain colons)
+/// * `body` - Function body (command template or block)
+/// * `is_block` - Whether this is a block function
 #[must_use]
-pub fn transpile_to_pwsh(name: &str, body: &str, is_block: bool) -> String {
+pub fn transpile_to_shell(name: &str, body: &str, is_block: bool) -> String {
+    transpile_to_shell_with_cd(name, body, is_block, None)
+}
+
+/// Transpile a function to `PowerShell` syntax with optional directory change
+#[must_use]
+pub fn transpile_to_pwsh_with_cd(
+    name: &str,
+    body: &str,
+    is_block: bool,
+    cd_dir: Option<&str>,
+) -> String {
     let sanitised = sanitise_name(name);
 
-    if is_block {
+    if let Some(dir) = cd_dir {
+        let indented = indent(body, "        ");
+        format!(
+            "function {sanitised} {{\n    Push-Location \"{dir}\"\n    try {{\n{indented}\n    }} finally {{\n        Pop-Location\n    }}\n}}"
+        )
+    } else if is_block {
         let indented = indent(body, "    ");
         format!("function {sanitised} {{\n{indented}\n}}")
     } else {
         format!("function {sanitised} {{\n    {body}\n}}")
     }
+}
+
+/// Transpile a function to `PowerShell` syntax
+#[must_use]
+pub fn transpile_to_pwsh(name: &str, body: &str, is_block: bool) -> String {
+    transpile_to_pwsh_with_cd(name, body, is_block, None)
 }
 
 /// sanitise function name by replacing colons with double underscores and hyphens with underscores

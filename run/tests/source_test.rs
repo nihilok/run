@@ -320,3 +320,60 @@ fn test_source_in_script_file() {
     assert!(output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("from lib"));
 }
+
+#[test]
+fn test_source_dir_variable_for_root_and_sourced_functions() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // Create a subdirectory with a sourced file
+    let sub_dir = temp_dir.path().join("subpkg");
+    fs::create_dir(&sub_dir).unwrap();
+
+    write_file(
+        &sub_dir,
+        "tasks.run",
+        "sub_task() {\n    echo \"SRC=$__SOURCE_DIR__\"\n    echo \"RUN=$__RUNFILE_DIR__\"\n}\n",
+    );
+
+    // Root Runfile sources subpkg/tasks.run and defines a root task
+    let root_runfile =
+        "source subpkg/tasks.run\nroot_task() {\n    echo \"ROOT_SRC=$__SOURCE_DIR__\"\n}\n";
+    create_runfile(temp_dir.path(), root_runfile);
+
+    // 1. Run root task
+    let output_root = test_command(&binary)
+        .arg("root_task")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute root_task");
+
+    assert!(output_root.status.success());
+    let stdout_root = String::from_utf8_lossy(&output_root.stdout);
+    let expected_root = temp_dir.path().canonicalize().unwrap();
+    let expected_root_str = expected_root.to_str().unwrap();
+    assert!(
+        stdout_root.contains(&format!("ROOT_SRC={expected_root_str}")),
+        "Expected ROOT_SRC={expected_root_str}, got: {stdout_root}"
+    );
+
+    // 2. Run sourced sub_task
+    let output_sub = test_command(&binary)
+        .arg("sub_task")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute sub_task");
+
+    assert!(output_sub.status.success());
+    let stdout_sub = String::from_utf8_lossy(&output_sub.stdout);
+    let expected_sub = sub_dir.canonicalize().unwrap();
+    let expected_sub_str = expected_sub.to_str().unwrap();
+    assert!(
+        stdout_sub.contains(&format!("SRC={expected_sub_str}")),
+        "Expected SRC={expected_sub_str}, got: {stdout_sub}"
+    );
+    assert!(
+        stdout_sub.contains(&format!("RUN={expected_root_str}")),
+        "Expected RUN={expected_root_str}, got: {stdout_sub}"
+    );
+}

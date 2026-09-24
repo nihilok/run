@@ -7,6 +7,7 @@ Quick lookups for attributes, environment variables, and discovery rules.
 - `@arg <name> [type] <description>` — document parameters (names should match the signature). Optional type can be `string`, `integer`, `float`/`number`, `boolean`, or `object`/`dict`.
 - `@os <unix|windows|macos|linux>` — restrict a function to a platform.
 - Platform branching: use separate `# @os` variants or branch inside the shell body (inline `@macos {}` style guards are not supported).
+- `@cd <path>` — set working directory for the function execution (relative paths resolve against the defining file's directory; changes are isolated to a subshell).
 - `@shell <interpreter>` — force an interpreter (`python3`, `node`, `pwsh`, `bash`, `sh`, etc.). Overrides any shebang.
 
 ## Source directive

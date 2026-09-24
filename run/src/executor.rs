@@ -150,10 +150,11 @@ pub fn run_function_call(
         if !outputs.is_empty() {
             let interpreter_name = interpreter.last_interpreter();
 
-            let result = crate::ast::StructuredResult::from_outputs(
+            let result = crate::ast::StructuredResult::from_outputs_with_workdir(
                 function_name,
                 outputs,
                 interpreter_name,
+                interpreter.last_working_directory().map(String::from),
             );
 
             if let Some(formatted) = output_format.format_result(&result) {

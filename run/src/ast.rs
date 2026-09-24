@@ -87,12 +87,13 @@ pub struct StructuredResult {
 }
 
 impl StructuredResult {
-    /// Create from a collection of command outputs
+    /// Create from a collection of command outputs with optional working directory
     #[must_use]
-    pub fn from_outputs(
+    pub fn from_outputs_with_workdir(
         function_name: &str,
         outputs: Vec<CommandOutput>,
         interpreter: &str,
+        working_directory: Option<String>,
     ) -> Self {
         let success = outputs.iter().all(|o| o.exit_code == Some(0));
         let total_duration_ms = outputs.iter().map(|o| o.duration_ms).sum();
@@ -113,21 +114,35 @@ impl StructuredResult {
             .find_map(|o| ExecutionContext::extract_ssh_context(&o.command))
             .map_or((None, None), |(user, host)| (Some(user), Some(host)));
 
+        let work_dir = working_directory.or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .and_then(|p| p.to_str().map(String::from))
+        });
+
         Self {
             context: ExecutionContext {
                 function_name: function_name.to_string(),
                 remote_host,
                 remote_user,
                 interpreter: interpreter.to_string(),
-                working_directory: std::env::current_dir()
-                    .ok()
-                    .and_then(|p| p.to_str().map(String::from)),
+                working_directory: work_dir,
             },
             outputs,
             success,
             total_duration_ms,
             summary,
         }
+    }
+
+    /// Create from a collection of command outputs
+    #[must_use]
+    pub fn from_outputs(
+        function_name: &str,
+        outputs: Vec<CommandOutput>,
+        interpreter: &str,
+    ) -> Self {
+        Self::from_outputs_with_workdir(function_name, outputs, interpreter, None)
     }
 
     /// Format as JSON for programmatic consumption
@@ -343,6 +358,8 @@ pub enum Attribute {
     Arg(ArgMetadata),
     Depends(Vec<String>),
     Noerrexit,
+    Cd(String),
+    SourceDir(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -361,6 +378,8 @@ pub struct FunctionMetadata {
     pub args: Vec<ArgMetadata>,
     pub depends: Vec<String>,
     pub noerrexit: bool,
+    pub cd: Option<String>,
+    pub source_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -37,6 +37,8 @@ pub struct Interpreter {
     show_script: bool,
     /// Directory of the Runfile that was loaded, exposed as `__RUNFILE_DIR__`
     runfile_dir: Option<PathBuf>,
+    /// Last working directory used (for structured output context)
+    last_working_directory: Option<String>,
 }
 
 impl Default for Interpreter {
@@ -55,6 +57,7 @@ impl Default for Interpreter {
             last_interpreter_name: default_interpreter_name.to_string(),
             show_script: false,
             runfile_dir: None,
+            last_working_directory: None,
         }
     }
 }
@@ -142,6 +145,12 @@ impl Interpreter {
     #[must_use]
     pub fn last_interpreter(&self) -> &str {
         &self.last_interpreter_name
+    }
+
+    /// Get the last working directory used
+    #[must_use]
+    pub fn last_working_directory(&self) -> Option<&str> {
+        self.last_working_directory.as_deref()
     }
 
     /// Add a captured output
@@ -647,7 +656,67 @@ impl Interpreter {
         TranspilerInterpreter::default()
     }
 
+    /// Resolve the source directory and working directory for a function
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the directory specified in `@cd` does not exist.
+    fn resolve_source_and_cd_dirs(
+        &self,
+        attributes: &[Attribute],
+    ) -> Result<(Option<PathBuf>, Option<PathBuf>), Box<dyn std::error::Error>> {
+        let source_dir = attributes
+            .iter()
+            .find_map(|attr| match attr {
+                Attribute::SourceDir(dir) => Some(PathBuf::from(dir)),
+                _ => None,
+            })
+            .or_else(|| self.runfile_dir.clone());
+
+        let cd_raw = attributes.iter().find_map(|attr| match attr {
+            Attribute::Cd(dir) => Some(dir.as_str()),
+            _ => None,
+        });
+
+        let cd_dir = if let Some(raw) = cd_raw {
+            let expanded = if raw == "~" {
+                crate::config::get_home_dir().unwrap_or_else(|| PathBuf::from("~"))
+            } else if let Some(stripped) = raw.strip_prefix("~/") {
+                crate::config::get_home_dir()
+                    .map_or_else(|| PathBuf::from(raw), |h| h.join(stripped))
+            } else {
+                PathBuf::from(raw)
+            };
+
+            let resolved = if expanded.is_absolute() {
+                expanded
+            } else if let Some(base) = &source_dir {
+                base.join(expanded)
+            } else if let Some(base) = &self.runfile_dir {
+                base.join(expanded)
+            } else {
+                expanded
+            };
+
+            if !resolved.is_dir() {
+                return Err(format!(
+                    "directory specified in @cd does not exist: {}",
+                    resolved.display()
+                )
+                .into());
+            }
+
+            let canonical = resolved.canonicalize().unwrap_or(resolved);
+            Some(canonical)
+        } else {
+            None
+        };
+
+        Ok((source_dir, cd_dir))
+    }
+
     /// Execute a simple function with preambles for composition
+    #[allow(clippy::too_many_lines)]
     fn execute_simple_function(
         &mut self,
         target_name: &str,
@@ -655,6 +724,9 @@ impl Interpreter {
         args: &[String],
         attributes: &[Attribute],
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let (source_dir, cd_dir) = self.resolve_source_and_cd_dirs(attributes)?;
+        self.last_working_directory = cd_dir.as_ref().map(|p| p.display().to_string());
+
         // Determine the target interpreter
         let target_interpreter = Self::resolve_function_interpreter(attributes, None);
 
@@ -681,12 +753,17 @@ impl Interpreter {
         // Build preambles
         let user_var_preamble =
             preamble::build_variable_preamble(&self.variables, &target_interpreter);
+        let source_dir_line = source_dir
+            .as_ref()
+            .and_then(|p| p.to_str())
+            .map(|dir| preamble::build_source_dir_preamble(dir, &target_interpreter));
         let runfile_dir_line = self
             .runfile_dir
             .as_ref()
             .and_then(|p| p.to_str())
             .map(|dir| preamble::build_runfile_dir_preamble(dir, &target_interpreter));
-        let var_preamble = preamble::combine_with_builtin(runfile_dir_line, user_var_preamble);
+        let var_preamble = preamble::combine_with_builtin(source_dir_line, user_var_preamble);
+        let var_preamble = preamble::combine_with_builtin(runfile_dir_line, var_preamble);
         let func_preamble = preamble::build_function_preamble(
             target_name,
             &target_interpreter,
@@ -734,6 +811,7 @@ impl Interpreter {
                 &target_interpreter,
                 Some(command_template),
                 args,
+                cd_dir.as_deref(),
             )
         } else if is_shell {
             // Shell functions without named params: apply substitution only to the body
@@ -750,7 +828,12 @@ impl Interpreter {
                 errexit,
             );
             let display_cmd = self.substitute_args(command_template, args);
-            self.execute_with_mode(&combined_script, &target_interpreter, Some(&display_cmd))
+            self.execute_with_mode(
+                &combined_script,
+                &target_interpreter,
+                Some(&display_cmd),
+                cd_dir.as_deref(),
+            )
         } else {
             // Non-shell (polyglot): use textual substitution on the combined script
             let combined_script = execution::build_combined_script(
@@ -763,10 +846,16 @@ impl Interpreter {
             );
             let substituted = self.substitute_args_with_params(&combined_script, args, params);
             let display_cmd = self.substitute_args_with_params(command_template, args, params);
-            self.execute_with_mode(&substituted, &target_interpreter, Some(&display_cmd))
+            self.execute_with_mode(
+                &substituted,
+                &target_interpreter,
+                Some(&display_cmd),
+                cd_dir.as_deref(),
+            )
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn execute_block_commands(
         &mut self,
         target_name: &str,
@@ -775,6 +864,9 @@ impl Interpreter {
         attributes: &[Attribute],
         shebang: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let (source_dir, cd_dir) = self.resolve_source_and_cd_dirs(attributes)?;
+        self.last_working_directory = cd_dir.as_ref().map(|p| p.display().to_string());
+
         // Determine the target interpreter
         let target_interpreter = Self::resolve_function_interpreter(attributes, shebang);
 
@@ -810,6 +902,14 @@ impl Interpreter {
                 format!("{arg_preamble}\n{script}")
             };
 
+            // Inject __SOURCE_DIR__ built-in at the top of the polyglot script
+            let script = if let Some(dir) = source_dir.as_ref().and_then(|p| p.to_str()) {
+                let dir_line = preamble::build_source_dir_preamble(dir, &target_interpreter);
+                format!("{dir_line}\n{script}")
+            } else {
+                script
+            };
+
             // Inject __RUNFILE_DIR__ built-in at the top of the polyglot script
             let script = if let Some(dir) = self.runfile_dir.as_ref().and_then(|p| p.to_str()) {
                 let dir_line = preamble::build_runfile_dir_preamble(dir, &target_interpreter);
@@ -821,7 +921,12 @@ impl Interpreter {
             let substituted = self.substitute_args_with_params(&script, args, params);
 
             // Use execute_with_mode_polyglot for proper capture support with args
-            return self.execute_with_mode_polyglot(&substituted, &target_interpreter, args);
+            return self.execute_with_mode_polyglot(
+                &substituted,
+                &target_interpreter,
+                args,
+                cd_dir.as_deref(),
+            );
         }
 
         // For shell-compatible languages, build preamble and compose
@@ -845,12 +950,17 @@ impl Interpreter {
         let rewritten_body = transpiler::rewrite_call_sites(&full_script, &sibling_names);
         let user_var_preamble =
             preamble::build_variable_preamble(&self.variables, &target_interpreter);
+        let source_dir_line = source_dir
+            .as_ref()
+            .and_then(|p| p.to_str())
+            .map(|dir| preamble::build_source_dir_preamble(dir, &target_interpreter));
         let runfile_dir_line = self
             .runfile_dir
             .as_ref()
             .and_then(|p| p.to_str())
             .map(|dir| preamble::build_runfile_dir_preamble(dir, &target_interpreter));
-        let var_preamble = preamble::combine_with_builtin(runfile_dir_line, user_var_preamble);
+        let var_preamble = preamble::combine_with_builtin(source_dir_line, user_var_preamble);
+        let var_preamble = preamble::combine_with_builtin(runfile_dir_line, var_preamble);
         let func_preamble = preamble::build_function_preamble(
             target_name,
             &target_interpreter,
@@ -881,7 +991,12 @@ impl Interpreter {
                 &param_locals,
                 errexit,
             );
-            self.execute_with_mode(&combined_script, &target_interpreter, Some(&display_cmd))
+            self.execute_with_mode(
+                &combined_script,
+                &target_interpreter,
+                Some(&display_cmd),
+                cd_dir.as_deref(),
+            )
         } else {
             // Shell functions with named params: pass args natively via positional parameters
             let combined_script = execution::build_combined_script(
@@ -897,6 +1012,7 @@ impl Interpreter {
                 &target_interpreter,
                 Some(&full_script),
                 args,
+                cd_dir.as_deref(),
             )
         }
     }
@@ -909,8 +1025,9 @@ impl Interpreter {
         script: &str,
         interpreter: &TranspilerInterpreter,
         display_command: Option<&str>,
+        cd_dir: Option<&std::path::Path>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.execute_with_mode_args(script, interpreter, display_command, &[])
+        self.execute_with_mode_args(script, interpreter, display_command, &[], cd_dir)
     }
 
     /// Execute a command with positional args passed natively to the shell
@@ -920,6 +1037,7 @@ impl Interpreter {
         interpreter: &TranspilerInterpreter,
         display_command: Option<&str>,
         shell_args: &[String],
+        cd_dir: Option<&std::path::Path>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         use crate::ast::OutputMode;
 
@@ -937,7 +1055,12 @@ impl Interpreter {
         match self.output_mode {
             OutputMode::Stream => {
                 // Stream mode: execute with optional positional args
-                shell::execute_single_shell_invocation_with_args(script, interpreter, shell_args)
+                shell::execute_single_shell_invocation_with_args(
+                    script,
+                    interpreter,
+                    shell_args,
+                    cd_dir,
+                )
             }
             OutputMode::Capture | OutputMode::Structured => {
                 // Capture mode: use the shell args we already have
@@ -947,6 +1070,7 @@ impl Interpreter {
                     script,
                     display_command,
                     shell_args,
+                    cd_dir,
                 )
             }
         }
@@ -960,9 +1084,17 @@ impl Interpreter {
         script: &str,
         display_command: Option<&str>,
         shell_args: &[String],
+        cd_dir: Option<&std::path::Path>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let output = if shell_args.is_empty() {
-            shell::execute_with_capture(script, shell_cmd, shell_arg, display_command)?
+            shell::execute_with_capture_and_args(
+                script,
+                shell_cmd,
+                shell_arg,
+                &[],
+                display_command,
+                cd_dir,
+            )?
         } else {
             // For shell -c with positional args: bash -c "script" bash arg1 arg2
             // We prepend the interpreter name as $0
@@ -974,6 +1106,7 @@ impl Interpreter {
                 shell_arg,
                 &args_with_dollar0,
                 display_command,
+                cd_dir,
             )?
         };
 
@@ -1026,6 +1159,7 @@ impl Interpreter {
         script: &str,
         interpreter: &TranspilerInterpreter,
         args: &[String],
+        cd_dir: Option<&std::path::Path>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         use crate::ast::OutputMode;
 
@@ -1050,13 +1184,13 @@ impl Interpreter {
                     TranspilerInterpreter::Ruby => crate::ast::ShellType::Ruby,
                     _ => crate::ast::ShellType::Sh,
                 })];
-                shell::execute_command_with_args(script, &exec_attributes, args)
+                shell::execute_command_with_args(script, &exec_attributes, args, cd_dir)
             }
             OutputMode::Capture | OutputMode::Structured => {
                 // Capture mode: capture output with arguments
                 // For polyglot, the script IS the user command (no preamble), so pass None
                 let output = shell::execute_with_capture_and_args(
-                    script, &shell_cmd, shell_arg, args, None,
+                    script, &shell_cmd, shell_arg, args, None, cd_dir,
                 )?;
 
                 // Only print output in Capture mode

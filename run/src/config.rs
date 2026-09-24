@@ -230,7 +230,7 @@ pub fn load_home_runfile() -> Option<String> {
 #[must_use]
 pub fn expand_source_directives(content: &str, base_dir: &Path) -> String {
     let mut seen = HashSet::new();
-    expand_sources_inner(content, base_dir, &mut seen)
+    expand_sources_inner(content, base_dir, &mut seen, false)
 }
 
 /// Collect top-level `# @instructions ...` lines from expanded/merged `Runfile` content.
@@ -256,7 +256,34 @@ pub fn collect_mcp_instructions(content: &str) -> Vec<String> {
     result
 }
 
-fn expand_sources_inner(content: &str, base_dir: &Path, seen: &mut HashSet<PathBuf>) -> String {
+fn is_function_def_start(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return false;
+    }
+    if trimmed.starts_with("function ") {
+        return true;
+    }
+    if let Some(paren_pos) = trimmed.find('(') {
+        let ident = trimmed[..paren_pos].trim();
+        if !ident.is_empty()
+            && ident
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == ':')
+            && ident.starts_with(|c: char| c.is_alphabetic() || c == '_')
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn expand_sources_inner(
+    content: &str,
+    base_dir: &Path,
+    seen: &mut HashSet<PathBuf>,
+    is_sourced: bool,
+) -> String {
     let mut result = String::new();
     let mut brace_depth: usize = 0;
 
@@ -273,7 +300,8 @@ fn expand_sources_inner(content: &str, base_dir: &Path, seen: &mut HashSet<PathB
                             .parent()
                             .filter(|p| !p.as_os_str().is_empty())
                             .unwrap_or(base_dir);
-                        let expanded = expand_sources_inner(&source_content, source_base, seen);
+                        let expanded =
+                            expand_sources_inner(&source_content, source_base, seen, true);
                         result.push_str(&expanded);
                         if !expanded.ends_with('\n') {
                             result.push('\n');
@@ -289,6 +317,12 @@ fn expand_sources_inner(content: &str, base_dir: &Path, seen: &mut HashSet<PathB
                 }
             }
             continue; // consume the source line itself
+        }
+
+        if is_sourced && brace_depth == 0 && is_function_def_start(line) {
+            use std::fmt::Write as _;
+            let base_str = base_dir.to_string_lossy();
+            let _ = writeln!(result, "# @source_dir \"{base_str}\"");
         }
 
         let (opens, closes) = count_unquoted_braces(line);

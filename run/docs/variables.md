@@ -20,6 +20,8 @@ Functions inherit the caller environment. Two key variables affect `run` itself:
   ```
   For polyglot functions the variable is injected with the appropriate syntax for the target language (e.g. `__RUNFILE_DIR__ = "/path"` for Python/Ruby, `const __RUNFILE_DIR__ = "/path";` for Node.js).
 
+- `__SOURCE_DIR__` — absolute path of the directory of the file where the function is defined. For functions defined directly in the project's root Runfile, this is identical to `__RUNFILE_DIR__`. For functions imported via `source <path>`, this points to the sourced file's containing folder, allowing modular task libraries to locate their own sibling scripts or assets without hardcoding absolute paths. Like `__RUNFILE_DIR__`, this is injected in the appropriate syntax for all supported interpreters.
+
 ## Runfile scope
 - Top-level variables declared in a Runfile are visible to all functions.
 - Sibling functions are injected into the execution scope, so you can call them by name.

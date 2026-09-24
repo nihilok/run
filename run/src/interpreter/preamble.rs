@@ -193,11 +193,16 @@ pub(super) fn build_function_preamble(
         // Rewrite call sites in the command template
         let rewritten_body = transpiler::rewrite_call_sites(command_template, &all_rewritable);
 
+        let cd_dir = attributes.iter().find_map(|attr| match attr {
+            Attribute::Cd(dir) => Some(dir.as_str()),
+            _ => None,
+        });
+
         let transpiled = match target_interpreter {
             TranspilerInterpreter::Pwsh => {
-                transpiler::transpile_to_pwsh(name, &rewritten_body, false)
+                transpiler::transpile_to_pwsh_with_cd(name, &rewritten_body, false, cd_dir)
             }
-            _ => transpiler::transpile_to_shell(name, &rewritten_body, false),
+            _ => transpiler::transpile_to_shell_with_cd(name, &rewritten_body, false, cd_dir),
         };
 
         preamble.push_str(&transpiled);
@@ -229,11 +234,16 @@ pub(super) fn build_function_preamble(
             .join("\n");
         let rewritten_body = transpiler::rewrite_call_sites(&body, &all_rewritable);
 
+        let cd_dir = attributes.iter().find_map(|attr| match attr {
+            Attribute::Cd(dir) => Some(dir.as_str()),
+            _ => None,
+        });
+
         let transpiled = match target_interpreter {
             TranspilerInterpreter::Pwsh => {
-                transpiler::transpile_to_pwsh(name, &rewritten_body, true)
+                transpiler::transpile_to_pwsh_with_cd(name, &rewritten_body, true, cd_dir)
             }
-            _ => transpiler::transpile_to_shell(name, &rewritten_body, true),
+            _ => transpiler::transpile_to_shell_with_cd(name, &rewritten_body, true, cd_dir),
         };
 
         preamble.push_str(&transpiled);
@@ -722,6 +732,34 @@ pub(super) fn build_runfile_dir_preamble(dir: &str, interpreter: &TranspilerInte
     }
 }
 
+/// Emit the `__SOURCE_DIR__` assignment in the target interpreter's syntax.
+///
+/// Injected into the variable preamble so that the source file directory of the function
+/// is immediately accessible inside every function body:
+/// - Shell (sh/bash): `__SOURCE_DIR__="<escaped-path>"`
+/// - `PowerShell`: `$__SOURCE_DIR__ = "<escaped-path>"`
+/// - Python/Ruby: `__SOURCE_DIR__ = "<escaped-path>"`
+/// - Node: `const __SOURCE_DIR__ = "<escaped-path>";`
+pub(super) fn build_source_dir_preamble(dir: &str, interpreter: &TranspilerInterpreter) -> String {
+    match interpreter {
+        TranspilerInterpreter::Pwsh => {
+            format!("$__SOURCE_DIR__ = \"{}\"", escape_pwsh_value(dir))
+        }
+        TranspilerInterpreter::Python
+        | TranspilerInterpreter::Python3
+        | TranspilerInterpreter::Ruby => {
+            format!("__SOURCE_DIR__ = \"{}\"", escape_polyglot_path(dir))
+        }
+        TranspilerInterpreter::Node => {
+            format!("const __SOURCE_DIR__ = \"{}\";", escape_polyglot_path(dir))
+        }
+        _ => {
+            // sh / bash: standard shell assignment
+            format!("__SOURCE_DIR__=\"{}\"", escape_shell_value(dir))
+        }
+    }
+}
+
 /// Combine an optional builtin preamble line with user-defined variable preamble lines.
 ///
 /// Returns the builtin line prepended to the user preamble, with the two separated
@@ -823,6 +861,25 @@ mod tests {
         let result =
             build_runfile_dir_preamble("/home/user/my\"project", &TranspilerInterpreter::Sh);
         assert_eq!(result, "__RUNFILE_DIR__=\"/home/user/my\\\"project\"");
+    }
+
+    #[test]
+    fn test_build_source_dir_preamble_sh() {
+        let result = build_source_dir_preamble("/home/user/sourced", &TranspilerInterpreter::Sh);
+        assert_eq!(result, "__SOURCE_DIR__=\"/home/user/sourced\"");
+    }
+
+    #[test]
+    fn test_build_source_dir_preamble_python() {
+        let result =
+            build_source_dir_preamble("/home/user/sourced", &TranspilerInterpreter::Python);
+        assert_eq!(result, "__SOURCE_DIR__ = \"/home/user/sourced\"");
+    }
+
+    #[test]
+    fn test_build_source_dir_preamble_node() {
+        let result = build_source_dir_preamble("/home/user/sourced", &TranspilerInterpreter::Node);
+        assert_eq!(result, "const __SOURCE_DIR__ = \"/home/user/sourced\";");
     }
 
     #[test]

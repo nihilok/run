@@ -82,6 +82,22 @@ fn parse_attribute_line(line: &str) -> Option<Attribute> {
         return Some(Attribute::Noerrexit);
     }
 
+    // Handle @cd - format: "@cd path" or "@cd ./path"
+    if let Some(cd_text) = without_hash.strip_prefix("cd ") {
+        let dir = strip_quotes(cd_text.trim());
+        if !dir.is_empty() {
+            return Some(Attribute::Cd(dir));
+        }
+    }
+
+    // Handle @source_dir - format: "@source_dir path"
+    if let Some(src_dir_text) = without_hash.strip_prefix("source_dir ") {
+        let dir = strip_quotes(src_dir_text.trim());
+        if !dir.is_empty() {
+            return Some(Attribute::SourceDir(dir));
+        }
+    }
+
     // Handle @depends - format: "@depends task1, task2"
     if let Some(depends_text) = without_hash.strip_prefix("depends ") {
         let tasks = depends_text
@@ -213,5 +229,32 @@ fn parse_arg_attribute(arg_text: &str) -> Option<Attribute> {
             arg_type: ArgType::String,
             description,
         }))
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_cd_attribute() {
+        let attr = parse_attribute_line("# @cd ./frontend").unwrap();
+        assert_eq!(attr, Attribute::Cd("./frontend".to_string()));
+
+        let attr = parse_attribute_line("# @cd \"crates/cli\"").unwrap();
+        assert_eq!(attr, Attribute::Cd("crates/cli".to_string()));
+
+        let attr = parse_attribute_line("#@cd /var/www").unwrap();
+        assert_eq!(attr, Attribute::Cd("/var/www".to_string()));
+    }
+
+    #[test]
+    fn test_parse_source_dir_attribute() {
+        let attr = parse_attribute_line("# @source_dir /path/to/sourced").unwrap();
+        assert_eq!(attr, Attribute::SourceDir("/path/to/sourced".to_string()));
+
+        let attr = parse_attribute_line("#@source_dir \"/path with spaces\"").unwrap();
+        assert_eq!(attr, Attribute::SourceDir("/path with spaces".to_string()));
     }
 }

@@ -31,13 +31,14 @@ pub(super) fn interpreter_to_shell_args(
 }
 
 /// Execute a command and capture its output
+#[allow(dead_code)]
 pub(super) fn execute_with_capture(
     command: &str,
     shell_cmd: &str,
     shell_arg: &str,
     display_command: Option<&str>,
 ) -> Result<CommandOutput, Box<dyn std::error::Error>> {
-    execute_with_capture_and_args(command, shell_cmd, shell_arg, &[], display_command)
+    execute_with_capture_and_args(command, shell_cmd, shell_arg, &[], display_command, None)
 }
 
 /// Execute a command and capture its output, with additional arguments
@@ -49,11 +50,15 @@ pub(super) fn execute_with_capture_and_args(
     shell_arg: &str,
     args: &[String],
     display_command: Option<&str>,
+    cd_dir: Option<&std::path::Path>,
 ) -> Result<CommandOutput, Box<dyn std::error::Error>> {
     let started_at = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
     let start = Instant::now();
 
     let mut cmd = Command::new(shell_cmd);
+    if let Some(dir) = cd_dir {
+        cmd.current_dir(dir);
+    }
     cmd.arg(shell_arg).arg(command);
 
     // Pass additional arguments after the script
@@ -97,10 +102,14 @@ pub(super) fn execute_single_shell_invocation_with_args(
     script: &str,
     interpreter: &TranspilerInterpreter,
     args: &[String],
+    cd_dir: Option<&std::path::Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (shell_cmd, shell_arg, interpreter_name) = interpreter_to_shell_args(interpreter);
 
     let mut cmd = Command::new(&shell_cmd);
+    if let Some(dir) = cd_dir {
+        cmd.current_dir(dir);
+    }
     cmd.arg(shell_arg).arg(script);
 
     if !args.is_empty() {
@@ -137,6 +146,7 @@ pub(super) fn execute_command_with_args(
     command: &str,
     attributes: &[Attribute],
     args: &[String],
+    cd_dir: Option<&std::path::Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Check if there's a custom shell attribute
     let shell_attr: Option<&ShellType> = attributes.iter().find_map(|attr| match attr {
@@ -178,6 +188,9 @@ pub(super) fn execute_command_with_args(
     };
 
     let mut cmd = Command::new(&shell_cmd);
+    if let Some(dir) = cd_dir {
+        cmd.current_dir(dir);
+    }
     cmd.arg(&shell_arg).arg(command);
 
     // For custom shells with arguments, pass them after the script
@@ -206,7 +219,7 @@ pub(super) fn execute_command(
     command: &str,
     attributes: &[Attribute],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    execute_command_with_args(command, attributes, &[])
+    execute_command_with_args(command, attributes, &[], None)
 }
 
 /// Resolve interpreter from shebang to `ShellType`
