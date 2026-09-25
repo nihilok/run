@@ -1,21 +1,25 @@
 # Deploy commands
 
+# @depends ci
 # @desc Increment patch version and deploy
 deploy:patch() {
     ./scripts/deploy.sh patch --yes
 }
 
+# @depends ci
 # @desc Increment minor version and deploy
 deploy:minor() {
     ./scripts/deploy.sh minor --yes
 }
 
+# @depends ci
 # @desc Increment major version and deploy
 deploy:major() {
     ./scripts/deploy.sh major --yes
 }
 
-# @desc Full release: bump version (default: patch), publish, deploy homebrew + AUR, wait for CI, deploy scoop
+# @depends ci
+# @desc Full release: bump version (default: patch), publish, deploy homebrew + AUR in parallel, wait for CI, deploy scoop
 # @arg bump_level The version component to bump (patch, minor, major). Default: patch
 deploy:all(bump_level = "patch") {
     local bump=${bump_level:-patch}
@@ -41,9 +45,8 @@ deploy:all(bump_level = "patch") {
 
     local ver=$(git describe --tags --abbrev=0 | sed 's/^v//')
     echo ""
-    echo "=== Step 2/4: Deploying Homebrew and AUR (source-based, no CI wait) ==="
-    deploy:homebrew "$ver"
-    deploy:aur "$ver"
+    echo "=== Step 2/4: Deploying Homebrew and AUR in parallel ==="
+    run deploy:repos
 
     # 3. Wait for the GitHub Actions release workflow to finish
     echo ""
@@ -159,6 +162,13 @@ deploy:aur(version = "") {
     echo "✓ AUR PKGBUILD updated and pushed"
 }
 
+# @depends deploy:homebrew, deploy:aur
+# @parallel
+# @desc Deploy source-based package repositories (Homebrew and AUR) in parallel
+deploy:repos() {
+    echo "✓ Homebrew and AUR repositories updated and pushed in parallel"
+}
+
 # Development commands
 
 # @desc Run tests with summary; optionally pass extra args to cargo test
@@ -209,7 +219,8 @@ coverage() {
 }
 
 # @depends fmt:check, clippy:check, test
-# @desc Run full CI pipeline (formatting, linting, tests)
+# @parallel
+# @desc Run full CI pipeline (formatting, linting, tests in parallel)
 ci() {
     echo "✓ CI pipeline completed successfully!"
 }
