@@ -17,8 +17,8 @@ deploy:major() {
 
 # @desc Full release: bump version (default: patch), publish, deploy homebrew + AUR, wait for CI, deploy scoop
 # @arg bump_level The version component to bump (patch, minor, major). Default: patch
-deploy:all() {
-    local bump=${1:-patch}
+deploy:all(bump_level = "patch") {
+    local bump=${bump_level:-patch}
     
     if [ "$bump" != "patch" ] && [ "$bump" != "minor" ] && [ "$bump" != "major" ]; then
         echo "Error: bump level must be patch, minor, or major"
