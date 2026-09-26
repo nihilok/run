@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>run (runtool) — The Bridge Between Human and AI Tooling</title>
+    <meta name="description" content="Turn any shell, Python, or Node script into a CLI task and a typed Model Context Protocol (MCP) tool in seconds. Zero boilerplate.">
+    <link rel="icon" type="image/svg+xml" href="/docs/favicon.svg">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.1/css/all.min.css">
+    <style>
+        html {
+            scroll-padding-top: 100px;
+            scroll-behavior: smooth;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #0a0a0f;
+            --bg-darker: #050508;
+            --bg-card: rgba(13, 13, 20, 0.7);
+            --accent: #00d9ff;
+            --accent-dim: #00a3c4;
+            --accent-glow: rgba(0, 217, 255, 0.2);
+            --text: #e8e8f0;
+            --text-dim: #9ca3af;
+            --border: rgba(255, 255, 255, 0.08);
+            --border-hover: rgba(0, 217, 255, 0.3);
+            --glow: rgba(0, 217, 255, 0.15);
+            --green: #4ade80;
+            --purple: #a855f7;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        /* Animated gradient background */
+        .bg-gradient {
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 20% 40%, rgba(0, 217, 255, 0.07) 0%, transparent 45%),
+                        radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.06) 0%, transparent 45%);
+            animation: rotate 35s linear infinite;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        @keyframes rotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Header */
+        header {
+            padding: 1.25rem 0;
+            border-bottom: 1px solid var(--border);
+            background: rgba(10, 10, 15, 0.85);
+            backdrop-filter: blur(12px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: var(--accent);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            letter-spacing: -0.5px;
+        }
+
+        .logo-badge {
+            background: rgba(0, 217, 255, 0.1);
+            border: 1px solid var(--border-hover);
+            color: var(--accent);
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.15rem 0.5rem;
+            border-radius: 9999px;
+            letter-spacing: 0;
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 0.95rem;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--accent);
+        }
+
+        /* Hero */
+        .hero {
+            padding: 6.5rem 0 4rem;
+            text-align: center;
+        }
+
+        .version-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(0, 217, 255, 0.08);
+            border: 1px solid var(--border-hover);
+            padding: 0.35rem 1rem;
+            border-radius: 9999px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--accent);
+            text-decoration: none;
+            margin-bottom: 2rem;
+            transition: all 0.2s;
+        }
+
+        .version-pill:hover {
+            background: rgba(0, 217, 255, 0.15);
+            transform: translateY(-1px);
+        }
+
+        h1 {
+            font-size: clamp(2.5rem, 5.5vw, 4.25rem);
+            font-weight: 800;
+            letter-spacing: -1.5px;
+            line-height: 1.15;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, #ffffff 10%, var(--text) 50%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .tagline {
+            font-size: clamp(1.15rem, 2.5vw, 1.4rem);
+            color: var(--text);
+            margin-bottom: 1rem;
+            max-width: 720px;
+            margin-left: auto;
+            margin-right: auto;
+            font-weight: 500;
+        }
+
+        .subtitle {
+            font-size: 1.05rem;
+            color: var(--text-dim);
+            margin-bottom: 2.5rem;
+            max-width: 650px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.7;
+        }
+
+        .cta-group {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 4rem;
+        }
+
+        .btn {
+            padding: 0.85rem 1.75rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.25s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg-dark);
+            box-shadow: 0 0 25px var(--glow);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 35px var(--accent-glow);
+            background: #2fe0ff;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(0, 217, 255, 0.05);
+            transform: translateY(-2px);
+        }
+
+        /* Demo showcase */
+        .showcase {
+            background: var(--bg-darker);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            margin: 2rem auto 5rem;
+            max-width: 920px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+            text-align: left;
+        }
+
+        .showcase-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.85rem 1.5rem;
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 0.45rem;
+        }
+
+        .window-dot {
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+            background: var(--border);
+        }
+
+        .window-dot:nth-child(1) { background: #ff5f56; opacity: 0.85; }
+        .window-dot:nth-child(2) { background: #ffbd2e; opacity: 0.85; }
+        .window-dot:nth-child(3) { background: #27c93f; opacity: 0.85; }
+
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-dim);
+            padding: 0.35rem 0.85rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .tab-btn.active {
+            background: rgba(0, 217, 255, 0.1);
+            color: var(--accent);
+            border-color: var(--border-hover);
+        }
+
+        .tab-content {
+            display: none;
+            position: relative;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 1rem;
+            right: 1.25rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 0.4rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            z-index: 10;
+        }
+
+        .copy-btn:hover {
+            color: var(--accent);
+            border-color: var(--accent);
+            background: rgba(0, 217, 255, 0.08);
+        }
+
+        pre {
+            padding: 1.5rem 1.75rem;
+            overflow-x: auto;
+            font-size: 0.92rem;
+            line-height: 1.75;
+        }
+
+        code {
+            color: var(--text);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+
+        .comment { color: #6b7280; }
+        .keyword { color: #60a5fa; font-weight: 600; }
+        .string { color: #fbbf24; }
+        .function { color: #34d399; font-weight: 600; }
+        .attribute { color: #38bdf8; font-weight: 600; }
+        .param { color: #e879f9; }
+        .type { color: #f472b6; }
+
+        /* Features */
+        .features {
+            padding: 5rem 0;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2.25rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            letter-spacing: -0.5px;
+        }
+
+        .section-desc {
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 1.1rem;
+            max-width: 600px;
+            margin: 0 auto 3.5rem;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.75rem;
+            margin-bottom: 4rem;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+
+        .feature-card:hover {
+            border-color: var(--border-hover);
+            transform: translateY(-3px);
+            box-shadow: 0 12px 30px -10px var(--glow);
+        }
+
+        .feature-icon-wrapper {
+            width: 48px;
+            height: 48px;
+            border-radius: 10px;
+            background: rgba(0, 217, 255, 0.08);
+            border: 1px solid var(--border-hover);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1.25rem;
+        }
+
+        .feature-icon-wrapper i {
+            font-size: 1.25rem;
+            color: var(--accent);
+        }
+
+        .feature-card h3 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            color: #ffffff;
+        }
+
+        .feature-card p {
+            color: var(--text-dim);
+            font-size: 0.95rem;
+            line-height: 1.65;
+        }
+
+        /* Dual role banner */
+        .banner {
+            background: linear-gradient(180deg, rgba(13, 13, 20, 0.8) 0%, rgba(5, 5, 8, 0.95) 100%);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 3.5rem 2.5rem;
+            margin: 2rem auto 5rem;
+            text-align: center;
+        }
+
+        .banner h2 {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+        }
+
+        .banner-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 2rem;
+            margin-top: 2.5rem;
+            text-align: left;
+        }
+
+        .banner-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.5rem;
+        }
+
+        .banner-item h4 {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .banner-item p {
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        /* Install section */
+        .install {
+            background: var(--bg-darker);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 3.5rem 2.5rem;
+            margin: 4rem auto;
+            max-width: 1000px;
+        }
+
+        .install-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .install-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: all 0.2s;
+        }
+
+        .install-card:hover {
+            border-color: var(--border-hover);
+        }
+
+        .install-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+        }
+
+        .install-card h3 {
+            color: var(--accent);
+            font-size: 1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .install-code-box {
+            position: relative;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 6px;
+            padding: 0.75rem 0.85rem;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .install-code-box code {
+            display: block;
+            font-size: 0.82rem;
+            line-height: 1.5;
+            word-break: break-all;
+        }
+
+        .install-copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 0.25rem;
+            font-size: 0.75rem;
+            transition: color 0.2s;
+        }
+
+        .install-copy-btn:hover {
+            color: var(--accent);
+        }
+
+        .mcp-box {
+            margin-top: 3rem;
+            background: rgba(0, 217, 255, 0.03);
+            border: 1px solid var(--border-hover);
+            border-radius: 10px;
+            padding: 2rem;
+            position: relative;
+        }
+
+        .mcp-box h3 {
+            font-size: 1.15rem;
+            margin-bottom: 0.5rem;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .mcp-box p {
+            color: var(--text-dim);
+            font-size: 0.92rem;
+            margin-bottom: 1.25rem;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 3.5rem 0;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.95rem;
+            margin-top: 6rem;
+            background: rgba(5, 5, 8, 0.8);
+        }
+
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero {
+                padding: 4rem 0 2.5rem;
+            }
+
+            .nav-links {
+                gap: 1rem;
+            }
+
+            .showcase-header {
+                flex-direction: column;
+                gap: 0.75rem;
+                align-items: flex-start;
+            }
+
+            .cta-group {
+                flex-direction: column;
+                align-items: stretch;
+                max-width: 320px;
+                margin-left: auto;
+                margin-right: auto;
+            }
+
+            .install {
+                padding: 2rem 1.25rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-gradient"></div>
+
+    <header>
+        <div class="container">
+            <nav>
+                <a href="#" class="logo">
+                    <span>▶ run</span>
+                    <span class="logo-badge">runtool</span>
+                </a>
+                <div class="nav-links">
+                    <a href="#features">Features</a>
+                    <a href="#install">Install</a>
+                    <a href="/docs/">Docs</a>
+                    <a href="https://github.com/nihilok/run" target="_blank" rel="noopener"><i class="fab fa-github"></i> GitHub</a>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <a href="https://github.com/nihilok/run/releases/tag/v0.7.1" class="version-pill" target="_blank" rel="noopener">
+                    <i class="fas fa-tag"></i> v0.7.1 is live — Read release notes →
+                </a>
+
+                <h1>The bridge between human<br>and AI tooling</h1>
+                <p class="tagline">Define functions once. Run them in your terminal, or expose them to AI agents via MCP.</p>
+                <p class="subtitle">Zero TypeScript boilerplate. Zero complex SDKs. Just write Bash, Python, or Node with typed signatures and let AI agents discover your tools automatically.</p>
+                
+                <div class="cta-group">
+                    <a href="#install" class="btn btn-primary"><i class="fas fa-download"></i> Install Now</a>
+                    <a href="/docs/getting-started.html" class="btn btn-secondary"><i class="fas fa-book-open"></i> Getting Started</a>
+                </div>
+
+                <!-- Showcase Component -->
+                <div class="showcase">
+                    <div class="showcase-header">
+                        <div class="window-controls">
+                            <div class="window-dot"></div>
+                            <div class="window-dot"></div>
+                            <div class="window-dot"></div>
+                        </div>
+                        <div class="tabs">
+                            <button class="tab-btn active" onclick="switchTab('runfile')">Runfile</button>
+                            <button class="tab-btn" onclick="switchTab('cli')">CLI Invocation</button>
+                            <button class="tab-btn" onclick="switchTab('mcp')">MCP Agent View</button>
+                        </div>
+                    </div>
+
+                    <!-- Tab 1: Modern Runfile -->
+                    <div id="tab-runfile" class="tab-content active">
+                        <button class="copy-btn" onclick="copySnippet('runfile-code')"><i class="far fa-copy"></i> Copy</button>
+                        <pre><code id="runfile-code"><span class="comment"># Runfile — Human workflows &amp; AI tools in one file</span>
+
+<span class="comment"># <span class="attribute">@desc</span> Search codebase for patterns and file types</span>
+<span class="comment"># <span class="attribute">@arg</span> query Search substring or regex</span>
+<span class="comment"># <span class="attribute">@arg</span> ext File extension filter (default: ".rs")</span>
+<span class="comment"># <span class="attribute">@shell</span> python</span>
+<span class="function">search</span>(<span class="param">query</span>: <span class="type">str</span>, <span class="param">ext</span> = <span class="string">".rs"</span>) {
+    <span class="comment"># 'query' and 'ext' are auto-injected from signature</span>
+    <span class="keyword">import</span> os
+    <span class="keyword">for</span> root, _, files <span class="keyword">in</span> os.walk(<span class="string">"."</span>):
+        <span class="keyword">for</span> f <span class="keyword">in</span> files:
+            <span class="keyword">if</span> f.endswith(ext) <span class="keyword">and</span> query <span class="keyword">in</span> f:
+                <span class="keyword">print</span>(f<span class="string">"{root}/{f}"</span>)
+}
+
+<span class="comment"># <span class="attribute">@desc</span> Deploy service to staging or production</span>
+<span class="comment"># <span class="attribute">@arg</span> env Target environment (staging|prod)</span>
+<span class="comment"># <span class="attribute">@arg</span> version Release version tag</span>
+<span class="function">deploy</span>(<span class="param">env</span>: <span class="type">str</span>, <span class="param">version</span> = <span class="string">"latest"</span>) {
+    echo <span class="string">"Deploying $version to $env..."</span>
+    ./scripts/deploy.sh <span class="string">"$env"</span> <span class="string">"$version"</span>
+}
+
+<span class="comment"># <span class="attribute">@depends</span> fmt:check, clippy:check, test</span>
+<span class="comment"># <span class="attribute">@parallel</span></span>
+<span class="comment"># <span class="attribute">@desc</span> Run complete CI verification pipeline in parallel</span>
+<span class="function">ci</span>() {
+    echo <span class="string">"✓ All checks passed in parallel!"</span>
+}</code></pre>
+                    </div>
+
+                    <!-- Tab 2: CLI Usage -->
+                    <div id="tab-cli" class="tab-content">
+                        <button class="copy-btn" onclick="copySnippet('cli-code')"><i class="far fa-copy"></i> Copy</button>
+                        <pre><code id="cli-code"><span class="comment"># Discover all available tasks with their docstrings</span>
+<span class="keyword">$</span> run --list
+  <span class="function">search</span>   <span class="param">query</span> [<span class="param">ext</span>]          Search codebase for patterns and file types
+  <span class="function">deploy</span>   <span class="param">env</span> [<span class="param">version</span>]       Deploy service to staging or production
+  <span class="function">ci</span>                             Run complete CI verification pipeline in parallel
+
+<span class="comment"># Execute with positional or default arguments</span>
+<span class="keyword">$</span> run search "parser" .rs
+./run/src/parser.rs
+
+<span class="keyword">$</span> run deploy prod v0.7.1
+Deploying v0.7.1 to prod...
+
+<span class="comment"># Run dependency graph tasks in parallel</span>
+<span class="keyword">$</span> run ci -p</code></pre>
+                    </div>
+
+                    <!-- Tab 3: Generated MCP Schema -->
+                    <div id="tab-mcp" class="tab-content">
+                        <button class="copy-btn" onclick="copySnippet('mcp-code')"><i class="far fa-copy"></i> Copy</button>
+                        <pre><code id="mcp-code"><span class="comment"># Generated automatically by `run --serve-mcp`</span>
+{
+  <span class="keyword">"name"</span>: <span class="string">"deploy"</span>,
+  <span class="keyword">"description"</span>: <span class="string">"Deploy service to staging or production"</span>,
+  <span class="keyword">"inputSchema"</span>: {
+    <span class="keyword">"type"</span>: <span class="string">"object"</span>,
+    <span class="keyword">"properties"</span>: {
+      <span class="keyword">"env"</span>: {
+        <span class="keyword">"type"</span>: <span class="string">"string"</span>,
+        <span class="keyword">"description"</span>: <span class="string">"Target environment (staging|prod)"</span>
+      },
+      <span class="keyword">"version"</span>: {
+        <span class="keyword">"type"</span>: <span class="string">"string"</span>,
+        <span class="keyword">"description"</span>: <span class="string">"Release version tag"</span>,
+        <span class="keyword">"default"</span>: <span class="string">"latest"</span>
+      }
+    },
+    <span class="keyword">"required"</span>: [<span class="string">"env"</span>]
+  }
+}</code></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Core Features -->
+        <section id="features" class="features">
+            <div class="container">
+                <h2 class="section-title">Built for Modern Development &amp; AI Agents</h2>
+                <p class="section-desc">Everything you need to automate workflows and empower AI assistants without boilerplate.</p>
+
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon-wrapper"><i class="fas fa-robot"></i></div>
+                        <h3>Built-in MCP Server</h3>
+                        <p>Turn any Runfile into a full Model Context Protocol server via <code>run --serve-mcp</code>. Claude, Cursor, and Antigravity discover tools automatically.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon-wrapper"><i class="fas fa-signature"></i></div>
+                        <h3>First-Class Signatures</h3>
+                        <p>Declare parameters, types, and defaults directly in function headers (<code>task(env: str, port = 8080)</code>). Clean <code># @arg</code> docs drive schemas.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon-wrapper"><i class="fas fa-code"></i></div>
+                        <h3>Polyglot without Glue</h3>
+                        <p>Mix Bash, Python, Node, and Ruby seamlessly. Parameters are auto-injected as native variables in Python/Node without manual <code>sys.argv</code> parsing.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon-wrapper"><i class="fas fa-sitemap"></i></div>
+                        <h3>Parallel DAG Execution</h3>
+                        <p>Define task dependencies with <code># @depends</code> and run independent branches concurrently via <code># @parallel</code> or <code>run -p</code>.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon-wrapper"><i class="fas fa-folder-tree"></i></div>
+                        <h3>Directory Isolation (@cd)</h3>
+                        <p>Scope tasks to specific subdirectories with <code># @cd ./dir</code>. Changes execute in isolated subshells without leaking environment state.</p>
+                    </div>
+
+                    <div class="feature-card">
+                        <div class="feature-icon-wrapper"><i class="fas fa-shield-halved"></i></div>
+                        <h3>Safe &amp; Deterministic</h3>
+                        <p>AI agents can only execute functions you explicitly expose. Strict parameter validation, custom timeouts, and zero arbitrary shell injection.</p>
+                    </div>
+                </div>
+
+                <!-- Dual Purpose Banner -->
+                <div class="banner">
+                    <h2>One file. Two interfaces.</h2>
+                    <p style="color: var(--text-dim); max-width: 680px; margin: 0 auto;">No more writing a shell script for yourself and a separate TypeScript MCP tool for your AI agents. Write once, use everywhere.</p>
+                    
+                    <div class="banner-grid">
+                        <div class="banner-item">
+                            <h4><i class="fas fa-terminal"></i> For Developers</h4>
+                            <p>Instant shell completions, upward directory traversal, global fallback (<code>~/.runfile</code>), namespaces (<code>db:migrate</code>), and human-friendly listings.</p>
+                        </div>
+                        <div class="banner-item">
+                            <h4><i class="fas fa-brain"></i> For AI Assistants</h4>
+                            <p>Automated JSON Schema generation, typed argument validation, execution output capturing, and sandboxed tool discovery over stdio.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Installation Section -->
+        <section id="install" class="container">
+            <div class="install">
+                <h2 style="text-align: center; font-size: 2.25rem; font-weight: 800;">Install in Seconds</h2>
+                <p style="text-align: center; color: var(--text-dim); margin-top: 0.5rem;">Available as <code>runtool</code> across all major package managers, or directly via Cargo.</p>
+
+                <div class="install-grid">
+                    <!-- Homebrew -->
+                    <div class="install-card">
+                        <div>
+                            <div class="install-card-header">
+                                <h3><i class="fab fa-apple"></i> Homebrew</h3>
+                            </div>
+                            <div class="install-code-box">
+                                <code>brew install nihilok/tap/runtool</code>
+                                <button class="install-copy-btn" onclick="copyText('brew install nihilok/tap/runtool')" title="Copy"><i class="far fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Arch Linux AUR -->
+                    <div class="install-card">
+                        <div>
+                            <div class="install-card-header">
+                                <h3><i class="fas fa-box-open"></i> Arch Linux</h3>
+                            </div>
+                            <div class="install-code-box">
+                                <code>yay -S runtool</code>
+                                <button class="install-copy-btn" onclick="copyText('yay -S runtool')" title="Copy"><i class="far fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Scoop -->
+                    <div class="install-card">
+                        <div>
+                            <div class="install-card-header">
+                                <h3><i class="fab fa-windows"></i> Windows Scoop</h3>
+                            </div>
+                            <div class="install-code-box">
+                                <code>scoop bucket add nihilok https://github.com/nihilok/scoop-bucket<br>scoop install runtool</code>
+                                <button class="install-copy-btn" onclick="copyText('scoop bucket add nihilok https://github.com/nihilok/scoop-bucket &amp;&amp; scoop install runtool')" title="Copy"><i class="far fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cargo -->
+                    <div class="install-card">
+                        <div>
+                            <div class="install-card-header">
+                                <h3><i class="fas fa-gear"></i> Cargo</h3>
+                            </div>
+                            <div class="install-code-box">
+                                <code>cargo install run</code>
+                                <button class="install-copy-btn" onclick="copyText('cargo install run')" title="Copy"><i class="far fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MCP Config Integration -->
+                <div class="mcp-box">
+                    <h3><i class="fas fa-plug"></i> Add to your MCP Client Configuration</h3>
+                    <p>Add <code>run</code> to Claude Desktop, Cursor, Antigravity, or Claude Code configuration:</p>
+                    <div class="install-code-box">
+                        <pre style="padding: 0; background: transparent;"><code id="mcp-config-snippet">{
+  <span class="keyword">"mcpServers"</span>: {
+    <span class="keyword">"run"</span>: {
+      <span class="keyword">"command"</span>: <span class="string">"run"</span>,
+      <span class="keyword">"args"</span>: [<span class="string">"--serve-mcp"</span>]
+    }
+  }
+}</code></pre>
+                        <button class="copy-btn" onclick="copySnippet('mcp-config-snippet')"><i class="far fa-copy"></i> Copy</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p><strong>run</strong> (a.k.a. <strong>runtool</strong>) · Open source software licensed under MIT.</p>
+            <div class="footer-links">
+                <a href="/docs/">Documentation</a>
+                <a href="/docs/getting-started.html">Getting Started</a>
+                <a href="https://github.com/nihilok/run" target="_blank" rel="noopener">GitHub</a>
+                <a href="https://crates.io/crates/run" target="_blank" rel="noopener">Crates.io (run)</a>
+                <a href="https://crates.io/crates/runtool" target="_blank" rel="noopener">Crates.io (runtool)</a>
+                <a href="https://aur.archlinux.org/packages/runtool" target="_blank" rel="noopener">AUR</a>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            event.currentTarget.classList.add('active');
+            const target = document.getElementById('tab-' + tabId);
+            if (target) target.classList.add('active');
+        }
+
+        function copySnippet(elementId) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            const text = el.innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = event.currentTarget;
+                const orig = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                btn.style.color = '#4ade80';
+                btn.style.borderColor = '#4ade80';
+                setTimeout(() => {
+                    btn.innerHTML = orig;
+                    btn.style.color = '';
+                    btn.style.borderColor = '';
+                }, 2000);
+            });
+        }
+
+        function copyText(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = event.currentTarget;
+                const orig = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check"></i>';
+                btn.style.color = '#4ade80';
+                setTimeout(() => {
+                    btn.innerHTML = orig;
+                    btn.style.color = '';
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>
