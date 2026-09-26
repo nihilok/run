@@ -22,7 +22,11 @@ echo -e "${YELLOW}Version: v$VERSION${NC}"
 
 # Calculate SHA256 for the source tarball
 echo -e "${YELLOW}Calculating SHA256 for source tarball...${NC}"
-SHA256=$(curl -sL "https://github.com/nihilok/run/archive/refs/tags/v${VERSION}.tar.gz" | shasum -a 256 | awk '{print $1}')
+SHA256=$(curl -sL "https://github.com/nihilok/run/archive/refs/tags/v${VERSION}.tar.gz" | { sha256sum 2>/dev/null || shasum -a 256; } | awk '{print $1}')
+if [ -z "$SHA256" ]; then
+    echo -e "${RED}Error: Failed to calculate SHA256 checksum${NC}"
+    exit 1
+fi
 echo -e "${GREEN}SHA256: $SHA256${NC}"
 
 # Update the PKGBUILD file

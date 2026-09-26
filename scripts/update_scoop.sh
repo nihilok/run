@@ -22,7 +22,11 @@ echo -e "${YELLOW}Version: v$VERSION${NC}"
 
 # Calculate SHA256 for the Windows release binary
 echo -e "${YELLOW}Calculating SHA256 for Windows binary...${NC}"
-SHA256=$(curl -sL "https://github.com/nihilok/run/releases/download/v${VERSION}/run-x86_64-pc-windows-msvc.zip" | shasum -a 256 | awk '{print $1}')
+SHA256=$(curl -sL "https://github.com/nihilok/run/releases/download/v${VERSION}/run-x86_64-pc-windows-msvc.zip" | { sha256sum 2>/dev/null || shasum -a 256; } | awk '{print $1}')
+if [ -z "$SHA256" ]; then
+    echo -e "${RED}Error: Failed to calculate SHA256 checksum${NC}"
+    exit 1
+fi
 echo -e "${GREEN}SHA256: $SHA256${NC}"
 
 # Update the manifest file
