@@ -10,6 +10,12 @@ brew tap nihilok/tap
 brew install runtool
 ```
 
+**Arch Linux (AUR)**
+```bash
+yay -S runtool
+# or: paru -S runtool
+```
+
 **Windows (Scoop)**
 ```powershell
 scoop bucket add nihilok https://github.com/nihilok/scoop-bucket
