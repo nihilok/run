@@ -1,6 +1,8 @@
 //! # run
 //!
 //! A simple scripting language for CLI automation, inspired by shell scripting and Makefiles.
+//!
+//! Complete documentation and guides are available at [runtool.dev/docs](https://runtool.dev/docs/).
 
 pub mod agent_setup;
 pub mod ast;
