@@ -152,6 +152,18 @@ fn parse_attribute_line(line: &str) -> Option<Attribute> {
     }
 }
 
+/// Recognise an @arg type keyword (same spellings as signature annotations)
+fn parse_type_keyword(word: &str) -> Option<ArgType> {
+    match word {
+        "string" | "str" => Some(ArgType::String),
+        "integer" | "int" => Some(ArgType::Integer),
+        "float" | "number" => Some(ArgType::Float),
+        "boolean" | "bool" => Some(ArgType::Boolean),
+        "object" | "obj" | "dict" => Some(ArgType::Object),
+        _ => None,
+    }
+}
+
 /// Parse an @arg attribute specification
 fn parse_arg_attribute(arg_text: &str) -> Option<Attribute> {
     // Format:
@@ -185,17 +197,9 @@ fn parse_arg_attribute(arg_text: &str) -> Option<Attribute> {
         let name = parts[0].to_string();
 
         // Check if second part is a type
-        let (arg_type, desc_start_idx) = if parts.len() > 1 {
-            match parts[1] {
-                "string" => (ArgType::String, 2),
-                "integer" => (ArgType::Integer, 2),
-                "float" | "number" => (ArgType::Float, 2),
-                "boolean" => (ArgType::Boolean, 2),
-                "object" | "dict" => (ArgType::Object, 2),
-                _ => (ArgType::String, 1), // Default to string, description starts at index 1
-            }
-        } else {
-            (ArgType::String, 1)
+        let (arg_type, desc_start_idx) = match parts.get(1).copied().and_then(parse_type_keyword) {
+            Some(t) => (t, 2),
+            None => (ArgType::String, 1), // Default to string, description starts at index 1
         };
 
         // Join remaining parts as description
@@ -220,9 +224,15 @@ fn parse_arg_attribute(arg_text: &str) -> Option<Attribute> {
 
         let name = parts[0].to_string();
 
+        // Optional type keyword after the name; strip it from the description
+        let (arg_type, desc_start_idx) = match parts.get(1).copied().and_then(parse_type_keyword) {
+            Some(t) => (t, 2),
+            None => (ArgType::String, 1),
+        };
+
         // Rest is description
-        let description = if parts.len() > 1 {
-            strip_quotes(&parts[1..].join(" "))
+        let description = if desc_start_idx < parts.len() {
+            strip_quotes(&parts[desc_start_idx..].join(" "))
         } else {
             String::new()
         };
@@ -231,7 +241,7 @@ fn parse_arg_attribute(arg_text: &str) -> Option<Attribute> {
         Some(Attribute::Arg(ArgMetadata {
             position: 0,
             name,
-            arg_type: ArgType::String,
+            arg_type,
             description,
         }))
     }

@@ -20,6 +20,18 @@ A `Runfile` is a catalog of callable functions. `run` looks for `Runfile` in the
   ```
 - **`function` keyword:** optional; both `build()` and `function build()` are accepted.
 
+## Block bodies: shell, quoting, and braces
+- Bodies run in `bash -c` (falls back to `sh`; PowerShell on Windows), or `RUN_SHELL` if set. `@shell` or a shebang overrides this; see [Attributes and interpreters](./attributes-and-interpreters.md).
+- `run` only scans a block to find its closing `}`. The body text goes to the shell verbatim, so normal shell quoting rules apply inside it.
+- Braces inside `'…'` or `"…"` are ignored by the scanner, and so are braces in `#` comments. Balanced braces anywhere are fine. GraphQL, jq filters and inline JSON work directly in a block:
+  ```bash
+  issue(id: str) {
+      q='{ "query": "query { issue(id: \"'"$id"'\") { title } }" }'
+      curl -s -d "$q" "$API" | jq '.data.issue | {title}'
+  }
+  ```
+- Unbalanced braces outside quotes break parsing. Common causes are a lone `{` in a heredoc or an unquoted apostrophe (`echo don't`), and the error is `expected block body`. Quote the text, or move that logic into a script.
+
 ## Signatures
 Declare parameters in the function header. They become shell variables during execution.
 
@@ -39,6 +51,7 @@ deploy(env: str, version = "latest") {
   ```
   - When forwarding `...args`, use `cmd $args` to expand into separate tokens; `cmd "$args"` collapses them into a single argument. If you need to preserve the original token boundaries (including spaces) safely, prefer `cmd "$@"` instead—for example, `cargo test --package run "$@"`.
 - Type annotations are optional: `param: type`. Supported types: `str`/`string`, `int`/`integer`, `float`/`number`, `bool`/`boolean`, `object`/`obj`/`dict`. Types drive MCP schema generation and, in polyglot functions, automatic value conversion.
+- Annotations and defaults combine: `limit: int = 15`. An untyped default that is an integer (`limit = 15`) or `true`/`false` is advertised to MCP as `integer`/`boolean`, but its runtime value stays a string. Add an annotation if a polyglot function needs a real number or boolean.
 - You can still reference legacy positional tokens (`$1`, `$2`) alongside named params.
 - Named parameters work in polyglot functions too (Python, Node.js, Ruby). `run` auto-injects variables so you can use `name` directly instead of `sys.argv[1]`. See [Polyglot commands](./polyglot-commands.md).
 

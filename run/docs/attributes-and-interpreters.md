@@ -4,7 +4,7 @@ Attributes live in comments (`# @key value`) and adjust how a function is expose
 
 ## Descriptions and args
 - `@desc` — one-line summary shown in listings and MCP tool schemas.
-- `@arg <name> [type] <description>` — add human-readable parameter docs. Names should match the signature. Optional type keyword (`string`, `integer`, `float`/`number`, `boolean`, `object`/`dict`) sets the JSON schema type for MCP when the function has no typed signature.
+- `@arg <name> [type] <description>` — add human-readable parameter docs. Names should match the signature. The optional type keyword (`string`/`str`, `integer`/`int`, `float`/`number`, `boolean`/`bool`, `object`/`obj`/`dict`) is always removed from the description. It sets the MCP schema type when the matching parameter has no type annotation.
 - `@instructions <text>` — top-level MCP guidance line appended to server `initialize.instructions`. This is single-line and repeatable; lines are aggregated in merged/source order.
 
 ```bash
@@ -17,9 +17,10 @@ deploy(env: str, version = "latest") { ... }
 > **`@arg` type vs. signature type hint:** The type keyword in `@arg` and the type annotation in the function signature serve related but distinct purposes:
 >
 > - **Signature type hint** (e.g., `env: str`) is the primary driver. When a typed signature is present, it controls the MCP JSON schema type *and*, in polyglot functions (Python, Node.js, Ruby), drives automatic runtime value conversion.
-> - **`@arg` type keyword** (e.g., `# @arg env string …`) is a fallback used when the function has no typed signature — for example, shell functions that rely on positional variables (`$1`, `$2`). In that case, the `@arg` type sets the MCP schema type.
+> - **`@arg` type keyword** (e.g., `# @arg env string …`) is a fallback. It sets the MCP schema type for parameters with no annotation, and for functions with no signature at all (shell functions that use `$1`, `$2`). It does not change runtime conversion.
+> - **Untyped defaults:** when neither an annotation nor an `@arg` type is given, an integer or `true`/`false` default is advertised as `integer`/`boolean`.
 > - **`@arg` description** is always used regardless of whether a signature type hint is present.
-> - The two do not need to agree, but keeping them consistent is recommended. If they conflict, the signature type hint wins for MCP schema generation.
+> - The two do not need to agree, but keeping them consistent is recommended. If they conflict, a non-string signature type hint wins for MCP schema generation.
 
 Top-level MCP instruction example:
 

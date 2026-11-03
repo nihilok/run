@@ -231,6 +231,29 @@ fn sanitise_property_key(name: &str) -> (String, bool) {
     }
 }
 
+/// Pick the JSON schema type for a signature parameter.
+///
+/// Precedence: signature annotation (non-string) > @arg type keyword >
+/// inferred from an integer/boolean default > "string".
+/// Schema-only: MCP arguments are still passed to the function as strings,
+/// so runtime behaviour of untyped parameters is unchanged.
+fn resolve_schema_type(
+    param: &crate::ast::Parameter,
+    arg_type: Option<&crate::ast::ArgType>,
+) -> &'static str {
+    if !matches!(param.param_type, crate::ast::ArgType::String) {
+        return utils::arg_type_to_json_type(&param.param_type);
+    }
+    if let Some(t) = arg_type.filter(|t| !matches!(t, crate::ast::ArgType::String)) {
+        return utils::arg_type_to_json_type(t);
+    }
+    match param.default_value.as_deref() {
+        Some(v) if v.parse::<i64>().is_ok() => "integer",
+        Some("true" | "false") => "boolean",
+        _ => "string",
+    }
+}
+
 /// Extract metadata from function attributes and parameters
 /// Returns None if the function has no @desc attribute
 pub(super) fn extract_function_metadata(
@@ -242,20 +265,20 @@ pub(super) fn extract_function_metadata(
     let mut properties = HashMap::new();
     let mut required = Vec::new();
 
-    // Build a map of @arg descriptions (sanitised_name -> description)
+    // Build a map of @arg metadata (sanitised_name -> description/type)
     // Strip `?` from names so hybrid-mode lookups match param names correctly.
-    let mut arg_descriptions: HashMap<String, String> = HashMap::new();
+    let mut arg_meta_by_name: HashMap<String, &crate::ast::ArgMetadata> = HashMap::new();
 
-    // Get description from attributes and collect @arg descriptions
+    // Get description from attributes and collect @arg metadata
     for attr in attributes {
         match attr {
             Attribute::Desc(desc) => {
                 description = Some(desc.clone());
             }
             Attribute::Arg(arg_meta) => {
-                // Strip `?` when keying descriptions so lookups by param.name work
+                // Strip `?` when keying so lookups by param.name work
                 let (key, _) = sanitise_property_key(&arg_meta.name);
-                arg_descriptions.insert(key, arg_meta.description.clone());
+                arg_meta_by_name.insert(key, arg_meta);
             }
             _ => {}
         }
@@ -286,10 +309,8 @@ pub(super) fn extract_function_metadata(
         }
     } else {
         for param in params {
-            let param_description = arg_descriptions
-                .get(&param.name)
-                .cloned()
-                .unwrap_or_default();
+            let arg_meta = arg_meta_by_name.get(&param.name);
+            let param_description = arg_meta.map(|m| m.description.clone()).unwrap_or_default();
 
             if param.is_rest {
                 // Rest parameter: array type, not required
@@ -304,10 +325,11 @@ pub(super) fn extract_function_metadata(
                     },
                 );
             } else {
+                let schema_type = resolve_schema_type(param, arg_meta.map(|m| &m.arg_type));
                 properties.insert(
                     param.name.clone(),
                     ParameterSchema {
-                        param_type: utils::arg_type_to_json_type(&param.param_type).to_string(),
+                        param_type: schema_type.to_string(),
                         description: param_description,
                         items: None,
                     },
@@ -579,6 +601,42 @@ mod tests {
         // Description should be picked up even with `?` in @arg name
         let repo_param = tool.input_schema.properties.get("repo").unwrap();
         assert_eq!(repo_param.description, "Optional repo name");
+    }
+
+    #[test]
+    fn test_schema_type_inference_for_untyped_params() {
+        use crate::ast::{ArgMetadata, ArgType, Attribute, Parameter};
+
+        let p = |name: &str, t: ArgType, d: Option<&str>| Parameter {
+            name: name.to_string(),
+            param_type: t,
+            default_value: d.map(str::to_string),
+            is_rest: false,
+        };
+        let attributes = vec![
+            Attribute::Desc("Search".to_string()),
+            Attribute::Arg(ArgMetadata {
+                position: 0,
+                name: "max".to_string(),
+                arg_type: ArgType::Integer,
+                description: "Max".to_string(),
+            }),
+        ];
+        let params = vec![
+            p("limit", ArgType::String, Some("15")),
+            p("verbose", ArgType::String, Some("false")),
+            p("tag", ArgType::String, Some("1.10")),
+            p("max", ArgType::String, None),
+            p("ratio", ArgType::Float, Some("2")),
+        ];
+        let tool = extract_function_metadata("search", &attributes, &params).unwrap();
+        let ty = |n: &str| tool.input_schema.properties[n].param_type.clone();
+
+        assert_eq!(ty("limit"), "integer"); // inferred from default
+        assert_eq!(ty("verbose"), "boolean"); // inferred from default
+        assert_eq!(ty("tag"), "string"); // floats are not inferred (version-like)
+        assert_eq!(ty("max"), "integer"); // from @arg type keyword
+        assert_eq!(ty("ratio"), "number"); // annotation wins
     }
 
     #[test]

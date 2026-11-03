@@ -607,6 +607,32 @@ scale(service, replicas) docker compose scale $service=$replicas
         }
     }
 
+    #[test]
+    fn test_arg_hybrid_mode_strips_type_keyword() {
+        let input = r"
+# @arg term string Text to search for
+# @arg limit integer Maximum results
+search(term: str, limit = 15) echo $term $limit
+";
+        let result = parse_script(input).unwrap();
+
+        if let Statement::SimpleFunctionDef { attributes, .. } = &result.statements[0] {
+            let Attribute::Arg(term) = &attributes[0] else {
+                panic!("Expected Arg attribute");
+            };
+            assert_eq!(term.description, "Text to search for");
+            assert!(matches!(term.arg_type, ArgType::String));
+
+            let Attribute::Arg(limit) = &attributes[1] else {
+                panic!("Expected Arg attribute");
+            };
+            assert_eq!(limit.description, "Maximum results");
+            assert!(matches!(limit.arg_type, ArgType::Integer));
+        } else {
+            panic!("Expected SimpleFunctionDef");
+        }
+    }
+
     // Tests for RFC004 function signature notation
 
     #[test]
