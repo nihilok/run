@@ -10,10 +10,25 @@ thread_local! {
     static CUSTOM_RUNFILE_PATH: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
     static MCP_OUTPUT_DIR: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
     static MCP_FUNCTION_NAME: RefCell<Option<String>> = const { RefCell::new(None) };
+    static QUIET_WARNINGS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 static MCP_OUTPUT_ENV: OnceLock<Option<PathBuf>> = OnceLock::new();
 const MCP_OUTPUT_ENV_VAR: &str = "RUN_MCP_OUTPUT_DIR";
+
+/// Suppress Runfile loading warnings on the current thread.
+///
+/// Used by background scans (e.g. the MCP tool watcher) that re-read the
+/// Runfile periodically and would otherwise repeat the same warning forever.
+pub fn set_quiet_warnings(quiet: bool) {
+    QUIET_WARNINGS.with(|q| q.set(quiet));
+}
+
+/// Whether Runfile loading warnings should be printed on the current thread
+#[must_use]
+pub fn warnings_enabled() -> bool {
+    QUIET_WARNINGS.with(|q| !q.get())
+}
 
 /// Set a custom runfile path for the current thread
 pub fn set_custom_runfile_path(path: Option<PathBuf>) {
@@ -308,11 +323,13 @@ fn expand_sources_inner(
                         }
                     }
                     Err(e) => {
-                        eprintln!(
-                            "run: warning: could not source '{}': {}",
-                            source_path.display(),
-                            e
-                        );
+                        if warnings_enabled() {
+                            eprintln!(
+                                "run: warning: could not source '{}': {}",
+                                source_path.display(),
+                                e
+                            );
+                        }
                     }
                 }
             }

@@ -27,7 +27,11 @@ struct ServerCapabilities {
 }
 
 #[derive(Debug, Serialize)]
-struct ToolsCapability {}
+struct ToolsCapability {
+    /// We emit `notifications/tools/list_changed` when the Runfile's tools change
+    #[serde(rename = "listChanged")]
+    list_changed: bool,
+}
 
 /// MCP Server information
 #[derive(Debug, Serialize)]
@@ -64,7 +68,9 @@ pub(super) fn handle_initialize(_params: Option<serde_json::Value>) -> serde_jso
     serde_json::json!({
         "protocolVersion": "2024-11-05",
         "capabilities": ServerCapabilities {
-            tools: ToolsCapability {},
+            tools: ToolsCapability {
+                list_changed: super::watch::watch_interval().is_some(),
+            },
         },
         "serverInfo": ServerInfo {
             name: "run".to_string(),
@@ -623,6 +629,7 @@ mod tests {
 
         assert_eq!(value["protocolVersion"], "2024-11-05");
         assert!(value.get("capabilities").is_some());
+        assert_eq!(value["capabilities"]["tools"]["listChanged"], true);
         assert!(value.get("serverInfo").is_some());
 
         let server_info = &value["serverInfo"];

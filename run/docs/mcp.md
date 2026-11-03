@@ -13,6 +13,13 @@ run --serve-mcp
 ```
 This searches for the nearest `Runfile` (or `~/.runfile` fallback) and exposes its functions.
 
+## Hot reload
+The MCP server advertises `capabilities.tools.listChanged: true` and watches the generated tool schema in the background (polling every 1000 ms by default).
+- When you add, remove, or change a tool in the `Runfile`, `~/.runfile`, or any `source`d file—or switch projects with `set_cwd`—the server sends `notifications/tools/list_changed` so connected clients refresh their tool list without restarting the session.
+- Edits that only change a function body do not trigger a notification (bodies are re-read on every tool call anyway).
+- Syntax errors in a half-saved file are ignored until the file parses cleanly again.
+- Set `RUN_MCP_WATCH_INTERVAL_MS` to customize the poll interval in milliseconds, or `0` to disable hot reload.
+
 ## Inspect the tool schema
 ```bash
 run --inspect

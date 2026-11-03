@@ -8,10 +8,31 @@
 mod handlers;
 mod mapping;
 pub mod tools;
+mod watch;
 
 use crate::mcp::handlers::{JsonRpcError, handle_initialize, handle_tools_call, handle_tools_list};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
+
+/// Write one JSON-RPC message as a single line on stdout.
+///
+/// Holds the stdout lock for the whole write so messages from the tool
+/// watcher thread can never interleave with responses.
+fn write_message<T: Serialize>(message: &T) {
+    if let Ok(json) = serde_json::to_string(message) {
+        let mut out = std::io::stdout().lock();
+        let _ = writeln!(out, "{json}");
+        let _ = out.flush();
+    }
+}
+
+/// Tell the client to re-fetch `tools/list`
+fn send_tools_list_changed() {
+    write_message(&serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/tools/list_changed"
+    }));
+}
 
 /// JSON-RPC 2.0 request structure
 #[derive(Debug, Deserialize)]
@@ -97,8 +118,9 @@ pub fn serve_mcp() {
     crate::config::set_mcp_output_dir(Some(effective_dir));
 
     let stdin = std::io::stdin();
-    let mut stdout = std::io::stdout();
     let reader = BufReader::new(stdin);
+    let watch_interval = watch::watch_interval();
+    let mut watcher_started = false;
 
     for line in reader.lines() {
         let line = match line {
@@ -130,23 +152,28 @@ pub fn serve_mcp() {
                     }),
                 };
 
-                if let Ok(json) = serde_json::to_string(&error_response) {
-                    let _ = writeln!(stdout, "{json}");
-                    let _ = stdout.flush();
-                }
+                write_message(&error_response);
                 continue;
             }
         };
+
+        // Start hot reload once the client has initialised the session
+        let is_initialize = request.method == "initialize";
 
         // Process request
         let response = process_request(request);
 
         // Only send response if one was returned (not a notification)
-        if let Some(response) = response
-            && let Ok(json) = serde_json::to_string(&response)
+        if let Some(response) = response {
+            write_message(&response);
+        }
+
+        if is_initialize
+            && !watcher_started
+            && let Some(interval) = watch_interval
         {
-            let _ = writeln!(stdout, "{json}");
-            let _ = stdout.flush();
+            watch::spawn(interval, send_tools_list_changed);
+            watcher_started = true;
         }
     }
 }

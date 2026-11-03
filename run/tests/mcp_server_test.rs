@@ -1019,3 +1019,116 @@ check() {
         "Global function call should not be an error, got: {stdout}"
     );
 }
+
+#[test]
+fn test_mcp_hot_reload_emits_tools_list_changed_for_runfile_and_sourced_files() {
+    use std::io::Write;
+    use std::time::Duration;
+
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    let sourced_path = temp_dir.path().join("extra.run");
+    fs::write(
+        &sourced_path,
+        "# @desc Initial sourced tool\nsourced_one() echo one\n",
+    )
+    .unwrap();
+    create_runfile(
+        temp_dir.path(),
+        "source ./extra.run\n# @desc First tool\nfirst() echo v1\n",
+    );
+
+    let mut child = test_command(&binary)
+        .arg("--serve-mcp")
+        .env("RUN_MCP_WATCH_INTERVAL_MS", "50")
+        .current_dir(temp_dir.path())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn process");
+
+    let stdin = child.stdin.as_mut().unwrap();
+
+    // 1. Initialize and let the watcher take its initial snapshot
+    let init_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "test", "version": "1.0"}
+        }
+    });
+    writeln!(stdin, "{}", serde_json::to_string(&init_request).unwrap()).unwrap();
+    stdin.flush().unwrap();
+    std::thread::sleep(Duration::from_millis(120));
+
+    // 2. Body-only edit should NOT emit list_changed
+    create_runfile(
+        temp_dir.path(),
+        "source ./extra.run\n# @desc First tool\nfirst() echo v2\n",
+    );
+    std::thread::sleep(Duration::from_millis(150));
+
+    // 3. Edit the sourced file to add a new tool -> should emit list_changed (once)
+    fs::write(
+        &sourced_path,
+        "# @desc Initial sourced tool\nsourced_one() echo one\n# @desc Second sourced tool\nsourced_two(term: str, limit = 15) echo \"$term $limit\"\n",
+    )
+    .unwrap();
+    std::thread::sleep(Duration::from_millis(180));
+
+    // 4. Re-query tools/list in the same session
+    let list_request = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/list",
+        "params": {}
+    });
+    writeln!(stdin, "{}", serde_json::to_string(&list_request).unwrap()).unwrap();
+    stdin.flush().unwrap();
+    std::thread::sleep(Duration::from_millis(150));
+
+    child.kill().expect("Failed to kill process");
+    let output = child.wait_with_output().unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let messages: Vec<serde_json::Value> = stdout
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).expect("valid JSON-RPC line"))
+        .collect();
+
+    // Check initialize capability
+    let init_resp = messages.iter().find(|m| m["id"] == 1).expect("init resp");
+    assert_eq!(
+        init_resp["result"]["capabilities"]["tools"]["listChanged"],
+        true
+    );
+
+    // Exactly one notifications/tools/list_changed notification (for the schema change, not the body edit)
+    let notifications: Vec<_> = messages
+        .iter()
+        .filter(|m| m["method"] == "notifications/tools/list_changed")
+        .collect();
+    assert_eq!(
+        notifications.len(),
+        1,
+        "Expected 1 list_changed notification, got {notifications:?} in {stdout}"
+    );
+
+    // tools/list response includes the hot-reloaded tool with inferred integer schema
+    let list_resp = messages.iter().find(|m| m["id"] == 2).expect("list resp");
+    let tools = list_resp["result"]["tools"].as_array().unwrap();
+    let added = tools
+        .iter()
+        .find(|t| t["name"] == "sourced_two")
+        .expect("hot-reloaded tool sourced_two should be present");
+    assert_eq!(
+        added["inputSchema"]["properties"]["limit"]["type"],
+        "integer"
+    );
+}

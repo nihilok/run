@@ -223,9 +223,11 @@ fn sanitise_property_key(name: &str) -> (String, bool) {
             sanitised
         };
 
-        eprintln!(
-            "Warning: arg name {name:?} contains characters invalid for a JSON schema property key; using {sanitised:?} instead"
-        );
+        if config::warnings_enabled() {
+            eprintln!(
+                "Warning: arg name {name:?} contains characters invalid for a JSON schema property key; using {sanitised:?} instead"
+            );
+        }
 
         (sanitised, is_optional)
     }
@@ -347,12 +349,14 @@ pub(super) fn extract_function_metadata(
     // cannot inject without silently overwriting their schema *and* stripping
     // the value from the call.  Emit a warning and skip this tool instead.
     if description.is_some() && properties.contains_key(TIMEOUT_PARAM) {
-        eprintln!(
-            "Warning: function {name:?} defines a parameter named {TIMEOUT_PARAM:?}, \
-             which conflicts with the built-in MCP timeout parameter. \
-             The tool will not be exposed via MCP. \
-             Rename the parameter to resolve this conflict."
-        );
+        if config::warnings_enabled() {
+            eprintln!(
+                "Warning: function {name:?} defines a parameter named {TIMEOUT_PARAM:?}, \
+                 which conflicts with the built-in MCP timeout parameter. \
+                 The tool will not be exposed via MCP. \
+                 Rename the parameter to resolve this conflict."
+            );
+        }
         return None;
     }
 
