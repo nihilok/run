@@ -9,7 +9,7 @@ repository.workspace = true
 homepage.workspace = true
 documentation.workspace = true
 [dependencies]
-run = { path = "../run", version = "0.7.1" }
+run = { path = "../run", version = "0.8.0" }
 [lints]
 workspace = true
 [[bin]]
