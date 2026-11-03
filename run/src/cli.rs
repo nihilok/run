@@ -54,6 +54,10 @@ struct Cli {
     #[arg(long)]
     setup_ai: bool,
 
+    /// Update run to the latest version
+    #[arg(long)]
+    update: bool,
+
     /// Output format for command execution (stream, json, markdown)
     #[arg(
         short = 'o',
@@ -183,6 +187,12 @@ pub fn run_cli() {
     // Handle --setup-ai flag
     if cli.setup_ai {
         crate::agent_setup::interactive_setup();
+        return;
+    }
+
+    // Handle --update flag
+    if cli.update {
+        crate::update::run_update();
         return;
     }
 

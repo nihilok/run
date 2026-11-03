@@ -17,6 +17,7 @@ pub mod output_file;
 pub mod parser;
 pub mod repl;
 pub mod transpiler;
+pub mod update;
 pub mod utils;
 
 // Re-export the main CLI entry point for use by wrapper crates

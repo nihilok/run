@@ -210,3 +210,87 @@ fn test_install_completion_auto_detect_fails_with_unknown_shell() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.to_lowercase().contains("could not detect shell"));
 }
+
+#[test]
+fn test_update_flag_already_up_to_date() {
+    let binary = get_binary_path();
+    let output = test_command_local(&binary)
+        .arg("--update")
+        .env("RUN_UPDATE_LATEST_VERSION", PKG_VERSION)
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("already up to date"),
+        "Expected 'already up to date', got: {stdout}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_update_flag_replaces_standalone_binary() {
+    use std::fs;
+
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    // Copy the current binary to a standalone path outside ~/.cargo/bin
+    let standalone_bin = temp_dir.path().join("run");
+    fs::copy(&binary, &standalone_bin).expect("copy binary");
+
+    // Prepare a mock release archive at <temp>/v99.0.0/run-<target>.tar.gz
+    let target = match (std::env::consts::ARCH, std::env::consts::OS) {
+        ("x86_64", "linux") => "x86_64-unknown-linux-gnu",
+        ("x86_64", "macos") => "x86_64-apple-darwin",
+        ("aarch64", "macos") => "aarch64-apple-darwin",
+        _ => return,
+    };
+    let release_dir = temp_dir.path().join("v99.0.0");
+    let payload_dir = temp_dir.path().join("payload");
+    fs::create_dir_all(&release_dir).unwrap();
+    fs::create_dir_all(&payload_dir).unwrap();
+
+    let mock_bin = payload_dir.join("run");
+    fs::write(&mock_bin, "#!/bin/sh\necho \"run 99.0.0\"\n").unwrap();
+    let archive_path = release_dir.join(format!("run-{target}.tar.gz"));
+    let tar_status = Command::new("tar")
+        .args([
+            "-czf",
+            archive_path.to_str().unwrap(),
+            "-C",
+            payload_dir.to_str().unwrap(),
+            "run",
+        ])
+        .status()
+        .expect("create tar.gz");
+    assert!(tar_status.success());
+
+    let download_base = format!("file://{}", temp_dir.path().display());
+    let output = Command::new(&standalone_bin)
+        .arg("--update")
+        .env("RUN_NO_GLOBAL_MERGE", "1")
+        .env("RUN_UPDATE_LATEST_VERSION", "99.0.0")
+        .env("RUN_UPDATE_DOWNLOAD_BASE", &download_base)
+        .output()
+        .expect("run --update");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Updated run to 99.0.0"), "stdout: {stdout}");
+
+    // Verify the binary on disk was replaced and is executable
+    let ver_output = Command::new(&standalone_bin)
+        .arg("--version")
+        .output()
+        .expect("run replaced binary");
+    assert_eq!(
+        String::from_utf8_lossy(&ver_output.stdout).trim(),
+        "run 99.0.0"
+    );
+}

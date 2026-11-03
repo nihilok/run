@@ -19,6 +19,7 @@ Most commands follow `run <function> [args...]`. The CLI also offers discovery, 
 - `-j, --jobs <N>` — limit maximum parallel worker threads (`-j 1` forces sequential execution).
 - `--install-completion [SHELL]` — install shell completions (auto-detects if omitted).
 - `--generate-completion SHELL` — print completion script without installing.
+- `--update` — check for a newer release and update `run` via its install method (Homebrew, Scoop, AUR, Cargo, or GitHub Release binary).
 
 ## Output formats
 - `stream` (default): stream stdout/stderr directly.
