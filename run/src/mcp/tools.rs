@@ -538,7 +538,7 @@ mod tests {
 
         // Optional arg must not appear in required
         assert!(!tool.input_schema.required.contains(&"repo".to_string()));
-        assert!(tool.input_schema.required.is_empty());
+        assert_eq!(tool.input_schema.required, Vec::<String>::new());
     }
 
     #[test]
@@ -667,7 +667,7 @@ mod tests {
         );
         assert_eq!(get_cwd.input_schema.schema_type, "object");
         assert!(get_cwd.input_schema.properties.is_empty());
-        assert!(get_cwd.input_schema.required.is_empty());
+        assert_eq!(get_cwd.input_schema.required, Vec::<String>::new());
 
         let run_docs = tools
             .iter()
@@ -676,6 +676,6 @@ mod tests {
         assert!(run_docs.description.contains("Runfile"));
         assert_eq!(run_docs.input_schema.schema_type, "object");
         assert!(run_docs.input_schema.properties.contains_key("topic"));
-        assert!(run_docs.input_schema.required.is_empty());
+        assert_eq!(run_docs.input_schema.required, Vec::<String>::new());
     }
 }

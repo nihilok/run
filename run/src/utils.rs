@@ -241,13 +241,13 @@ mod tests {
     #[test]
     fn test_extract_heredoc_skips_herestring() {
         let result: Vec<String> = extract_heredoc_delimiters("cat <<<EOF");
-        assert!(result.is_empty());
+        assert_eq!(result, Vec::<String>::new());
     }
 
     #[test]
     fn test_extract_heredoc_inside_quotes() {
         let result: Vec<String> = extract_heredoc_delimiters("echo \"<<EOF\" more");
-        assert!(result.is_empty());
+        assert_eq!(result, Vec::<String>::new());
     }
 
     #[test]
@@ -262,7 +262,7 @@ mod tests {
     fn test_extract_heredoc_escaped_quotes_in_string() {
         // Escaped quotes inside a double-quoted string should not confuse the tracker
         let result: Vec<String> = extract_heredoc_delimiters(r#"echo "foo \"<<EOF\" bar""#);
-        assert!(result.is_empty());
+        assert_eq!(result, Vec::<String>::new());
     }
 
     #[test]

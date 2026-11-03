@@ -1429,7 +1429,7 @@ mod tests {
     #[test]
     fn test_list_available_functions_empty() {
         let interp = Interpreter::new();
-        assert!(interp.list_available_functions().is_empty());
+        assert_eq!(interp.list_available_functions(), Vec::<String>::new());
     }
 
     #[test]
@@ -1743,7 +1743,7 @@ mod tests {
 
         // Non-existent function returns empty slice
         let attrs = interp.get_simple_function_attributes("nonexistent");
-        assert!(attrs.is_empty());
+        assert_eq!(attrs, []);
     }
 
     #[test]
@@ -1764,7 +1764,7 @@ mod tests {
 
         // Non-existent function
         let (attrs, shebang) = interp.get_block_function_metadata("nonexistent");
-        assert!(attrs.is_empty());
+        assert_eq!(attrs, Vec::<crate::ast::Attribute>::new());
         assert!(shebang.is_none());
     }
 }

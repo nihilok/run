@@ -925,7 +925,7 @@ mod tests {
             &metadata,
             &resolve,
         );
-        assert!(result.is_empty());
+        assert_eq!(result, Vec::<String>::new());
     }
 
     #[test]
@@ -986,7 +986,7 @@ mod tests {
             &metadata,
             &resolve,
         );
-        assert!(result.is_empty());
+        assert_eq!(result, Vec::<String>::new());
     }
 
     #[test]
@@ -1040,7 +1040,7 @@ mod tests {
             &metadata,
             &resolve,
         );
-        assert!(result.is_empty());
+        assert_eq!(result, "");
     }
 
     #[test]
@@ -1103,7 +1103,7 @@ mod tests {
             &metadata,
             &resolve,
         );
-        assert!(result.is_empty());
+        assert_eq!(result, "");
     }
 
     #[test]

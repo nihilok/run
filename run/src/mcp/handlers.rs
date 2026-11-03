@@ -628,7 +628,7 @@ mod tests {
         let server_info = &value["serverInfo"];
         assert_eq!(server_info["name"], "run");
         // Version should be non-empty
-        assert!(!server_info["version"].as_str().unwrap().is_empty());
+        assert_ne!(server_info["version"].as_str().unwrap(), "");
 
         // instructions field must be present and mention Runfile
         let instructions = value["instructions"].as_str().unwrap();
@@ -756,7 +756,7 @@ hello() echo hello\n",
         assert!(!result["isError"].as_bool().unwrap());
 
         let text = result["content"][0]["text"].as_str().unwrap();
-        assert!(!text.is_empty());
+        assert_ne!(text, "");
 
         env::set_current_dir(original_cwd).ok();
     }

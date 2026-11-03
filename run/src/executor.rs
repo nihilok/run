@@ -318,19 +318,17 @@ pub fn list_functions() {
                 if functions.is_empty() {
                     println!("No functions defined in Runfile.");
                     std::process::exit(0);
+                }
+                let source_label = if let Some(custom_path) = config::get_custom_runfile_path() {
+                    custom_path.display().to_string()
+                } else if metadata.has_global {
+                    "~/.runfile".to_string()
                 } else {
-                    let source_label = if let Some(custom_path) = config::get_custom_runfile_path()
-                    {
-                        custom_path.display().to_string()
-                    } else if metadata.has_global {
-                        "~/.runfile".to_string()
-                    } else {
-                        "./Runfile".to_string()
-                    };
-                    println!("Available functions from {source_label}:");
-                    for func in functions {
-                        println!("  {func}");
-                    }
+                    "./Runfile".to_string()
+                };
+                println!("Available functions from {source_label}:");
+                for func in functions {
+                    println!("  {func}");
                 }
             }
             Err(e) => {

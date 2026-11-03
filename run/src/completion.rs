@@ -281,10 +281,10 @@ mod tests {
 
     #[test]
     fn test_shell_completion_script_not_empty() {
-        assert!(!Shell::Bash.completion_script().is_empty());
-        assert!(!Shell::Zsh.completion_script().is_empty());
-        assert!(!Shell::Fish.completion_script().is_empty());
-        assert!(!Shell::PowerShell.completion_script().is_empty());
+        assert_ne!(Shell::Bash.completion_script(), "");
+        assert_ne!(Shell::Zsh.completion_script(), "");
+        assert_ne!(Shell::Fish.completion_script(), "");
+        assert_ne!(Shell::PowerShell.completion_script(), "");
     }
 
     #[test]

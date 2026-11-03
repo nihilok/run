@@ -168,7 +168,7 @@ mod tests {
         // Only the built-in timeout parameter should be present
         assert_eq!(tool.input_schema.properties.len(), 1);
         assert!(tool.input_schema.properties.contains_key("timeout"));
-        assert!(tool.input_schema.required.is_empty());
+        assert_eq!(tool.input_schema.required, Vec::<String>::new());
     }
 
     #[test]
