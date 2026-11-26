@@ -29,6 +29,8 @@ pub struct InputSchema {
     pub schema_type: String,
     pub properties: HashMap<String, ParameterSchema>,
     pub required: Vec<String>,
+    #[serde(rename = "additionalProperties", default)]
+    pub additional_properties: bool,
 }
 
 /// A tool definition for MCP
@@ -134,6 +136,7 @@ pub fn get_builtin_tools() -> Vec<Tool> {
             schema_type: "object".to_string(),
             properties: set_cwd_props,
             required: vec!["path".to_string()],
+            additional_properties: false,
         },
     });
 
@@ -145,6 +148,7 @@ pub fn get_builtin_tools() -> Vec<Tool> {
             schema_type: "object".to_string(),
             properties: HashMap::new(),
             required: Vec::new(),
+            additional_properties: false,
         },
     });
 
@@ -172,6 +176,7 @@ pub fn get_builtin_tools() -> Vec<Tool> {
             schema_type: "object".to_string(),
             properties: run_docs_props,
             required: Vec::new(),
+            additional_properties: false,
         },
     });
 
@@ -186,7 +191,7 @@ pub fn get_builtin_tools() -> Vec<Tool> {
 ///   and emits a warning to stderr.
 ///
 /// Returns `(sanitised_name, is_optional)`.
-fn sanitise_property_key(name: &str) -> (String, bool) {
+pub(super) fn sanitise_property_key(name: &str) -> (String, bool) {
     // Check for `?` optional suffix
     let (stripped, is_optional) = if let Some(s) = name.strip_suffix('?') {
         (s, true)
@@ -388,6 +393,7 @@ pub(super) fn extract_function_metadata(
                 schema_type: "object".to_string(),
                 properties,
                 required,
+                additional_properties: false,
             },
         }
     })
@@ -543,6 +549,13 @@ mod tests {
         // Optional arg must not appear in required
         assert!(!tool.input_schema.required.contains(&"repo".to_string()));
         assert_eq!(tool.input_schema.required, Vec::<String>::new());
+        assert!(!tool.input_schema.additional_properties);
+
+        let serialized = serde_json::to_value(&tool).unwrap();
+        assert_eq!(
+            serialized["inputSchema"]["additionalProperties"],
+            serde_json::json!(false)
+        );
     }
 
     #[test]
@@ -657,6 +670,7 @@ mod tests {
             "Set the working directory used by this MCP server's own tools (Runfile-backed tool calls). Does not affect the calling agent's shell/Bash tool or any other MCP server."
         );
         assert_eq!(set_cwd.input_schema.schema_type, "object");
+        assert!(!set_cwd.input_schema.additional_properties);
         assert!(set_cwd.input_schema.properties.contains_key("path"));
         assert_eq!(set_cwd.input_schema.properties["path"].param_type, "string");
         assert_eq!(set_cwd.input_schema.required, vec!["path".to_string()]);
@@ -670,6 +684,7 @@ mod tests {
             "Get the current working directory used by this MCP server's own tools (Runfile-backed tool calls)."
         );
         assert_eq!(get_cwd.input_schema.schema_type, "object");
+        assert!(!get_cwd.input_schema.additional_properties);
         assert!(get_cwd.input_schema.properties.is_empty());
         assert_eq!(get_cwd.input_schema.required, Vec::<String>::new());
 
@@ -679,7 +694,29 @@ mod tests {
             .expect("run_docs tool should exist");
         assert!(run_docs.description.contains("Runfile"));
         assert_eq!(run_docs.input_schema.schema_type, "object");
+        assert!(!run_docs.input_schema.additional_properties);
         assert!(run_docs.input_schema.properties.contains_key("topic"));
         assert_eq!(run_docs.input_schema.required, Vec::<String>::new());
+
+        for tool in &tools {
+            let serialized = serde_json::to_value(tool).unwrap();
+            assert_eq!(
+                serialized["inputSchema"]["additionalProperties"],
+                serde_json::json!(false),
+                "built-in tool {} should serialize additionalProperties: false",
+                tool.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_input_schema_deserializes_without_additional_properties() {
+        let json = serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        });
+        let schema: InputSchema = serde_json::from_value(json).unwrap();
+        assert!(!schema.additional_properties);
     }
 }

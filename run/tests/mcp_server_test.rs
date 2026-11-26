@@ -1111,3 +1111,368 @@ fn test_mcp_hot_reload_emits_tools_list_changed_for_runfile_and_sourced_files() 
         "integer"
     );
 }
+
+fn run_mcp_session(
+    binary: &PathBuf,
+    cwd: &std::path::Path,
+    requests: &[serde_json::Value],
+) -> Vec<serde_json::Value> {
+    use std::io::Write;
+
+    let mut child = test_command(binary)
+        .arg("--serve-mcp")
+        .env("RUN_MCP_WATCH_INTERVAL_MS", "0")
+        .current_dir(cwd)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn MCP server");
+
+    {
+        let stdin = child.stdin.as_mut().expect("stdin should be piped");
+        for req in requests {
+            writeln!(
+                stdin,
+                "{}",
+                serde_json::to_string(req).expect("serialize JSON-RPC request")
+            )
+            .expect("write request");
+        }
+        stdin.flush().expect("flush stdin");
+    }
+    drop(child.stdin.take());
+
+    let output = child.wait_with_output().expect("wait for MCP server");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            serde_json::from_str(l)
+                .unwrap_or_else(|e| panic!("invalid JSON-RPC response line: {e}: {l}"))
+        })
+        .collect()
+}
+
+#[test]
+fn test_mcp_tools_list_emits_additional_properties_false_for_all_tools() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r"
+# @desc Zero-arg tool
+ping() echo pong
+
+# @desc Parameterized tool
+greet(name: str) echo $name
+",
+    );
+
+    let responses = run_mcp_session(
+        &binary,
+        temp_dir.path(),
+        &[serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list",
+            "params": {}
+        })],
+    );
+
+    assert_eq!(responses.len(), 1);
+    let tools = responses[0]["result"]["tools"]
+        .as_array()
+        .expect("tools array");
+    assert!(tools.len() >= 5, "expected runfile + builtin tools");
+
+    for tool in tools {
+        assert_eq!(
+            tool["inputSchema"]["additionalProperties"],
+            serde_json::json!(false),
+            "tool {} must emit additionalProperties: false",
+            tool["name"]
+        );
+    }
+}
+
+#[test]
+fn test_mcp_tools_call_rejects_missing_and_null_required_args_without_execution() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+    let marker_param = temp_dir.path().join("param_ran.marker");
+    let marker_legacy = temp_dir.path().join("legacy_ran.marker");
+
+    create_runfile(
+        temp_dir.path(),
+        &format!(
+            r#"
+# @desc Deploy service
+deploy(env: str, version = "latest") {{
+    touch "{}"
+    echo "$env:$version"
+}}
+
+# @desc Legacy scale
+# @arg 1:service string Service name
+scale() {{
+    touch "{}"
+    echo "$1"
+}}
+"#,
+            marker_param.display(),
+            marker_legacy.display()
+        ),
+    );
+
+    let responses = run_mcp_session(
+        &binary,
+        temp_dir.path(),
+        &[
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": { "name": "deploy", "arguments": {} }
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": { "name": "deploy", "arguments": { "env": null } }
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": { "name": "scale", "arguments": {} }
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/call",
+                "params": { "name": "scale", "arguments": { "service": null } }
+            }),
+        ],
+    );
+
+    assert!(!marker_param.exists(), "deploy must not execute");
+    assert!(!marker_legacy.exists(), "scale must not execute");
+    assert_eq!(responses.len(), 4);
+
+    for (id, expected_name) in [(1, "env"), (2, "env"), (3, "service"), (4, "service")] {
+        let resp = responses
+            .iter()
+            .find(|r| r["id"] == id)
+            .expect("response by id");
+        assert_eq!(resp["error"]["code"], -32602, "resp: {resp}");
+        let msg = resp["error"]["message"].as_str().expect("error message");
+        assert!(msg.contains(expected_name), "resp: {resp}");
+    }
+}
+
+#[test]
+fn test_mcp_tools_call_rejects_unknown_and_non_object_args_without_execution() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+    let marker = temp_dir.path().join("executed.marker");
+
+    create_runfile(
+        temp_dir.path(),
+        &format!(
+            r#"
+# @desc Zero arg
+ping() {{
+    touch "{}"
+    echo pong
+}}
+
+# @desc Params
+greet(name: str) {{
+    touch "{}"
+    echo "$name"
+}}
+
+# @desc Legacy
+# @arg 1:target string Target
+# @arg 2:branch? string Optional branch
+clone() {{
+    touch "{}"
+    echo "$1"
+}}
+"#,
+            marker.display(),
+            marker.display(),
+            marker.display()
+        ),
+    );
+
+    let responses = run_mcp_session(
+        &binary,
+        temp_dir.path(),
+        &[
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": { "name": "greet", "arguments": { "name": "ok", "typo": "bad" } }
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": { "name": "clone", "arguments": { "target": "repo", "branch?": "main" } }
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": { "name": "ping", "arguments": { "unexpected": true } }
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/call",
+                "params": { "name": "ping", "arguments": "not-an-object" }
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "tools/call",
+                "params": { "name": "ping", "arguments": [1, 2] }
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 6,
+                "method": "tools/call",
+                "params": { "name": "ping", "arguments": null }
+            }),
+        ],
+    );
+
+    assert!(!marker.exists(), "invalid calls must not execute");
+    assert_eq!(responses.len(), 6);
+
+    for (id, expected_substr) in [
+        (1, "typo"),
+        (2, "branch?"),
+        (3, "unexpected"),
+        (4, "Arguments must be an object"),
+        (5, "Arguments must be an object"),
+        (6, "Arguments must be an object"),
+    ] {
+        let resp = responses
+            .iter()
+            .find(|r| r["id"] == id)
+            .expect("response by id");
+        assert_eq!(resp["error"]["code"], -32602, "resp: {resp}");
+        let msg = resp["error"]["message"].as_str().expect("error message");
+        assert!(msg.contains(expected_substr), "resp: {resp}");
+    }
+}
+
+fn mcp_call(id: i64, name: &str, arguments: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": "tools/call",
+        "params": { "name": name, "arguments": arguments }
+    })
+}
+
+#[test]
+fn test_mcp_tools_call_allows_valid_optional_rest_legacy_and_timeout_args() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+# @desc Zero-arg ping
+ping() echo "pong"
+
+# @desc Deploy with default (simple)
+deploy_simple(env: str, version = "latest") echo "simple:$env:$version"
+
+# @desc Deploy with default (block)
+deploy_block(env: str, version = "latest") {
+    echo "block:$env:$version"
+}
+
+# @desc Rest args
+run_many(prefix: str, ...items) {
+    echo "rest:$prefix:$items"
+}
+
+# @desc Legacy optional arg
+# @arg 1:url string Repo URL
+# @arg 2:branch? string Optional branch
+clone() {
+    echo "legacy:$1:${2:-none}"
+}
+"#,
+    );
+
+    let responses = run_mcp_session(
+        &binary,
+        temp_dir.path(),
+        &[
+            mcp_call(1, "ping", &serde_json::json!({ "timeout": 10 })),
+            mcp_call(2, "ping", &serde_json::json!({ "timeout": null })),
+            mcp_call(
+                3,
+                "deploy_simple",
+                &serde_json::json!({ "env": "prod", "timeout": 10 }),
+            ),
+            mcp_call(
+                4,
+                "deploy_block",
+                &serde_json::json!({ "env": "prod", "version": null }),
+            ),
+            mcp_call(
+                5,
+                "run_many",
+                &serde_json::json!({ "prefix": "p", "items": ["a", "b"] }),
+            ),
+            mcp_call(6, "run_many", &serde_json::json!({ "prefix": "only" })),
+            mcp_call(
+                7,
+                "clone",
+                &serde_json::json!({ "url": "https://example.com" }),
+            ),
+            mcp_call(
+                8,
+                "clone",
+                &serde_json::json!({ "url": "https://example.com", "branch": "dev" }),
+            ),
+        ],
+    );
+
+    assert_eq!(responses.len(), 8);
+
+    let expected = [
+        (1, "pong"),
+        (2, "pong"),
+        (3, "simple:prod:latest"),
+        (4, "block:prod:latest"),
+        (5, "rest:p:a b"),
+        (6, "rest:only:"),
+        (7, "legacy:https://example.com:none"),
+        (8, "legacy:https://example.com:dev"),
+    ];
+
+    for (id, needle) in expected {
+        let resp = responses
+            .iter()
+            .find(|r| r["id"] == id)
+            .expect("response by id");
+        assert!(resp.get("error").is_none(), "unexpected error: {resp}");
+        assert_eq!(resp["result"]["isError"], false, "resp: {resp}");
+        let text = resp["result"]["content"][0]["text"]
+            .as_str()
+            .expect("text content");
+        assert!(text.contains(needle), "expected {needle} in {text}");
+    }
+}
