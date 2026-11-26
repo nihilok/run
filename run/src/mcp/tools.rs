@@ -312,7 +312,7 @@ pub(super) fn extract_function_metadata(
     } else {
         for param in params {
             let arg_meta = arg_meta_by_name.get(&param.name);
-            let param_description = arg_meta.map(|m| m.description.clone()).unwrap_or_default();
+            let param_description = arg_meta.map_or_default(|m| m.description.clone());
 
             if param.is_rest {
                 // Rest parameter: array type, not required
