@@ -57,21 +57,40 @@ default_value = @{
 param_identifier = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
 // Block: { statement; statement; ... } or { statement\n statement\n ... }
-// Captures everything between braces, handling nested braces in strings
-block = { "{" ~ block_content ~ "}" }
+// Captures everything between braces, handling nested braces, parameter expansions,
+// comments, and strings.
+block = { "{" ~ block_body ~ "}" }
+block_body = @{ shebang_in_block? ~ block_content }
 block_content = @{ block_part* }
 block_part = _{
-    comment_in_block  // Comments must be matched first so quotes inside them are not parsed as string delimiters
+    param_expansion_in_block
     | quoted_string_in_block
+    | "\\" ~ ANY
+    | (WHITESPACE | NL | ";")+ ~ comment_in_block?
     | "{" ~ block_content ~ "}"  // Nested braces
-    | (!("}" | "\"" | "'") ~ ANY)  // Regular characters
+    | (!("}" | "\"" | "'" | "\\" | WHITESPACE | NL | ";") ~ ANY)  // Regular characters
 }
+// Matches a shebang (#!...) immediately following an opening block brace.
+shebang_in_block = @{ "#!" ~ (!NL ~ ANY)* }
 // Matches a shell comment (#...) up to (but not including) the end of line.
-// This prevents single/double quotes within comments from being parsed as string delimiters.
+// Only invoked at comment-valid positions (after whitespace, newline, or `;`)
+// so non-comment `#` (e.g., `$#`, `foo#bar`, `${v##*:}`) does not swallow syntax,
+// while quotes/apostrophes inside real comments (#32) are still absorbed.
 comment_in_block = @{ "#" ~ (!NL ~ ANY)* }
+// Matches shell parameter expansions (${...}) including `#` operators (${v##*:}, ${#v}),
+// nested expansions (${v:-${other#*:}}), quoted strings, and escaped characters (\}).
+param_expansion_in_block = @{ "${" ~ param_expansion_content ~ "}" }
+param_expansion_content = _{ param_expansion_part* }
+param_expansion_part = _{
+    param_expansion_in_block
+    | quoted_string_in_block
+    | "\\" ~ ANY
+    | "{" ~ param_expansion_content ~ "}"
+    | (!("}" | "\"" | "'" | "\\") ~ ANY)
+}
 quoted_string_in_block = @{
-    "\"" ~ ("\\\"" | (!"\"" ~ ANY))* ~ "\""
-    | "'" ~ ("\\'" | (!"'" ~ ANY))* ~ "'"
+    "\"" ~ (param_expansion_in_block | "\\" ~ ANY | (!"\"" ~ ANY))* ~ "\""
+    | "'" ~ ("\\\\" | "\\'" | (!"'" ~ ANY))* ~ "'"
 }
 
 // Function call: name() or name(arg1, arg2, ...)

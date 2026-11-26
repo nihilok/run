@@ -71,7 +71,7 @@ pub fn run_function_call(
     parallel: bool,
     jobs: Option<usize>,
 ) {
-    let Some((config_content, _metadata)) = config::load_merged_config() else {
+    let Some((config_content, metadata)) = config::load_merged_config() else {
         eprintln!("{}", config::NO_RUNFILE_ERROR);
         std::process::exit(1);
     };
@@ -102,7 +102,7 @@ pub fn run_function_call(
         Err(e) => {
             eprintln!(
                 "{}",
-                parser::ParseError::from_pest(&e, &config_content, Some("Runfile"))
+                parser::ParseError::from_pest_merged(&e, &config_content, &metadata)
             );
             std::process::exit(1);
         }
@@ -334,7 +334,7 @@ pub fn list_functions() {
             Err(e) => {
                 eprintln!(
                     "{}",
-                    parser::ParseError::from_pest(&e, &merged_content, Some("Runfile"))
+                    parser::ParseError::from_pest_merged(&e, &merged_content, &metadata)
                 );
                 std::process::exit(1);
             }

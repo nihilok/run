@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 /// This is needed because MCP requires [a-zA-Z0-9_-] but we support colons in function names
 /// Uses merged global+project config to ensure all exposed tools are resolvable
 pub(super) fn resolve_tool_name(sanitised_name: &str) -> Result<String, JsonRpcError> {
-    let (config_content, _metadata) = config::load_merged_config().ok_or_else(|| JsonRpcError {
+    let (config_content, metadata) = config::load_merged_config().ok_or_else(|| JsonRpcError {
         code: -32603,
         message: "No Runfile found".to_string(),
         data: None,
@@ -22,7 +22,7 @@ pub(super) fn resolve_tool_name(sanitised_name: &str) -> Result<String, JsonRpcE
         code: -32603,
         message: format!(
             "Runfile syntax error: {}",
-            parser::ParseError::from_pest(&e, &config_content, Some("Runfile"))
+            parser::ParseError::from_pest_merged(&e, &config_content, &metadata)
         ),
         data: None,
     })?;
@@ -58,7 +58,7 @@ pub(super) fn resolve_tool_name(sanitised_name: &str) -> Result<String, JsonRpcE
 }
 
 fn load_merged_program() -> Result<Program, JsonRpcError> {
-    let (config_content, _metadata) = config::load_merged_config().ok_or_else(|| JsonRpcError {
+    let (config_content, metadata) = config::load_merged_config().ok_or_else(|| JsonRpcError {
         code: -32603,
         message: "No Runfile found".to_string(),
         data: None,
@@ -68,7 +68,7 @@ fn load_merged_program() -> Result<Program, JsonRpcError> {
         code: -32603,
         message: format!(
             "Runfile syntax error: {}",
-            parser::ParseError::from_pest(&e, &config_content, Some("Runfile"))
+            parser::ParseError::from_pest_merged(&e, &config_content, &metadata)
         ),
         data: None,
     })

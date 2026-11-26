@@ -76,6 +76,21 @@ impl ParseError {
             hint,
         }
     }
+
+    /// Build a `ParseError` from a pest error on a merged global+project config,
+    /// attributing the error to `~/.runfile` or `Runfile` with file-local line numbers.
+    #[must_use]
+    pub fn from_pest_merged(
+        error: &pest::error::Error<Rule>,
+        merged_source: &str,
+        metadata: &crate::config::MergeMetadata,
+    ) -> Self {
+        let mut err = Self::from_pest(error, merged_source, None);
+        let (filename, local_line) = metadata.resolve_error_location(err.line);
+        err.filename = Some(filename.to_string());
+        err.line = local_line;
+        err
+    }
 }
 
 /// Return a short, user-facing label for a grammar rule, or `None` to omit it.
@@ -335,5 +350,81 @@ mod tests {
         if let Some(ref hint) = err.hint {
             assert!(!hint.contains("Rule::"), "raw rule name in hint: {hint}");
         }
+    }
+
+    #[test]
+    fn test_parse_error_line_accurate_after_escaped_newlines() {
+        let input = "\
+ok() echo \\
+    \"part1\" \\
+    \"part2\"
+\"unclosed on line 4
+";
+        let raw = super::super::parse_script(input)
+            .expect_err("expected parse_script to fail on unclosed quote");
+        let err = ParseError::from_pest(&raw, input, Some("Runfile"));
+        assert_eq!(err.line, 4, "error should report line 4, got: {err}");
+        assert_eq!(err.source_line.as_deref(), Some("\"unclosed on line 4"));
+    }
+
+    #[test]
+    fn test_parse_error_line_accurate_inside_escaped_newline_continuation() {
+        let input = "\
+# comment
+multiline() echo \\
+    \"ok\" \\
+    \"unclosed
+";
+        let raw = super::super::parse_script(input)
+            .expect_err("expected parse_script to fail on unclosed quote");
+        let err = ParseError::from_pest(&raw, input, Some("Runfile"));
+        assert_eq!(err.line, 4, "error should report line 4, got: {err}");
+        assert_eq!(err.source_line.as_deref(), Some("    \"unclosed"));
+    }
+
+    #[test]
+    fn test_from_pest_merged_attributes_project_and_global() {
+        use crate::config::MergeMetadata;
+
+        // Global without trailing newline (3 lines, with backslash continuation)
+        let global = "g1() echo \\\n    one\ng2() echo two";
+        let project = "p1() echo ok\n\"broken project line\n";
+        let merged = format!("{global}\n{project}");
+        let meta = MergeMetadata {
+            has_global: true,
+            has_project: true,
+            project_line_offset: global.bytes().filter(|&b| b == b'\n').count() + 1,
+        };
+
+        let raw = super::super::parse_script(&merged)
+            .expect_err("expected parse_script to fail on broken project line");
+        let err = ParseError::from_pest_merged(&raw, &merged, &meta);
+        assert_eq!(err.filename.as_deref(), Some("Runfile"));
+        assert_eq!(err.line, 2, "expected project line 2, got: {err}");
+        assert_eq!(err.source_line.as_deref(), Some("\"broken project line"));
+
+        // Global with trailing newline and error inside global
+        let global_bad = "g1() echo ok\n\"broken global line\n";
+        let project_ok = "p1() echo ok\n";
+        let merged_global_err = format!("{global_bad}\n{project_ok}");
+        let meta_global_err = MergeMetadata {
+            has_global: true,
+            has_project: true,
+            project_line_offset: global_bad.bytes().filter(|&b| b == b'\n').count() + 1,
+        };
+
+        let raw_global = super::super::parse_script(&merged_global_err)
+            .expect_err("expected parse_script to fail on broken global line");
+        let err_global =
+            ParseError::from_pest_merged(&raw_global, &merged_global_err, &meta_global_err);
+        assert_eq!(err_global.filename.as_deref(), Some("~/.runfile"));
+        assert_eq!(
+            err_global.line, 2,
+            "expected global line 2, got: {err_global}"
+        );
+        assert_eq!(
+            err_global.source_line.as_deref(),
+            Some("\"broken global line")
+        );
     }
 }
