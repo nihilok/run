@@ -1,31 +1,13 @@
 #![allow(clippy::unwrap_used)]
 #![allow(clippy::expect_used)]
 
-use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
 /// Helper to get the compiled binary path
 fn get_binary_path() -> PathBuf {
-    let mut path = env::current_exe().unwrap();
-    path.pop();
-    if path.ends_with("deps") {
-        path.pop();
-    }
-    path.push("run");
-    if !path.exists() {
-        let build_output = Command::new("cargo")
-            .args(["build", "--bin", "run"])
-            .output()
-            .expect("Failed to build binary");
-        assert!(
-            build_output.status.success(),
-            "Failed to build run binary: {}",
-            String::from_utf8_lossy(&build_output.stderr)
-        );
-    }
-    path
+    PathBuf::from(env!("CARGO_BIN_EXE_run"))
 }
 
 fn create_temp_dir() -> tempfile::TempDir {

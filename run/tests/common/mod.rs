@@ -4,40 +4,13 @@
 #![allow(clippy::expect_used)]
 #![allow(dead_code)] // Not all helpers are used by every test file
 
-use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
 /// Helper to get the compiled binary path
 pub fn get_binary_path() -> PathBuf {
-    // Get the directory where cargo places test binaries
-    let mut path = env::current_exe().unwrap();
-    path.pop(); // Remove test executable name
-
-    // Check if we're in a 'deps' directory (integration tests)
-    if path.ends_with("deps") {
-        path.pop(); // Go up to debug or release
-    }
-
-    path.push("run");
-
-    // If the binary doesn't exist in debug, try building it first
-    if !path.exists() {
-        // Try to build the binary
-        let build_output = Command::new("cargo")
-            .args(["build", "--bin", "run"])
-            .output()
-            .expect("Failed to build binary");
-
-        assert!(
-            build_output.status.success(),
-            "Failed to build run binary: {}",
-            String::from_utf8_lossy(&build_output.stderr)
-        );
-    }
-
-    path
+    PathBuf::from(env!("CARGO_BIN_EXE_run"))
 }
 
 /// Helper to create a temporary directory for tests
