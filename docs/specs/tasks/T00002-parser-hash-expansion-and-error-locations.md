@@ -2,7 +2,7 @@
 key: T00002
 kind: task
 title: "Parser: handle '#' in ${...} parameter expansions and fix parse error locations"
-status: backlog
+status: done
 depends_on: []
 covers: []
 touches:
@@ -34,12 +34,12 @@ Intended to be implemented in its own separate commit (independent of #46).
 
 ## Acceptance criteria
 
-- [ ] Block function bodies containing shell parameter expansions with `#` — including `${v##*:}`, `${v#*:}`, `${#v}`, nested expansions like `${v:-${other#*:}}`, and quoted values inside `${...}` — parse and execute with expected shell output (e.g. `v=host:5432; echo ${v##*:}` prints `5432`; `${#v}` prints `9`).
-- [ ] Non-comment `#` in shell expressions inside blocks (such as `$#` and mid-word `foo#bar`) does not swallow closing braces or following syntax, while real comments containing unbalanced quotes/apostrophes (`# It's a comment`) and shebangs (`#!/usr/bin/env python3`) continue to parse without regression (#32).
-- [ ] `config::count_unquoted_braces` does not treat `#` inside `${...}` (or non-comment `#`) as a comment terminator, so `expand_source_directives` and `collect_mcp_instructions` keep accurate `brace_depth` across functions using `${v##*:}` / `${#v}`.
-- [ ] Parse errors in files containing backslash-escaped newlines (`\`) before the error report the accurate 1-indexed line number and matching `source_line` from the original (un-preprocessed) input.
-- [ ] Parse errors occurring in merged `~/.runfile` + `./Runfile` configs attribute the error to the correct source (`~/.runfile` vs `Runfile`) with that file's 1-indexed line number and source line rather than a combined merged offset.
-- [ ] Unit and integration tests cover all `${...}` `#` forms (parse + execution), `#32` apostrophe comments regression, `count_unquoted_braces` with `${v##*:}`/`${#v}`, escaped-newline error line accuracy, and merged-runfile error attribution; `cargo test --workspace` and `cargo clippy --workspace --all-targets` pass cleanly.
+- [x] Block function bodies containing shell parameter expansions with `#` — including `${v##*:}`, `${v#*:}`, `${#v}`, nested expansions like `${v:-${other#*:}}`, and quoted values inside `${...}` — parse and execute with expected shell output (e.g. `v=host:5432; echo ${v##*:}` prints `5432`; `${#v}` prints `9`).
+- [x] Non-comment `#` in shell expressions inside blocks (such as `$#` and mid-word `foo#bar`) does not swallow closing braces or following syntax, while real comments containing unbalanced quotes/apostrophes (`# It's a comment`) and shebangs (`#!/usr/bin/env python3`) continue to parse without regression (#32).
+- [x] `config::count_unquoted_braces` does not treat `#` inside `${...}` (or non-comment `#`) as a comment terminator, so `expand_source_directives` and `collect_mcp_instructions` keep accurate `brace_depth` across functions using `${v##*:}` / `${#v}`.
+- [x] Parse errors in files containing backslash-escaped newlines (`\`) before the error report the accurate 1-indexed line number and matching `source_line` from the original (un-preprocessed) input.
+- [x] Parse errors occurring in merged `~/.runfile` + `./Runfile` configs attribute the error to the correct source (`~/.runfile` vs `Runfile`) with that file's 1-indexed line number and source line rather than a combined merged offset.
+- [x] Unit and integration tests cover all `${...}` `#` forms (parse + execution), `#32` apostrophe comments regression, `count_unquoted_braces` with `${v##*:}`/`${#v}`, escaped-newline error line accuracy, and merged-runfile error attribution; `cargo test --workspace` and `cargo clippy --workspace --all-targets` pass cleanly.
 
 ## Decisions log
 
@@ -60,3 +60,7 @@ Intended to be implemented in its own separate commit (independent of #46).
 - None.
 
 ## Verification
+
+- `cargo fmt --all -- --check`: PASS (0 formatting diffs).
+- `cargo clippy --workspace --all-targets -- -D warnings`: PASS (0 warnings, 0 errors).
+- `cargo test --workspace`: PASS (628 passed, 0 failed, 0 ignored across `run` lib unit tests [371 passed] and integration suites [`attributes`: 6, `basic_functions`: 28, `cd_attribute_test`: 7, `cli`: 13, `composition_test`: 23, `errexit_test`: 9, `function_signature`: 10, `integration_test`: 90, `mcp_server_test`: 20, `mcp_tool_schema_test`: 8, `parallel_dag_test`: 6, `polyglot`: 20, `source_test`: 11, `structured_output_test`: 6]).

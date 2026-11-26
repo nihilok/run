@@ -30,8 +30,9 @@ pub struct ScriptParser;
 /// - Unmatched braces or parentheses
 /// - Invalid command syntax
 pub fn parse_script(input: &str) -> Result<Program, Box<pest::error::Error<Rule>>> {
-    let preprocessed = preprocessing::preprocess_escaped_newlines(input);
-    let pairs = ScriptParser::parse(Rule::program, &preprocessed)?;
+    let (preprocessed, source_map) = preprocessing::preprocess_escaped_newlines_with_map(input);
+    let pairs = ScriptParser::parse(Rule::program, &preprocessed)
+        .map_err(|err| Box::new(remap_pest_error(err, input, &source_map)))?;
     let mut statements = Vec::new();
 
     for pair in pairs {
@@ -59,6 +60,41 @@ pub fn parse_script(input: &str) -> Result<Program, Box<pest::error::Error<Rule>
     }
 
     Ok(Program { statements })
+}
+
+fn floor_char_boundary(s: &str, idx: usize) -> usize {
+    let mut i = idx.min(s.len());
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+fn remap_pest_error(
+    err: pest::error::Error<Rule>,
+    original: &str,
+    source_map: &preprocessing::SourceMap,
+) -> pest::error::Error<Rule> {
+    match err.location {
+        pest::error::InputLocation::Pos(pos) => {
+            let mapped = floor_char_boundary(original, source_map.map_offset(pos));
+            if let Some(orig_pos) = pest::Position::new(original, mapped) {
+                pest::error::Error::new_from_pos(err.variant, orig_pos)
+            } else {
+                pest::error::Error::new_from_pos(err.variant, pest::Position::from_start(original))
+            }
+        }
+        pest::error::InputLocation::Span((start, end)) => {
+            let mapped_start = floor_char_boundary(original, source_map.map_offset(start));
+            let mapped_end =
+                floor_char_boundary(original, source_map.map_offset(end)).max(mapped_start);
+            if let Some(orig_span) = pest::Span::new(original, mapped_start, mapped_end) {
+                pest::error::Error::new_from_span(err.variant, orig_span)
+            } else {
+                pest::error::Error::new_from_pos(err.variant, pest::Position::from_start(original))
+            }
+        }
+    }
 }
 
 fn parse_statement(pair: pest::iterators::Pair<Rule>, original_input: &str) -> Option<Statement> {
@@ -896,6 +932,129 @@ search(term: str, limit = 15) echo $term $limit
             assert_eq!(name, "second");
         } else {
             panic!("Expected SimpleFunctionDef for second");
+        }
+    }
+
+    #[test]
+    fn test_block_function_with_hash_param_expansions() {
+        let input = r#"parse_vars() {
+    v="host:5432"
+    echo "${v##*:}"
+    echo ${v##*:}
+    echo ${v#*:}
+    echo ${#v}
+    echo ${#arr[@]}
+}
+after() echo "ok"
+"#;
+        let result = parse_script(input).unwrap();
+        assert_eq!(result.statements.len(), 2);
+        assert!(matches!(
+            &result.statements[0],
+            Statement::BlockFunctionDef { name, .. } if name == "parse_vars"
+        ));
+        assert!(matches!(
+            &result.statements[1],
+            Statement::SimpleFunctionDef { name, .. } if name == "after"
+        ));
+    }
+
+    #[test]
+    fn test_block_function_with_nested_quoted_and_escaped_param_expansions() {
+        let input = r##"complex() {
+    echo "${v:-${other#*:}}"
+    echo ${a:-${b##*/}}
+    echo ${v#*"#"}
+    echo ${v#*'#'}
+    echo ${v:-"a}b"}
+    echo "${v#*"#"}"
+    echo ${v%\}}
+}
+next() {
+    echo "still balanced"
+}
+"##;
+        let result = parse_script(input).unwrap();
+        assert_eq!(result.statements.len(), 2);
+        assert!(matches!(
+            &result.statements[0],
+            Statement::BlockFunctionDef { name, .. } if name == "complex"
+        ));
+        assert!(matches!(
+            &result.statements[1],
+            Statement::BlockFunctionDef { name, .. } if name == "next"
+        ));
+    }
+
+    #[test]
+    fn test_block_function_with_non_comment_hash_expressions() {
+        let input = r#"f1() { echo $#}
+f2() { echo foo#bar}
+f3() { color=#fff; echo $color }
+f4() { echo \# }
+hashes() {
+    echo $#
+    echo foo#bar
+    color=#fff
+    echo \#
+}
+after() echo "after"
+"#;
+        let result = parse_script(input).unwrap();
+        assert_eq!(result.statements.len(), 6);
+        assert!(matches!(
+            &result.statements[0],
+            Statement::BlockFunctionDef { name, .. } if name == "f1"
+        ));
+        assert!(matches!(
+            &result.statements[1],
+            Statement::BlockFunctionDef { name, .. } if name == "f2"
+        ));
+        assert!(matches!(
+            &result.statements[2],
+            Statement::BlockFunctionDef { name, .. } if name == "f3"
+        ));
+        assert!(matches!(
+            &result.statements[3],
+            Statement::BlockFunctionDef { name, .. } if name == "f4"
+        ));
+        assert!(matches!(
+            &result.statements[4],
+            Statement::BlockFunctionDef { name, .. } if name == "hashes"
+        ));
+        assert!(matches!(
+            &result.statements[5],
+            Statement::SimpleFunctionDef { name, .. } if name == "after"
+        ));
+    }
+
+    #[test]
+    fn test_block_function_with_inline_comments_apostrophes_and_shebangs() {
+        let input = r#"py_inline() {#!/usr/bin/env python3
+    # It's fine, don't break
+    print("hello")
+}
+sh_inline() {
+    #!/usr/bin/env python3
+    echo ok # don't break
+    echo ok;# don't break
+    # comment with } inside
+    echo "done"
+}
+"#;
+        let result = parse_script(input).unwrap();
+        assert_eq!(result.statements.len(), 2);
+        if let Statement::BlockFunctionDef { name, shebang, .. } = &result.statements[0] {
+            assert_eq!(name, "py_inline");
+            assert_eq!(shebang.as_deref(), Some("/usr/bin/env python3"));
+        } else {
+            panic!("Expected BlockFunctionDef for py_inline");
+        }
+        if let Statement::BlockFunctionDef { name, shebang, .. } = &result.statements[1] {
+            assert_eq!(name, "sh_inline");
+            assert_eq!(shebang.as_deref(), Some("/usr/bin/env python3"));
+        } else {
+            panic!("Expected BlockFunctionDef for sh_inline");
         }
     }
 }

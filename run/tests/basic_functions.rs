@@ -698,3 +698,155 @@ c() echo "running c"
     assert!(!output.status.success());
     assert!(stderr.contains("Circular dependency detected"));
 }
+
+#[test]
+fn test_block_function_hash_param_expansions_execution() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+expand() {
+    v="host:5432"
+    echo "suffix=${v##*:}"
+    echo "single=${v#*:}"
+    echo "len=${#v}"
+    other="a:b:c"
+    unset empty || true
+    echo "nested=${empty:-${other#*:}}"
+    echo "quoted=${v#*"host:"}"
+    echo "mid=foo#bar"
+    set -- one two
+    echo "nargs=$#"
+}
+"#,
+    );
+
+    let output = common::test_command(&binary)
+        .arg("expand")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "stderr: {stderr}");
+    assert!(stdout.contains("suffix=5432"), "stdout:\n{stdout}");
+    assert!(stdout.contains("single=5432"), "stdout:\n{stdout}");
+    assert!(stdout.contains("len=9"), "stdout:\n{stdout}");
+    assert!(stdout.contains("nested=b:c"), "stdout:\n{stdout}");
+    assert!(stdout.contains("quoted=5432"), "stdout:\n{stdout}");
+    assert!(stdout.contains("mid=foo#bar"), "stdout:\n{stdout}");
+    assert!(stdout.contains("nargs=2"), "stdout:\n{stdout}");
+}
+
+#[test]
+fn test_block_function_apostrophe_comment_and_shebang_execution() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r#"
+apostrophe() {
+    # It's fine, don't break
+    echo "ok" # still shouldn't break
+}
+
+shebang_sh() {
+    #!/bin/sh
+    echo "from shebang"
+}
+"#,
+    );
+
+    let out1 = common::test_command(&binary)
+        .arg("apostrophe")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+    assert!(
+        out1.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out1.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out1.stdout).trim(), "ok");
+
+    let out2 = common::test_command(&binary)
+        .arg("shebang_sh")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+    assert!(
+        out2.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out2.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out2.stdout).trim(), "from shebang");
+}
+
+#[test]
+fn test_merged_runfile_error_attribution_project_and_global() {
+    let binary = get_binary_path();
+    let home_dir = create_temp_dir();
+    let project_dir = create_temp_dir();
+
+    // Global ~/.runfile without trailing newline and with escaped-newline continuation
+    fs::write(
+        home_dir.path().join(".runfile"),
+        "g1() echo \\\n    \"hello\"\ng2() echo \"global\"",
+    )
+    .unwrap();
+
+    // Project Runfile has a valid line 1 and syntax error on line 2
+    create_runfile(project_dir.path(), "p1() echo \"ok\"\n\"unclosed project");
+
+    let output = std::process::Command::new(&binary)
+        .arg("p1")
+        .current_dir(project_dir.path())
+        .env("HOME", home_dir.path())
+        .env_remove("RUN_NO_GLOBAL_MERGE")
+        .env_remove("RUN_RUNFILE_DIR")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Runfile:2:"),
+        "expected project-relative Runfile:2:, got:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("\"unclosed project"),
+        "expected offending project line in stderr, got:\n{stderr}"
+    );
+
+    // Now put the syntax error in ~/.runfile on line 2 (with trailing newline)
+    fs::write(
+        home_dir.path().join(".runfile"),
+        "g1() echo \"ok\"\n,bad_global\n",
+    )
+    .unwrap();
+    create_runfile(project_dir.path(), "p1() echo \"ok\"\n");
+
+    let output_global = std::process::Command::new(&binary)
+        .arg("p1")
+        .current_dir(project_dir.path())
+        .env("HOME", home_dir.path())
+        .env_remove("RUN_NO_GLOBAL_MERGE")
+        .env_remove("RUN_RUNFILE_DIR")
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(!output_global.status.success());
+    let stderr_global = String::from_utf8_lossy(&output_global.stderr);
+    assert!(
+        stderr_global.contains("~/.runfile:2:"),
+        "expected ~/.runfile:2:, got:\n{stderr_global}"
+    );
+    assert!(
+        stderr_global.contains(",bad_global"),
+        "expected offending global line in stderr, got:\n{stderr_global}"
+    );
+}

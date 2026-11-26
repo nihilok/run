@@ -421,7 +421,9 @@ fn count_unquoted_braces(line: &str) -> (usize, usize) {
     let mut closes = 0usize;
     let mut in_double = false;
     let mut in_single = false;
-    let mut chars = line.chars();
+    let mut param_brace_depth = 0usize;
+    let mut prev_allows_comment = true;
+    let mut chars = line.chars().peekable();
 
     while let Some(ch) = chars.next() {
         if in_double {
@@ -442,12 +444,50 @@ fn count_unquoted_braces(line: &str) -> (usize, usize) {
             }
         } else {
             match ch {
-                '#' => break, // rest of line is a comment
-                '"' => in_double = true,
-                '\'' => in_single = true,
-                '{' => opens += 1,
-                '}' => closes += 1,
-                _ => {}
+                '\\' => {
+                    chars.next();
+                    prev_allows_comment = false;
+                }
+                '"' => {
+                    in_double = true;
+                    prev_allows_comment = false;
+                }
+                '\'' => {
+                    in_single = true;
+                    prev_allows_comment = false;
+                }
+                '#' => {
+                    if param_brace_depth == 0 && prev_allows_comment {
+                        break; // rest of line is a comment
+                    }
+                    prev_allows_comment = false;
+                }
+                '$' => {
+                    if chars.peek() == Some(&'{') {
+                        chars.next();
+                        opens += 1;
+                        param_brace_depth += 1;
+                    }
+                    prev_allows_comment = false;
+                }
+                '{' => {
+                    opens += 1;
+                    if param_brace_depth > 0 {
+                        param_brace_depth += 1;
+                    }
+                    prev_allows_comment = false;
+                }
+                '}' => {
+                    closes += 1;
+                    param_brace_depth = param_brace_depth.saturating_sub(1);
+                    prev_allows_comment = false;
+                }
+                c if c.is_whitespace() || c == ';' => {
+                    prev_allows_comment = true;
+                }
+                _ => {
+                    prev_allows_comment = false;
+                }
             }
         }
     }
@@ -605,6 +645,7 @@ pub fn load_merged_config() -> Option<(String, MergeMetadata)> {
                 MergeMetadata {
                     has_global: false,
                     has_project: true,
+                    project_line_offset: 0,
                 },
             )
         });
@@ -636,6 +677,7 @@ pub fn load_merged_config() -> Option<(String, MergeMetadata)> {
             MergeMetadata {
                 has_global: true,
                 has_project: false,
+                project_line_offset: 0,
             },
         )),
         (None, Some(project)) => Some((
@@ -643,17 +685,20 @@ pub fn load_merged_config() -> Option<(String, MergeMetadata)> {
             MergeMetadata {
                 has_global: false,
                 has_project: true,
+                project_line_offset: 0,
             },
         )),
         (Some(global), Some(project)) => {
             // Concatenate with global first, project second
             // Add a newline separator to ensure proper parsing
+            let project_line_offset = global.bytes().filter(|&b| b == b'\n').count() + 1;
             let merged = format!("{global}\n{project}");
             Some((
                 merged,
                 MergeMetadata {
                     has_global: true,
                     has_project: true,
+                    project_line_offset,
                 },
             ))
         }
@@ -661,10 +706,32 @@ pub fn load_merged_config() -> Option<(String, MergeMetadata)> {
 }
 
 /// Metadata about which runfiles were loaded during a merge.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MergeMetadata {
     pub has_global: bool,
     pub has_project: bool,
+    /// Number of lines preceding the project Runfile content in the merged string
+    /// (including the `\n` separator). Zero when global and project are not merged.
+    pub project_line_offset: usize,
+}
+
+impl MergeMetadata {
+    /// Map a 1-indexed line number in the merged config back to its originating
+    /// source label (`"~/.runfile"` or `"Runfile"`) and file-local 1-indexed line number.
+    #[must_use]
+    pub fn resolve_error_location(&self, merged_line: usize) -> (&'static str, usize) {
+        match (self.has_global, self.has_project) {
+            (true, true) => {
+                if merged_line > self.project_line_offset {
+                    ("Runfile", merged_line - self.project_line_offset)
+                } else {
+                    ("~/.runfile", merged_line)
+                }
+            }
+            (true, false) => ("~/.runfile", merged_line),
+            (false, _) => ("Runfile", merged_line),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -995,5 +1062,107 @@ build() {
         // Braces after # are comments and should not be counted
         assert_eq!(count_unquoted_braces("# {"), (0, 0));
         assert_eq!(count_unquoted_braces("foo # {"), (0, 0));
+        assert_eq!(count_unquoted_braces("echo hi; # {"), (0, 0));
+        assert_eq!(count_unquoted_braces("echo hi;# {"), (0, 0));
+    }
+
+    #[test]
+    fn test_count_unquoted_braces_in_param_expansions_and_non_comment_hashes() {
+        assert_eq!(count_unquoted_braces("echo ${v##*:}"), (1, 1));
+        assert_eq!(count_unquoted_braces("echo ${#v}"), (1, 1));
+        assert_eq!(count_unquoted_braces("echo ${v:-${other#*:}}"), (2, 2));
+        assert_eq!(count_unquoted_braces(r##"echo ${v#*"#"}"##), (1, 1));
+        assert_eq!(count_unquoted_braces(r"echo ${v%\}}"), (1, 1));
+        assert_eq!(count_unquoted_braces("echo $# }"), (0, 1));
+        assert_eq!(count_unquoted_braces("echo foo#bar }"), (0, 1));
+        assert_eq!(count_unquoted_braces(r"echo \# }"), (0, 1));
+    }
+
+    #[test]
+    fn test_expand_source_and_instructions_after_hash_param_expansion() {
+        let temp = tempfile::tempdir().expect("Failed to create temp dir");
+        let lib = temp.path().join("lib.run");
+        fs::write(&lib, "sourced_fn() echo from_lib\n").expect("Failed to write lib");
+
+        let content = format!(
+            "# @instructions Before\n\
+             extract() {{\n\
+                 v=\"host:5432\"\n\
+                 echo ${{v##*:}}\n\
+                 echo ${{v#*:}}\n\
+                 echo ${{#v}}\n\
+                 echo ${{v:-${{other#*:}}}}\n\
+             }}\n\
+             # @instructions After\n\
+             source {}\n",
+            lib.display()
+        );
+
+        let expanded = expand_source_directives(&content, temp.path());
+        assert!(
+            expanded.contains("sourced_fn() echo from_lib"),
+            "top-level source after hash param expansion should expand; got:\n{expanded}"
+        );
+
+        let instructions = collect_mcp_instructions(&expanded);
+        assert_eq!(
+            instructions,
+            vec!["Before".to_string(), "After".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_merge_metadata_resolve_error_location() {
+        // Global without trailing newline + project
+        let global_no_nl = "g1() echo 1\ng2() echo 2";
+        let offset_no_nl = global_no_nl.bytes().filter(|&b| b == b'\n').count() + 1;
+        let meta_no_nl = MergeMetadata {
+            has_global: true,
+            has_project: true,
+            project_line_offset: offset_no_nl,
+        };
+        assert_eq!(meta_no_nl.resolve_error_location(1), ("~/.runfile", 1));
+        assert_eq!(meta_no_nl.resolve_error_location(2), ("~/.runfile", 2));
+        assert_eq!(meta_no_nl.resolve_error_location(3), ("Runfile", 1));
+        assert_eq!(meta_no_nl.resolve_error_location(5), ("Runfile", 3));
+
+        // Global with trailing newline + project
+        let global_with_nl = "g1() echo 1\ng2() echo 2\n";
+        let offset_with_nl = global_with_nl.bytes().filter(|&b| b == b'\n').count() + 1;
+        let meta_with_nl = MergeMetadata {
+            has_global: true,
+            has_project: true,
+            project_line_offset: offset_with_nl,
+        };
+        assert_eq!(meta_with_nl.resolve_error_location(2), ("~/.runfile", 2));
+        assert_eq!(meta_with_nl.resolve_error_location(4), ("Runfile", 1));
+
+        // Empty global + project
+        let offset_empty = "".bytes().filter(|&b| b == b'\n').count() + 1;
+        let meta_empty = MergeMetadata {
+            has_global: true,
+            has_project: true,
+            project_line_offset: offset_empty,
+        };
+        assert_eq!(meta_empty.resolve_error_location(2), ("Runfile", 1));
+
+        // Global only
+        let meta_global_only = MergeMetadata {
+            has_global: true,
+            has_project: false,
+            project_line_offset: 0,
+        };
+        assert_eq!(
+            meta_global_only.resolve_error_location(4),
+            ("~/.runfile", 4)
+        );
+
+        // Project only
+        let meta_project_only = MergeMetadata {
+            has_global: false,
+            has_project: true,
+            project_line_offset: 0,
+        };
+        assert_eq!(meta_project_only.resolve_error_location(4), ("Runfile", 4));
     }
 }
