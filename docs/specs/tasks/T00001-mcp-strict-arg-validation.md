@@ -2,7 +2,7 @@
 key: T00001
 kind: task
 title: "MCP: reject missing required and undeclared arguments and tighten inputSchema"
-status: backlog
+status: done
 depends_on: []
 covers: []
 touches:
@@ -30,13 +30,13 @@ Intended to be implemented in its own separate commit (independent of #47).
 
 ## Acceptance criteria
 
-- [ ] Calling a Runfile-backed MCP tool (`tools/call`) while omitting any required argument (non-optional `@arg` without `?` when `params` is empty, or signature `Parameter` with `default_value: None && !is_rest`) fails with JSON-RPC error code `-32602` naming the missing argument(s), and does not execute the function.
-- [ ] Passing JSON `null` for a required argument fails with JSON-RPC error code `-32602` naming the missing argument(s), and does not execute the function.
-- [ ] Calling a Runfile-backed MCP tool with any argument key not declared for that tool (excluding the built-in `timeout` parameter handled in `handlers.rs`) fails with JSON-RPC error code `-32602` naming the unexpected argument(s), and does not execute the function — including for zero-argument functions.
-- [ ] Valid optional arguments continue to work: signature params with default values, rest params (`...args`), legacy `@arg`s with `?` suffix (matched by sanitised key without `?`), and the built-in `timeout` parameter (non-negative integer or `null`).
-- [ ] Non-object `arguments` values return JSON-RPC error `-32602` ("Arguments must be an object"), including on zero-argument tools.
-- [ ] `InputSchema` serializes `"additionalProperties": false` in both `--inspect` and `tools/list` responses for all MCP tools (Runfile-derived and built-in).
-- [ ] Unit and integration tests cover missing required args, `null` required args, unknown args (with params, legacy `@arg`, and zero-arg tools), optional/`?`/default/rest/`timeout` args, non-object args, and `additionalProperties: false` schema output; `cargo test --workspace` and `cargo clippy --workspace --all-targets` pass with no warnings (`unwrap_used`/`expect_used` denied).
+- [x] Calling a Runfile-backed MCP tool (`tools/call`) while omitting any required argument (non-optional `@arg` without `?` when `params` is empty, or signature `Parameter` with `default_value: None && !is_rest`) fails with JSON-RPC error code `-32602` naming the missing argument(s), and does not execute the function.
+- [x] Passing JSON `null` for a required argument fails with JSON-RPC error code `-32602` naming the missing argument(s), and does not execute the function.
+- [x] Calling a Runfile-backed MCP tool with any argument key not declared for that tool (excluding the built-in `timeout` parameter handled in `handlers.rs`) fails with JSON-RPC error code `-32602` naming the unexpected argument(s), and does not execute the function — including for zero-argument functions.
+- [x] Valid optional arguments continue to work: signature params with default values, rest params (`...args`), legacy `@arg`s with `?` suffix (matched by sanitised key without `?`), and the built-in `timeout` parameter (non-negative integer or `null`).
+- [x] Non-object `arguments` values return JSON-RPC error `-32602` ("Arguments must be an object"), including on zero-argument tools.
+- [x] `InputSchema` serializes `"additionalProperties": false` in both `--inspect` and `tools/list` responses for all MCP tools (Runfile-derived and built-in).
+- [x] Unit and integration tests cover missing required args, `null` required args, unknown args (with params, legacy `@arg`, and zero-arg tools), optional/`?`/default/rest/`timeout` args, non-object args, and `additionalProperties: false` schema output; `cargo test --workspace` and `cargo clippy --workspace --all-targets` pass with no warnings (`unwrap_used`/`expect_used` denied).
 
 ## Decisions log
 
@@ -58,3 +58,7 @@ Intended to be implemented in its own separate commit (independent of #47).
 - None.
 
 ## Verification
+
+- `cargo fmt --all -- --check`: PASS (exit 0)
+- `cargo clippy --workspace --all-targets -- -D warnings`: PASS (exit 0, 0 warnings)
+- `cargo test --workspace`: PASS (exit 0; 632 tests passed, 0 failed, 0 ignored — 373 unit tests in `run`, 259 integration tests across all 14 integration test suites)

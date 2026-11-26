@@ -379,3 +379,46 @@ deploy(env) {
         "timeout must not be required"
     );
 }
+
+#[test]
+fn test_mcp_inspect_emits_additional_properties_false() {
+    let binary = get_binary_path();
+    let temp_dir = create_temp_dir();
+
+    create_runfile(
+        temp_dir.path(),
+        r"
+# @desc Zero-arg tool
+ping() echo pong
+
+# @desc Signature params tool
+greet(name: str) echo $name
+
+# @desc Legacy @arg tool
+# @arg 1:url string URL
+# @arg 2:branch? string Optional branch
+clone() echo $1
+",
+    );
+
+    let output = test_command(&binary)
+        .arg("--inspect")
+        .current_dir(temp_dir.path())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Invalid JSON output");
+    let tools = json["tools"].as_array().expect("tools should be array");
+    assert_eq!(tools.len(), 3);
+
+    for tool in tools {
+        assert_eq!(
+            tool["inputSchema"]["additionalProperties"],
+            serde_json::json!(false),
+            "tool {} should have additionalProperties: false",
+            tool["name"]
+        );
+    }
+}

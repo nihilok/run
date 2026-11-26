@@ -845,4 +845,105 @@ hello() echo hello\n",
             err.message
         );
     }
+
+    #[test]
+    #[serial]
+    fn test_handle_tools_list_emits_additional_properties_false() {
+        let original_cwd = env::current_dir().expect("Failed to get cwd");
+        let original_custom_path = crate::config::get_custom_runfile_path();
+        let temp = tempdir().expect("Failed to create temp dir");
+        std::fs::write(
+            temp.path().join("Runfile"),
+            "# @desc Say hello\nhello(name: str) echo \"hello $name\"\n",
+        )
+        .expect("Failed to write Runfile");
+
+        disable_global_merge();
+        crate::config::set_custom_runfile_path(None);
+        env::set_current_dir(temp.path()).expect("Failed to set cwd");
+
+        let result = handle_tools_list(None);
+
+        crate::config::set_custom_runfile_path(original_custom_path);
+        enable_global_merge();
+        env::set_current_dir(original_cwd).expect("Failed to restore cwd");
+
+        let value = result.expect("tools/list should succeed");
+        let tools = value["tools"].as_array().expect("tools array");
+        assert!(tools.len() >= 4);
+        for tool in tools {
+            assert_eq!(
+                tool["inputSchema"]["additionalProperties"],
+                json!(false),
+                "tool {} missing additionalProperties: false",
+                tool["name"]
+            );
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_handle_tools_call_rejects_invalid_args_before_execution() {
+        let original_cwd = env::current_dir().expect("Failed to get cwd");
+        let original_custom_path = crate::config::get_custom_runfile_path();
+        let temp = tempdir().expect("Failed to create temp dir");
+        let marker = temp.path().join("executed.marker");
+        let runfile = format!(
+            "# @desc Greet\ngreet(name: str) {{\n    touch \"{}\"\n    echo \"$name\"\n}}\n\n# @desc Ping\nping() {{\n    touch \"{}\"\n    echo pong\n}}\n",
+            marker.display(),
+            marker.display()
+        );
+        std::fs::write(temp.path().join("Runfile"), runfile).expect("Failed to write Runfile");
+
+        disable_global_merge();
+        crate::config::set_custom_runfile_path(None);
+        env::set_current_dir(temp.path()).expect("Failed to set cwd");
+
+        let missing_res = handle_tools_call(Some(json!({
+            "name": "greet",
+            "arguments": {}
+        })));
+        let null_res = handle_tools_call(Some(json!({
+            "name": "greet",
+            "arguments": { "name": null }
+        })));
+        let unknown_param_res = handle_tools_call(Some(json!({
+            "name": "greet",
+            "arguments": { "name": "ok", "extra": 1 }
+        })));
+        let unknown_zero_res = handle_tools_call(Some(json!({
+            "name": "ping",
+            "arguments": { "extra": 1 }
+        })));
+        let non_object_zero_res = handle_tools_call(Some(json!({
+            "name": "ping",
+            "arguments": "bad"
+        })));
+
+        crate::config::set_custom_runfile_path(original_custom_path);
+        enable_global_merge();
+        env::set_current_dir(original_cwd).expect("Failed to restore cwd");
+
+        assert!(!marker.exists(), "invalid calls must not execute function");
+
+        let err_missing = missing_res.expect_err("missing required arg should error");
+        assert_eq!(err_missing.code, -32602);
+        assert!(err_missing.message.contains("name"));
+
+        let err_null = null_res.expect_err("null required arg should error");
+        assert_eq!(err_null.code, -32602);
+        assert!(err_null.message.contains("name"));
+
+        let err_unknown_param = unknown_param_res.expect_err("unknown arg should error");
+        assert_eq!(err_unknown_param.code, -32602);
+        assert!(err_unknown_param.message.contains("extra"));
+
+        let err_unknown_zero = unknown_zero_res.expect_err("unknown arg on zero-arg should error");
+        assert_eq!(err_unknown_zero.code, -32602);
+        assert!(err_unknown_zero.message.contains("extra"));
+
+        let err_non_obj = non_object_zero_res.expect_err("non-object args should error");
+        assert_eq!(err_non_obj.code, -32602);
+        assert!(err_non_obj.message.contains("Arguments must be an object"));
+    }
 }
