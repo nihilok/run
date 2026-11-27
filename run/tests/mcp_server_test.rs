@@ -999,14 +999,43 @@ check() {
     );
 }
 
+fn write_atomic(path: &std::path::Path, content: &str) {
+    let tmp = path.with_extension("tmp");
+    fs::write(&tmp, content).unwrap();
+    fs::rename(&tmp, path).unwrap();
+}
+
+fn read_until_response_id<R: std::io::BufRead>(
+    reader: &mut R,
+    expected_id: i64,
+    messages: &mut Vec<serde_json::Value>,
+) {
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let n = reader.read_line(&mut line).unwrap();
+        assert!(n > 0, "EOF before response id {expected_id}");
+        if line.trim().is_empty() {
+            continue;
+        }
+        let msg: serde_json::Value = serde_json::from_str(&line).expect("valid JSON-RPC line");
+        let matched = msg["id"] == expected_id;
+        messages.push(msg);
+        if matched {
+            break;
+        }
+    }
+}
+
 #[test]
 fn test_mcp_hot_reload_emits_tools_list_changed_for_runfile_and_sourced_files() {
-    use std::io::Write;
+    use std::io::{BufReader, Write};
     use std::time::Duration;
 
     let binary = get_binary_path();
     let temp_dir = create_temp_dir();
 
+    let runfile_path = temp_dir.path().join("Runfile");
     let sourced_path = temp_dir.path().join("extra.run");
     fs::write(
         &sourced_path,
@@ -1029,8 +1058,9 @@ fn test_mcp_hot_reload_emits_tools_list_changed_for_runfile_and_sourced_files() 
         .expect("Failed to spawn process");
 
     let stdin = child.stdin.as_mut().unwrap();
+    let mut stdout_reader = BufReader::new(child.stdout.take().unwrap());
 
-    // 1. Initialize and let the watcher take its initial snapshot
+    // 1. Initialize and wait for its response so the watcher has taken its initial snapshot
     let init_request = serde_json::json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -1043,22 +1073,24 @@ fn test_mcp_hot_reload_emits_tools_list_changed_for_runfile_and_sourced_files() 
     });
     writeln!(stdin, "{}", serde_json::to_string(&init_request).unwrap()).unwrap();
     stdin.flush().unwrap();
-    std::thread::sleep(Duration::from_millis(120));
 
-    // 2. Body-only edit should NOT emit list_changed
-    create_runfile(
-        temp_dir.path(),
+    let mut messages: Vec<serde_json::Value> = Vec::new();
+    read_until_response_id(&mut stdout_reader, 1, &mut messages);
+    std::thread::sleep(Duration::from_millis(80));
+
+    // 2. Body-only atomic edit should NOT emit list_changed
+    write_atomic(
+        &runfile_path,
         "source ./extra.run\n# @desc First tool\nfirst() echo v2\n",
     );
     std::thread::sleep(Duration::from_millis(150));
 
-    // 3. Edit the sourced file to add a new tool -> should emit list_changed (once)
-    fs::write(
+    // 3. Atomic edit to sourced file adding a new tool -> should emit list_changed (once)
+    write_atomic(
         &sourced_path,
         "# @desc Initial sourced tool\nsourced_one() echo one\n# @desc Second sourced tool\nsourced_two(term: str, limit = 15) echo \"$term $limit\"\n",
-    )
-    .unwrap();
-    std::thread::sleep(Duration::from_millis(180));
+    );
+    std::thread::sleep(Duration::from_millis(200));
 
     // 4. Re-query tools/list in the same session
     let list_request = serde_json::json!({
@@ -1069,17 +1101,15 @@ fn test_mcp_hot_reload_emits_tools_list_changed_for_runfile_and_sourced_files() 
     });
     writeln!(stdin, "{}", serde_json::to_string(&list_request).unwrap()).unwrap();
     stdin.flush().unwrap();
-    std::thread::sleep(Duration::from_millis(150));
+    read_until_response_id(&mut stdout_reader, 2, &mut messages);
 
     child.kill().expect("Failed to kill process");
-    let output = child.wait_with_output().unwrap();
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    let messages: Vec<serde_json::Value> = stdout
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).expect("valid JSON-RPC line"))
-        .collect();
+    let _ = child.wait();
+    let stdout = messages
+        .iter()
+        .map(serde_json::Value::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
 
     // Check initialize capability
     let init_resp = messages.iter().find(|m| m["id"] == 1).expect("init resp");
